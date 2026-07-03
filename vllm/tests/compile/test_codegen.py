@@ -19,8 +19,10 @@ from torch.fx.experimental.proxy_tensor import make_fx
 from vllm.compilation.backends import split_graph
 from vllm.compilation.codegen import (
     _node_ref,
+    compile_execution_plan_fn,
     compile_execution_fn,
     generate_execution_code,
+    generate_execution_plan,
     generate_execution_code_with_name,
 )
 from vllm.utils.torch_utils import is_torch_equal_or_newer
@@ -268,6 +270,46 @@ def test_non_graphmodule_submod_uses_indexed_callable(x: torch.Tensor) -> None:
         if not isinstance(getattr(split_gm, name), fx.GraphModule)
     }
     fn = compile_execution_fn(code, submod_callables, submod_names, consts)
+    assert torch.equal(fn(x), model_fn(x))
+
+
+def test_execution_plan_matches_stitching_runtime(x: torch.Tensor) -> None:
+    """Execution plans should produce the same stitched result as the codegen
+    path for mixed submodule/function graphs."""
+
+    def model_fn(x: torch.Tensor) -> torch.Tensor:
+        y = x.relu()
+        z = y.sigmoid()
+        return (z + 1).tanh()
+
+    split_gm = _trace_and_split(model_fn, (x,), ["aten::relu.default"])
+
+    child_names = [name for name, _ in split_gm.named_children()]
+    target_name = child_names[0]
+
+    class NonGMWrapper(torch.nn.Module):
+        def __init__(self, gm: fx.GraphModule) -> None:
+            super().__init__()
+            self.gm = gm
+
+        def forward(self, *args, **kwargs):
+            return self.gm(*args, **kwargs)
+
+    original = getattr(split_gm, target_name)
+    del split_gm._modules[target_name]
+    split_gm.add_module(target_name, NonGMWrapper(original))
+
+    plan, submod_names, consts = generate_execution_plan(split_gm)
+    submod_callables = {
+        name: getattr(split_gm, name)
+        for name in submod_names
+        if not isinstance(getattr(split_gm, name), fx.GraphModule)
+    }
+    fn = compile_execution_plan_fn(plan, submod_callables, submod_names, consts)
+
+    assert plan["schema_version"] == 1
+    assert any(op["kind"] == "call_submod" for op in plan["ops"])
+    assert any(op["kind"] == "call_function" for op in plan["ops"])
     assert torch.equal(fn(x), model_fn(x))
 
 

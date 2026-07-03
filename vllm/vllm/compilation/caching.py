@@ -21,7 +21,7 @@ from torch.utils import _pytree as pytree
 
 import vllm.envs as envs
 import vllm.env_override as env_override
-from vllm.compilation.codegen import compile_execution_fn
+from vllm.compilation.codegen import compile_execution_fn, compile_execution_plan_fn
 from vllm.compilation.compiler_interface import get_inductor_factors
 from vllm.compilation.counter import compilation_counter
 from vllm.config import VllmConfig, get_current_vllm_config
@@ -281,6 +281,7 @@ def pack_serialized_fn_state_bundle(state: dict[str, Any]) -> bytes:
         "prefix": state["prefix"],
         "is_encoder": bool(state["is_encoder"]),
         "sym_tensor_indices": state.get("sym_tensor_indices"),
+        "execution_plan": _json_ready(state.get("execution_plan")),
         "execution_code": state.get("execution_code"),
         "submod_names": state.get("submod_names"),
         "blobs": [],
@@ -360,6 +361,7 @@ def unpack_serialized_fn_state_bundle(data: bytes) -> dict[str, Any]:
         "prefix": header["prefix"],
         "is_encoder": bool(header["is_encoder"]),
         "sym_tensor_indices": header.get("sym_tensor_indices"),
+        "execution_plan": header.get("execution_plan"),
         "execution_code": header.get("execution_code"),
         "submod_names": header.get("submod_names"),
         "aot_autograd_config": None,
@@ -893,6 +895,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         vllm_backend: Any | None = None,
         sym_tensor_indices: list[int] | None = None,
         aot_autograd_config: dict[str, Any] | None = None,
+        execution_plan: dict[str, object] | None = None,
         execution_code: str | None = None,
         submod_names: list[str] | None = None,
         consts: list[Any] | None = None,
@@ -905,6 +908,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         self.shape_env = None
         self.vllm_backend = vllm_backend
         self.sym_tensor_indices = sym_tensor_indices
+        self.execution_plan = execution_plan
         self.execution_code = execution_code
         self.submod_names = submod_names
         self.consts = consts
@@ -1494,9 +1498,15 @@ def reconstruct_serializable_fn_from_mega_artifact(
         )
 
     # Use codegen'd execution code if available, fall back to split_gm
+    execution_plan = state.get("execution_plan")
     execution_code = state.get("execution_code")
     submod_names = state.get("submod_names")
-    if execution_code is not None and submod_names is not None:
+    if execution_plan is not None and submod_names is not None:
+        consts = state.get("consts")
+        runtime_callable = compile_execution_plan_fn(
+            execution_plan, submod_callables, submod_names, consts
+        )
+    elif execution_code is not None and submod_names is not None:
         consts = state.get("consts")
         runtime_callable = compile_execution_fn(
             execution_code, submod_callables, submod_names, consts

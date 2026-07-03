@@ -215,6 +215,7 @@ def _load_caching_module():
 
     codegen_mod = types.ModuleType("vllm.compilation.codegen")
     codegen_mod.compile_execution_fn = lambda *args, **kwargs: None
+    codegen_mod.compile_execution_plan_fn = lambda *args, **kwargs: None
 
     compiler_interface_mod = types.ModuleType("vllm.compilation.compiler_interface")
     compiler_interface_mod.get_inductor_factors = lambda: []
@@ -402,6 +403,13 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             vllm_backend=backend,
             sym_tensor_indices=[],
             aot_autograd_config={},
+            execution_plan={
+                "schema_version": 1,
+                "name": "execution_fn",
+                "with_submods": True,
+                "params": ["x"],
+                "ops": [{"kind": "return", "value": {"kind": "node", "name": "x"}}],
+            },
             execution_code=None,
             submod_names=None,
             consts=None,
@@ -1342,6 +1350,13 @@ def test_serialized_fn_state_bundle_roundtrip() -> None:
         "is_encoder": True,
         "sym_tensor_indices": [0, 2],
         "aot_autograd_config": {"bundled_autograd_cache": True},
+        "execution_plan": {
+            "schema_version": 1,
+            "name": "execution_fn",
+            "with_submods": True,
+            "params": ["x"],
+            "ops": [{"kind": "return", "value": {"kind": "node", "name": "x"}}],
+        },
         "execution_code": "return x",
         "submod_names": ["block0", "block1"],
         "consts": ["const0"],

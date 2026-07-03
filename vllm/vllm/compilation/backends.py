@@ -24,8 +24,10 @@ from torch.fx._lazy_graph_module import _use_lazy_graph_module
 
 import vllm.envs as envs
 from vllm.compilation.codegen import (
+    compile_execution_plan_fn,
     compile_execution_fn,
     generate_execution_code,
+    generate_execution_plan,
 )
 from vllm.config import CompilationConfig, CUDAGraphMode, VllmConfig
 from vllm.config.compilation import DynamicShapesType
@@ -1269,6 +1271,7 @@ class VllmBackend:
         )
 
         execution_code, submod_names, consts = generate_execution_code(self.split_gm)
+        execution_plan, _, _ = generate_execution_plan(self.split_gm)
         # Use getattr to get correct callables: __dict__ has PiecewiseBackend
         # instances (from PiecewiseCompileInterpreter), _modules has originals.
         # getattr checks __dict__ first, then falls back to _modules.
@@ -1276,8 +1279,8 @@ class VllmBackend:
             name: getattr(self.split_gm, name)
             for name, _ in self.split_gm.named_children()
         }
-        runtime_callable = compile_execution_fn(
-            execution_code, submod_callables, submod_names, consts
+        runtime_callable = compile_execution_plan_fn(
+            execution_plan, submod_callables, submod_names, consts
         )
 
         if (
@@ -1291,6 +1294,7 @@ class VllmBackend:
                 runtime_callable,
                 is_encoder=self.is_encoder,
                 vllm_backend=self,
+                execution_plan=execution_plan,
                 execution_code=execution_code,
                 submod_names=submod_names,
                 consts=consts,
@@ -1325,6 +1329,7 @@ class VllmBackend:
             is_encoder=self.is_encoder,
             vllm_backend=self,
             sym_tensor_indices=sym_tensor_indices,
+            execution_plan=execution_plan,
             execution_code=execution_code,
             submod_names=submod_names,
             consts=consts,
