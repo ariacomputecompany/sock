@@ -63,6 +63,10 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_LOG_MODEL_INSPECTION"] == "debug_only"
     assert manifest["categories"]["VLLM_DISABLE_LOG_LOGO"] == "debug_only"
     assert manifest["categories"]["VLLM_COMPUTE_NANS_IN_LOGITS"] == "debug_only"
+    assert manifest["categories"]["VLLM_MEDIA_CONNECTOR"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_CPU_KVCACHE_SPACE"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_CPU_OMP_THREADS_BIND"] == "host_only"
+    assert manifest["categories"]["VLLM_PROCESS_NAME_PREFIX"] == "host_only"
     assert (
         manifest["policies"]["VLLM_DISABLE_COMPILE_CACHE"]["included_in_compile_key"]
         is True
@@ -79,6 +83,10 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_ENFORCE_STRICT_TOOL_CALLING" in manifest["ignored_keys"]
     assert "VLLM_LOG_MODEL_INSPECTION" in manifest["ignored_keys"]
     assert "VLLM_COMPUTE_NANS_IN_LOGITS" in manifest["ignored_keys"]
+    assert "VLLM_MEDIA_CONNECTOR" in manifest["ignored_keys"]
+    assert "VLLM_CPU_KVCACHE_SPACE" in manifest["ignored_keys"]
+    assert "VLLM_CPU_OMP_THREADS_BIND" in manifest["ignored_keys"]
+    assert "VLLM_PROCESS_NAME_PREFIX" in manifest["ignored_keys"]
     assert (
         "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
         in manifest["ambient_included_keys"]
@@ -177,6 +185,8 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert "VLLM_CONFIGURE_LOGGING" in manifest["audit"]["category_keys"]["debug_only"]
     assert "VLLM_API_KEY" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_MEDIA_CONNECTOR" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_CPU_OMP_THREADS_BIND" in manifest["audit"]["category_keys"]["host_only"]
     assert "VLLM_LOG_MODEL_INSPECTION" in manifest["audit"]["category_keys"]["debug_only"]
     assert (
         "VLLM_ENFORCE_STRICT_TOOL_CALLING"
