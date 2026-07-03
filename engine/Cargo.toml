@@ -1,0 +1,9 @@
+[package]
+name = "sock-engine"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+sock-core = { path = "../core" }

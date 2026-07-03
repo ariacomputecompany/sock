@@ -1,0 +1,15 @@
+[package]
+name = "sock-app"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+sock-core = { path = "../core" }
+sock-engine = { path = "../engine" }
+
+[[bin]]
+name = "sock"
+path = "src/main.rs"

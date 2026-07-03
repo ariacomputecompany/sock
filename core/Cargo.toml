@@ -1,0 +1,9 @@
+[package]
+name = "sock-core"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+serde.workspace = true
