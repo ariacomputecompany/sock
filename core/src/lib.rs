@@ -1,4 +1,5 @@
 pub mod adapter;
+pub mod backend;
 pub mod bundle;
 pub mod canonical;
 pub mod diagnostics;
@@ -11,6 +12,7 @@ pub mod rewrite;
 pub mod verification;
 
 pub use adapter::*;
+pub use backend::*;
 pub use bundle::{ArtifactManifestDocument, ReplayBundle, ReplayBundleError, ReplayBundleMetadata};
 pub use canonical::{
     CanonicalError, CanonicalHash, canonical_hash, canonical_json, parse_canonical_json,

@@ -1,17 +1,19 @@
 use std::collections::BTreeMap;
 
 use sock_core::{
-    AbiFingerprint, AdapterError, AdapterSurvey, ArtifactAcquisition, ArtifactClass,
-    ArtifactClosure, ArtifactManifestEntry, ArtifactPortability, ArtifactRequirement,
-    BackendCandidate, BackendExtensionFingerprint, BackendFamily, BackendSelection, CanonicalError,
-    CapabilityWitness, CompileRegion, CompileRegionKind, CoveragePlane, CoverageState,
-    CoverageWitness, EngineAdapter, ExecutionTopology, GuaranteeDimension, GuaranteeEnvelope,
-    GuaranteeEvidence, GuaranteeLevel, HazardClass, LeaderAssignment, MaterializationGraph,
-    MaterializationNode, MaterializationNodeKind, MaterializationWave, NormalizedRequest,
-    OperatingSystem, PassTrace, PortabilityFingerprint, QueueKind, RangeIntent, RankDisposition,
+    AbiFingerprint, AdapterError, AdapterSurvey, AdmissibilityVerdict, ArtifactAcquisition,
+    ArtifactAdmissibilityProof, ArtifactClass, ArtifactClosure, ArtifactManifestEntry,
+    ArtifactPortability, ArtifactRequirement, BackendAdmissibilityProof, BackendCandidate,
+    BackendCapability, BackendCapabilityRegistry, BackendExtensionFingerprint, BackendFamily,
+    BackendSelection, CanonicalError, CapabilityProvenance, CapabilityWitness, CompileRegion,
+    CompileRegionKind, CoveragePlane, CoverageState, CoverageWitness, EngineAdapter,
+    ExecutionTopology, GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel,
+    HazardClass, LeaderAssignment, MaterializationGraph, MaterializationNode,
+    MaterializationNodeKind, MaterializationWave, NormalizedRequest, OperatingSystem,
+    PackagingStrategy, PassTrace, PortabilityFingerprint, QueueKind, RangeIntent, RankDisposition,
     RawRequest, ResidualRuntimeRisk, ResolvedBuildPlan, RewritePassContract, RewritePhase,
-    ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapeRange, StructuralIdentity, ValidationStatus,
-    WarmupObligation, WaveEstimate, canonical_hash,
+    RuntimeJitDisposition, ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapeRange,
+    StructuralIdentity, ValidationStatus, WarmupObligation, WaveEstimate, canonical_hash,
 };
 use thiserror::Error;
 
@@ -61,12 +63,18 @@ impl Planner {
         let normalized = raw.normalize()?;
         let adapter_survey = VllmAdapter::default().survey()?;
         let capability_witnesses = self.capability_witnesses(&normalized, &adapter_survey);
+        let backend_registry = self.backend_registry(&normalized);
         let selected_backends =
-            self.select_backends(&normalized, &capability_witnesses, &adapter_survey)?;
+            self.select_backends(&normalized, &capability_witnesses, &backend_registry)?;
         let compile_regions = self.compile_regions(&selected_backends, &adapter_survey);
         let shape_envelope = self.shape_envelope(&normalized, &selected_backends);
-        let artifact_requirements =
-            self.artifact_requirements(&normalized.topology, &selected_backends, &compile_regions);
+        let artifact_requirements = self.artifact_requirements(
+            &normalized,
+            &capability_witnesses,
+            &shape_envelope,
+            &selected_backends,
+            &compile_regions,
+        )?;
         let warmup_obligations =
             self.warmup_obligations(&normalized, &shape_envelope, &compile_regions);
         let residual_risks = self.residual_risks(
@@ -94,6 +102,7 @@ impl Planner {
                 class: requirement.class,
                 backend: requirement.backend,
                 scope: requirement.scope.clone(),
+                admissibility: requirement.admissibility.clone(),
             })
             .collect::<Vec<_>>();
         let coverage_witnesses =
@@ -117,6 +126,7 @@ impl Planner {
         )?;
         let structural_identity = self.structural_identity(
             &normalized,
+            &backend_registry,
             &capability_witnesses,
             &compile_regions,
             &shape_envelope,
@@ -128,6 +138,7 @@ impl Planner {
         )?;
         let plan = ResolvedBuildPlan {
             normalized_request: normalized,
+            backend_registry,
             selected_backends,
             compile_regions,
             shape_envelope,
@@ -227,11 +238,89 @@ impl Planner {
         witnesses
     }
 
+    fn backend_registry(&self, normalized: &NormalizedRequest) -> BackendCapabilityRegistry {
+        let mut entries = vec![
+            BackendCapability {
+                family: BackendFamily::FlashInfer,
+                supported_operating_systems: vec![OperatingSystem::Linux],
+                supported_accelerator_vendors: vec![sock_core::AcceleratorVendor::Nvidia],
+                allowed_acquisitions: vec![
+                    ArtifactAcquisition::VendorPrebuilt,
+                    ArtifactAcquisition::LocalSourceBuild,
+                ],
+                required_witnesses: vec!["flashinfer.prebuilt".to_owned()],
+                legal_portability: vec![
+                    ArtifactPortability::GpuArchitectureFamilyPortable,
+                    ArtifactPortability::AbiClusterPortable,
+                ],
+                provenance: vec![
+                    provenance(
+                        "vllm-adapter-survey",
+                        "FlashInfer backend surfaced by adapter",
+                    ),
+                    provenance(
+                        "host-discovery",
+                        "prebuilt cubin witness available on target host",
+                    ),
+                ],
+            },
+            BackendCapability {
+                family: BackendFamily::Triton,
+                supported_operating_systems: vec![OperatingSystem::Linux],
+                supported_accelerator_vendors: vec![sock_core::AcceleratorVendor::Nvidia],
+                allowed_acquisitions: vec![ArtifactAcquisition::LocalAotBuild],
+                required_witnesses: Vec::new(),
+                legal_portability: vec![
+                    ArtifactPortability::AbiClusterPortable,
+                    ArtifactPortability::GpuArchitectureFamilyPortable,
+                ],
+                provenance: vec![provenance(
+                    "vllm-adapter-survey",
+                    "Triton regional compilation remains legal for vLLM attention and warmup paths",
+                )],
+            },
+            BackendCapability {
+                family: BackendFamily::AotInductor,
+                supported_operating_systems: vec![OperatingSystem::Linux],
+                supported_accelerator_vendors: vec![sock_core::AcceleratorVendor::Nvidia],
+                allowed_acquisitions: vec![ArtifactAcquisition::UpstreamCacheBundle],
+                required_witnesses: Vec::new(),
+                legal_portability: vec![ArtifactPortability::AbiClusterPortable],
+                provenance: vec![provenance(
+                    "vllm-adapter-survey",
+                    "AoTInductor reuse is bounded to stable region bundles",
+                )],
+            },
+            BackendCapability {
+                family: BackendFamily::CudaGraphs,
+                supported_operating_systems: vec![OperatingSystem::Linux],
+                supported_accelerator_vendors: vec![sock_core::AcceleratorVendor::Nvidia],
+                allowed_acquisitions: vec![ArtifactAcquisition::LocalAotBuild],
+                required_witnesses: Vec::new(),
+                legal_portability: vec![ArtifactPortability::TopologyScoped],
+                provenance: vec![provenance(
+                    "vllm-adapter-survey",
+                    "CUDA Graph captures are topology-scoped materialized artifacts",
+                )],
+            },
+        ];
+        entries.retain(|entry| {
+            entry
+                .supported_operating_systems
+                .contains(&normalized.environment.operating_system)
+                && entry
+                    .supported_accelerator_vendors
+                    .contains(&normalized.environment.accelerator_vendor)
+        });
+        entries.sort_by_key(|entry| entry.family.as_str().to_owned());
+        BackendCapabilityRegistry { entries }
+    }
+
     fn select_backends(
         &self,
         normalized: &NormalizedRequest,
         witnesses: &[CapabilityWitness],
-        adapter_survey: &AdapterSurvey,
+        registry: &BackendCapabilityRegistry,
     ) -> Result<BackendSelection, PlanError> {
         let linux_nvidia = normalized.environment.operating_system == OperatingSystem::Linux
             && normalized.environment.accelerator_vendor == sock_core::AcceleratorVendor::Nvidia;
@@ -242,41 +331,25 @@ impl Planner {
         }
         let mut viable = Vec::new();
         for family in &normalized.backend_policy.preferred_families {
-            match family {
-                BackendFamily::FlashInfer => {
-                    if witnesses.iter().any(|w| w.key == "flashinfer.prebuilt") {
-                        viable.push(BackendCandidate {
-                            family: *family,
-                            acquisition: ArtifactAcquisition::VendorPrebuilt,
-                            reason: format!(
-                                "prebuilt FlashInfer artifact is admissible for this ABI and SM envelope; adapter surfaced {} compile-affecting inputs",
-                                adapter_survey.config_inputs.len()
-                            ),
-                        });
-                    } else if !normalized.backend_policy.require_prebuilt_artifacts {
-                        viable.push(BackendCandidate {
-                            family: *family,
-                            acquisition: ArtifactAcquisition::LocalSourceBuild,
-                            reason: "FlashInfer remains legal via local build".to_owned(),
-                        });
-                    }
-                }
-                BackendFamily::Triton => viable.push(BackendCandidate {
+            let Some(capability) = registry
+                .entries
+                .iter()
+                .find(|entry| entry.family == *family)
+            else {
+                continue;
+            };
+            let proofs = self.backend_proofs(normalized, witnesses, capability);
+            if let Some(proof) = proofs
+                .iter()
+                .find(|proof| proof.verdict == AdmissibilityVerdict::Admissible)
+                .cloned()
+            {
+                viable.push(BackendCandidate {
                     family: *family,
-                    acquisition: ArtifactAcquisition::LocalAotBuild,
-                    reason: "Triton regional compilation is legal for the requested shape envelope"
-                        .to_owned(),
-                }),
-                BackendFamily::AotInductor => viable.push(BackendCandidate {
-                    family: *family,
-                    acquisition: ArtifactAcquisition::UpstreamCacheBundle,
-                    reason: "AoTInductor stable-region reuse is admissible".to_owned(),
-                }),
-                BackendFamily::CudaGraphs => viable.push(BackendCandidate {
-                    family: *family,
-                    acquisition: ArtifactAcquisition::LocalAotBuild,
-                    reason: "CUDA Graph captures are planned after kernel closure".to_owned(),
-                }),
+                    acquisition: proof.acquisition,
+                    reason: backend_reason(&proof),
+                    admissibility: proof,
+                });
             }
         }
         let primary = viable.first().cloned().ok_or_else(|| {
@@ -316,6 +389,140 @@ impl Planner {
         regions
     }
 
+    fn backend_proofs(
+        &self,
+        normalized: &NormalizedRequest,
+        witnesses: &[CapabilityWitness],
+        capability: &BackendCapability,
+    ) -> Vec<BackendAdmissibilityProof> {
+        capability
+            .allowed_acquisitions
+            .iter()
+            .copied()
+            .map(|acquisition| {
+                let mut rejected_reasons = Vec::new();
+                let mut satisfied_witnesses = Vec::new();
+                let required_witnesses = capability.required_witnesses.clone();
+
+                if !capability
+                    .supported_operating_systems
+                    .contains(&normalized.environment.operating_system)
+                {
+                    rejected_reasons.push("unsupported operating system".to_owned());
+                }
+                if !capability
+                    .supported_accelerator_vendors
+                    .contains(&normalized.environment.accelerator_vendor)
+                {
+                    rejected_reasons.push("unsupported accelerator vendor".to_owned());
+                }
+
+                for witness_key in &required_witnesses {
+                    if witnesses.iter().any(|witness| witness.key == *witness_key) {
+                        satisfied_witnesses.push(witness_key.clone());
+                    } else {
+                        rejected_reasons.push(format!("missing witness `{witness_key}`"));
+                    }
+                }
+
+                match normalized.backend_policy.packaging_strategy {
+                    PackagingStrategy::PrebuiltOnly => {
+                        if acquisition != ArtifactAcquisition::VendorPrebuilt {
+                            rejected_reasons
+                                .push("policy requires vendor prebuilt closure only".to_owned());
+                        }
+                    }
+                    PackagingStrategy::PreferPrebuiltThenAot => {
+                        if matches!(acquisition, ArtifactAcquisition::LocalSourceBuild) {
+                            rejected_reasons.push(
+                                "policy stops at prebuilt and stable AoT materialization"
+                                    .to_owned(),
+                            );
+                        }
+                    }
+                    PackagingStrategy::PreferPrebuiltThenAotThenJit => {}
+                }
+
+                let verdict = if rejected_reasons.is_empty() {
+                    AdmissibilityVerdict::Admissible
+                } else {
+                    AdmissibilityVerdict::Rejected
+                };
+
+                BackendAdmissibilityProof {
+                    verdict,
+                    family: capability.family,
+                    acquisition,
+                    packaging_strategy: normalized.backend_policy.packaging_strategy,
+                    required_witnesses,
+                    satisfied_witnesses,
+                    rejected_reasons,
+                    provenance: capability.provenance.clone(),
+                }
+            })
+            .collect()
+    }
+
+    fn artifact_admissibility(
+        &self,
+        normalized: &NormalizedRequest,
+        witnesses: &[CapabilityWitness],
+        backend: BackendFamily,
+        acquisition: ArtifactAcquisition,
+        class: ArtifactClass,
+        scope: String,
+        portability: ArtifactPortability,
+        abi_identity: &sock_core::CanonicalHash,
+        shape_envelope_identity: &sock_core::CanonicalHash,
+        rationale: Vec<String>,
+    ) -> ArtifactAdmissibilityProof {
+        let required_witnesses = if backend == BackendFamily::FlashInfer
+            && acquisition == ArtifactAcquisition::VendorPrebuilt
+        {
+            vec!["flashinfer.prebuilt".to_owned()]
+        } else {
+            Vec::new()
+        };
+        let satisfied_witnesses = required_witnesses
+            .iter()
+            .filter(|witness_key| witnesses.iter().any(|witness| witness.key == **witness_key))
+            .cloned()
+            .collect::<Vec<_>>();
+        let fail_closed = required_witnesses.len() == satisfied_witnesses.len()
+            && required_witnesses.len() == satisfied_witnesses.len();
+        let proof_identity = canonical_hash(&(
+            backend,
+            acquisition,
+            class,
+            &scope,
+            portability,
+            abi_identity,
+            shape_envelope_identity,
+            &normalized.topology,
+            &required_witnesses,
+            &satisfied_witnesses,
+            fail_closed,
+            &rationale,
+        ))
+        .expect("artifact admissibility proof identity should hash");
+
+        ArtifactAdmissibilityProof {
+            proof_identity,
+            artifact_scope: scope,
+            class,
+            backend,
+            acquisition,
+            portability,
+            target_abi_identity: abi_identity.clone(),
+            target_shape_envelope_identity: shape_envelope_identity.clone(),
+            target_topology: normalized.topology.clone(),
+            required_witnesses,
+            satisfied_witnesses,
+            fail_closed,
+            rationale,
+        }
+    }
+
     fn shape_envelope(
         &self,
         normalized: &NormalizedRequest,
@@ -349,7 +556,9 @@ impl Planner {
                 BackendFamily::CudaGraphs,
             ));
         }
-        if normalized.backend_policy.allow_runtime_jit {
+        if normalized.backend_policy.runtime_jit_policy.disposition
+            == RuntimeJitDisposition::ShapeBounded
+        {
             nodes.push(ShapeEnvelopeNode {
                 name: "residual-dynamic-tail".to_owned(),
                 plane: CoveragePlane::Performance,
@@ -365,10 +574,23 @@ impl Planner {
 
     fn artifact_requirements(
         &self,
-        topology: &ExecutionTopology,
+        normalized: &NormalizedRequest,
+        witnesses: &[CapabilityWitness],
+        shape_envelope: &ShapeEnvelope,
         selected_backends: &BackendSelection,
         compile_regions: &[CompileRegion],
-    ) -> Vec<ArtifactRequirement> {
+    ) -> Result<Vec<ArtifactRequirement>, PlanError> {
+        let abi_identity = canonical_hash(&AbiFingerprint {
+            operating_system: normalized.environment.operating_system,
+            accelerator_vendor: normalized.environment.accelerator_vendor,
+            gpu_arches: normalized.environment.gpu_arches.clone(),
+            cuda_version: normalized.environment.cuda_version.clone(),
+            driver_version: normalized.environment.driver_version.clone(),
+            python_abi: normalized.environment.python_abi.clone(),
+            libc_abi: normalized.environment.libc_abi.clone(),
+            topology: normalized.topology.clone(),
+        })?;
+        let shape_envelope_identity = canonical_hash(shape_envelope)?;
         let mut requirements = compile_regions
             .iter()
             .flat_map(|region| {
@@ -382,11 +604,29 @@ impl Planner {
                         rank_disposition: RankDisposition::Shared,
                         expected_bytes: Some(24_000_000),
                         expected_compile_ms: Some(2_500),
-                        expected_transfer_ms: Some(if total_rank_count(topology) > 1 {
+                        expected_transfer_ms: Some(if total_rank_count(&normalized.topology) > 1 {
                             220
                         } else {
                             0
                         }),
+                        admissibility: self.artifact_admissibility(
+                            normalized,
+                            witnesses,
+                            selected_backends.primary.family,
+                            selected_backends.primary.acquisition,
+                            ArtifactClass::CompiledGraph,
+                            region.name.clone(),
+                            ArtifactPortability::GpuArchitectureFamilyPortable,
+                            &abi_identity,
+                            &shape_envelope_identity,
+                            vec![
+                                "compiled graph is portable across the target SM family".to_owned(),
+                                format!(
+                                    "region {} is bounded by the selected shape envelope",
+                                    region.name
+                                ),
+                            ],
+                        ),
                     },
                     ArtifactRequirement {
                         class: ArtifactClass::TritonBinary,
@@ -397,11 +637,30 @@ impl Planner {
                         rank_disposition: RankDisposition::Shared,
                         expected_bytes: Some(4_000_000),
                         expected_compile_ms: Some(800),
-                        expected_transfer_ms: Some(if total_rank_count(topology) > 1 {
+                        expected_transfer_ms: Some(if total_rank_count(&normalized.topology) > 1 {
                             90
                         } else {
                             0
                         }),
+                        admissibility: self.artifact_admissibility(
+                            normalized,
+                            witnesses,
+                            region.family,
+                            selected_backends.primary.acquisition,
+                            ArtifactClass::TritonBinary,
+                            region.name.clone(),
+                            ArtifactPortability::AbiClusterPortable,
+                            &abi_identity,
+                            &shape_envelope_identity,
+                            vec![
+                                "Triton binary reuse is bounded to an ABI-compatible cluster"
+                                    .to_owned(),
+                                format!(
+                                    "compile region {} is source-anchored in the adapter survey",
+                                    region.name
+                                ),
+                            ],
+                        ),
                     },
                 ]
             })
@@ -416,9 +675,24 @@ impl Planner {
             expected_bytes: Some(2_000_000),
             expected_compile_ms: Some(300),
             expected_transfer_ms: Some(25),
+            admissibility: self.artifact_admissibility(
+                normalized,
+                witnesses,
+                BackendFamily::CudaGraphs,
+                ArtifactAcquisition::LocalAotBuild,
+                ArtifactClass::CudaGraphCapture,
+                "decode_attention".to_owned(),
+                ArtifactPortability::TopologyScoped,
+                &abi_identity,
+                &shape_envelope_identity,
+                vec![
+                    "CUDA graph captures are only legal on the planned topology".to_owned(),
+                    "capture reuse is bounded to the exact graph envelope".to_owned(),
+                ],
+            ),
         });
         requirements.sort();
-        requirements
+        Ok(requirements)
     }
 
     fn warmup_obligations(
@@ -885,6 +1159,7 @@ impl Planner {
     fn structural_identity(
         &self,
         normalized: &NormalizedRequest,
+        backend_registry: &BackendCapabilityRegistry,
         capability_witnesses: &[CapabilityWitness],
         compile_regions: &[CompileRegion],
         shape_envelope: &ShapeEnvelope,
@@ -898,6 +1173,7 @@ impl Planner {
         let shape_envelope_identity = canonical_hash(shape_envelope)?;
         let compile_region_identity = canonical_hash(compile_regions)?;
         let capability_identity = canonical_hash(capability_witnesses)?;
+        let backend_registry_identity = canonical_hash(backend_registry)?;
         let abi_identity = canonical_hash(&AbiFingerprint {
             operating_system: normalized.environment.operating_system,
             accelerator_vendor: normalized.environment.accelerator_vendor,
@@ -928,6 +1204,7 @@ impl Planner {
             materialization_graph,
             guarantee_envelope,
             &request_identity,
+            &backend_registry_identity,
             &capability_identity,
             &abi_identity,
             &backend_extension_identity,
@@ -935,6 +1212,7 @@ impl Planner {
         ))?;
         Ok(StructuralIdentity {
             request_identity,
+            backend_registry_identity,
             shape_envelope_identity,
             compile_region_identity,
             capability_identity,
@@ -954,6 +1232,27 @@ fn witness(key: &str, value: impl Into<String>, provenance: &str) -> CapabilityW
         value: value.into(),
         provenance: provenance.to_owned(),
     }
+}
+
+fn provenance(source: &str, detail: &str) -> CapabilityProvenance {
+    CapabilityProvenance {
+        source: source.to_owned(),
+        detail: detail.to_owned(),
+    }
+}
+
+fn backend_reason(proof: &BackendAdmissibilityProof) -> String {
+    format!(
+        "{:?} via {:?} is admissible under {:?}; witnesses={}",
+        proof.family,
+        proof.acquisition,
+        proof.packaging_strategy,
+        if proof.satisfied_witnesses.is_empty() {
+            "none".to_owned()
+        } else {
+            proof.satisfied_witnesses.join(",")
+        }
+    )
 }
 
 fn hot_shape_node(prefix: &str, shape: &ShapePoint, backend: BackendFamily) -> ShapeEnvelopeNode {
@@ -1202,8 +1501,11 @@ mod tests {
                     BackendFamily::Triton,
                     BackendFamily::CudaGraphs,
                 ],
-                require_prebuilt_artifacts: true,
-                allow_runtime_jit: false,
+                packaging_strategy: PackagingStrategy::PreferPrebuiltThenAot,
+                runtime_jit_policy: sock_core::RuntimeJitPolicy {
+                    disposition: RuntimeJitDisposition::Forbidden,
+                    max_residual_node_count: 0,
+                },
                 correctness_target: GuaranteeTarget {
                     level: GuaranteeLevel::ShapeBoundedAot,
                     failure_mode: FailureMode::FailClosed,
@@ -1294,5 +1596,44 @@ mod tests {
         for pass in &outcome.plan.rewrite_trace {
             pass.validate().expect("rewrite pass contract");
         }
+    }
+
+    #[test]
+    fn prebuilt_only_policy_fails_closed_without_witness() {
+        let mut host = host();
+        host.flashinfer_prebuilt_available = false;
+        let planner = Planner::new(host);
+        let mut request = request();
+        request.backend_policy.preferred_families = vec![BackendFamily::FlashInfer];
+
+        let err = planner
+            .resolve(request)
+            .expect_err("prebuilt-only path should fail without witness");
+        assert!(
+            matches!(err, PlanError::Validation(message) if message.contains("no admissible backend remained"))
+        );
+    }
+
+    #[test]
+    fn bounded_jit_policy_is_explicitly_supported() {
+        let planner = Planner::new(host());
+        let mut request = request();
+        request.backend_policy.packaging_strategy = PackagingStrategy::PreferPrebuiltThenAotThenJit;
+        request.backend_policy.runtime_jit_policy.disposition = RuntimeJitDisposition::ShapeBounded;
+        request.backend_policy.correctness_target.level = GuaranteeLevel::WarmupBounded;
+        request
+            .backend_policy
+            .runtime_jit_policy
+            .max_residual_node_count = 1;
+
+        let outcome = planner.resolve(request).expect("bounded jit plan");
+        assert!(
+            outcome
+                .plan
+                .shape_envelope
+                .nodes
+                .iter()
+                .any(|node| node.intent == RangeIntent::UncoveredResidual)
+        );
     }
 }

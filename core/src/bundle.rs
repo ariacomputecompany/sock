@@ -193,8 +193,8 @@ mod tests {
         ArtifactRequirement, BackendCandidate, BackendExtensionFingerprint, BackendFamily,
         BackendPolicy, BackendSelection, CachePolicy, CapabilityWitness, CompileRegion,
         ConfigEntry, ConfigLayer, CoveragePlane, CoverageState, CoverageWitness,
-        DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode,
-        GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel, GuaranteeTarget,
+        DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode, GuaranteeDimension,
+        GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel, GuaranteeTarget,
         MaterializationGraph, MaterializationNode, MaterializationNodeKind, MaterializationWave,
         ModelRef, PortabilityFingerprint, QueueKind, RangeIntent, RankDisposition, RawRequest,
         RequestedEnvironment, RewritePassContract, RewritePhase, RewriteTraceDocument,
@@ -232,8 +232,11 @@ mod tests {
             },
             backend_policy: BackendPolicy {
                 preferred_families: vec![BackendFamily::FlashInfer, BackendFamily::Triton],
-                require_prebuilt_artifacts: true,
-                allow_runtime_jit: false,
+                packaging_strategy: crate::PackagingStrategy::PreferPrebuiltThenAot,
+                runtime_jit_policy: crate::RuntimeJitPolicy {
+                    disposition: crate::RuntimeJitDisposition::Forbidden,
+                    max_residual_node_count: 0,
+                },
                 correctness_target: GuaranteeTarget {
                     level: GuaranteeLevel::ShapeBoundedAot,
                     failure_mode: FailureMode::FailClosed,
@@ -297,16 +300,58 @@ mod tests {
         .normalize()
         .expect("normalize request");
 
+        let backend_registry = crate::BackendCapabilityRegistry {
+            entries: vec![crate::BackendCapability {
+                family: BackendFamily::FlashInfer,
+                supported_operating_systems: vec![crate::OperatingSystem::Linux],
+                supported_accelerator_vendors: vec![AcceleratorVendor::Nvidia],
+                allowed_acquisitions: vec![ArtifactAcquisition::VendorPrebuilt],
+                required_witnesses: vec!["flashinfer.prebuilt".to_owned()],
+                legal_portability: vec![ArtifactPortability::GpuArchitectureFamilyPortable],
+                provenance: vec![crate::CapabilityProvenance {
+                    source: "fixture".to_owned(),
+                    detail: "flashinfer fixture".to_owned(),
+                }],
+            }],
+        };
+        let backend_proof = crate::BackendAdmissibilityProof {
+            verdict: crate::AdmissibilityVerdict::Admissible,
+            family: BackendFamily::FlashInfer,
+            acquisition: ArtifactAcquisition::VendorPrebuilt,
+            packaging_strategy: crate::PackagingStrategy::PreferPrebuiltThenAot,
+            required_witnesses: vec!["flashinfer.prebuilt".to_owned()],
+            satisfied_witnesses: vec!["flashinfer.prebuilt".to_owned()],
+            rejected_reasons: Vec::new(),
+            provenance: vec![crate::CapabilityProvenance {
+                source: "fixture".to_owned(),
+                detail: "flashinfer admissible".to_owned(),
+            }],
+        };
+
         let selected_backends = BackendSelection {
             primary: BackendCandidate {
                 family: BackendFamily::FlashInfer,
                 acquisition: ArtifactAcquisition::VendorPrebuilt,
                 reason: "prebuilt flashinfer available".to_owned(),
+                admissibility: backend_proof.clone(),
             },
             secondary: vec![BackendCandidate {
                 family: BackendFamily::Triton,
                 acquisition: ArtifactAcquisition::LocalAotBuild,
                 reason: "triton remains admissible".to_owned(),
+                admissibility: crate::BackendAdmissibilityProof {
+                    verdict: crate::AdmissibilityVerdict::Admissible,
+                    family: BackendFamily::Triton,
+                    acquisition: ArtifactAcquisition::LocalAotBuild,
+                    packaging_strategy: crate::PackagingStrategy::PreferPrebuiltThenAot,
+                    required_witnesses: Vec::new(),
+                    satisfied_witnesses: Vec::new(),
+                    rejected_reasons: Vec::new(),
+                    provenance: vec![crate::CapabilityProvenance {
+                        source: "fixture".to_owned(),
+                        detail: "triton admissible".to_owned(),
+                    }],
+                },
             }],
         };
         let compile_regions = vec![
@@ -375,6 +420,34 @@ mod tests {
                 },
             ],
         };
+        let abi_identity = canonical_hash(&AbiFingerprint {
+            operating_system: normalized_request.environment.operating_system,
+            accelerator_vendor: normalized_request.environment.accelerator_vendor,
+            gpu_arches: normalized_request.environment.gpu_arches.clone(),
+            cuda_version: normalized_request.environment.cuda_version.clone(),
+            driver_version: normalized_request.environment.driver_version.clone(),
+            python_abi: normalized_request.environment.python_abi.clone(),
+            libc_abi: normalized_request.environment.libc_abi.clone(),
+            topology: normalized_request.topology.clone(),
+        })
+        .expect("abi identity");
+        let shape_envelope_identity =
+            canonical_hash(&shape_envelope).expect("shape envelope identity");
+        let artifact_admissibility = crate::ArtifactAdmissibilityProof {
+            proof_identity: canonical_hash(&"fixture-artifact-proof").expect("proof identity"),
+            artifact_scope: "prefill_attention".to_owned(),
+            class: ArtifactClass::CompiledGraph,
+            backend: BackendFamily::FlashInfer,
+            acquisition: ArtifactAcquisition::VendorPrebuilt,
+            portability: ArtifactPortability::GpuArchitectureFamilyPortable,
+            target_abi_identity: abi_identity.clone(),
+            target_shape_envelope_identity: shape_envelope_identity.clone(),
+            target_topology: normalized_request.topology.clone(),
+            required_witnesses: vec!["flashinfer.prebuilt".to_owned()],
+            satisfied_witnesses: vec!["flashinfer.prebuilt".to_owned()],
+            fail_closed: true,
+            rationale: vec!["fixture admissibility".to_owned()],
+        };
         let artifact_requirements = vec![ArtifactRequirement {
             class: ArtifactClass::CompiledGraph,
             backend: BackendFamily::FlashInfer,
@@ -385,6 +458,7 @@ mod tests {
             expected_bytes: Some(24_000_000),
             expected_compile_ms: Some(2_500),
             expected_transfer_ms: Some(220),
+            admissibility: artifact_admissibility.clone(),
         }];
         let warmup_obligations = vec![
             WarmupObligation {
@@ -450,6 +524,7 @@ mod tests {
             class: ArtifactClass::CompiledGraph,
             backend: BackendFamily::FlashInfer,
             scope: "prefill_attention".to_owned(),
+            admissibility: artifact_admissibility,
         }];
         let guarantee_evidence = GuaranteeEvidence {
             capability_witnesses: vec![CapabilityWitness {
@@ -507,17 +582,8 @@ mod tests {
         }];
         let capability_identity =
             canonical_hash(&guarantee_evidence.capability_witnesses).expect("capability identity");
-        let abi_identity = canonical_hash(&AbiFingerprint {
-            operating_system: normalized_request.environment.operating_system,
-            accelerator_vendor: normalized_request.environment.accelerator_vendor,
-            gpu_arches: normalized_request.environment.gpu_arches.clone(),
-            cuda_version: normalized_request.environment.cuda_version.clone(),
-            driver_version: normalized_request.environment.driver_version.clone(),
-            python_abi: normalized_request.environment.python_abi.clone(),
-            libc_abi: normalized_request.environment.libc_abi.clone(),
-            topology: normalized_request.topology.clone(),
-        })
-        .expect("abi identity");
+        let backend_registry_identity =
+            canonical_hash(&backend_registry).expect("backend registry identity");
         let backend_extension_identity = canonical_hash(&BackendExtensionFingerprint::from_plan(
             &selected_backends,
             &compile_regions,
@@ -532,7 +598,8 @@ mod tests {
         .expect("portability identity");
         let structural_identity = StructuralIdentity {
             request_identity: normalized_request.identity.clone(),
-            shape_envelope_identity: canonical_hash(&shape_envelope).expect("shape identity"),
+            backend_registry_identity,
+            shape_envelope_identity: shape_envelope_identity,
             compile_region_identity: canonical_hash(&compile_regions).expect("region identity"),
             capability_identity: capability_identity.clone(),
             abi_identity: abi_identity.clone(),
@@ -557,6 +624,7 @@ mod tests {
         };
         let plan = crate::ResolvedBuildPlan {
             normalized_request,
+            backend_registry,
             selected_backends,
             compile_regions,
             shape_envelope,

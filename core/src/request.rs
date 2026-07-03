@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::backend::{PackagingStrategy, RuntimeJitPolicy};
 use crate::canonical::{CanonicalError, CanonicalHash, canonical_hash};
 use crate::{
     AcceleratorVendor, BackendFamily, CoveragePlane, FailureMode, GuaranteeLevel, OperatingSystem,
@@ -65,8 +66,8 @@ pub struct GuaranteeTarget {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendPolicy {
     pub preferred_families: Vec<BackendFamily>,
-    pub require_prebuilt_artifacts: bool,
-    pub allow_runtime_jit: bool,
+    pub packaging_strategy: PackagingStrategy,
+    pub runtime_jit_policy: RuntimeJitPolicy,
     pub correctness_target: GuaranteeTarget,
     pub performance_target: GuaranteeTarget,
 }

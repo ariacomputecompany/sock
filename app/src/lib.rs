@@ -52,8 +52,11 @@ pub fn default_request() -> RawRequest {
                 BackendFamily::Triton,
                 BackendFamily::CudaGraphs,
             ],
-            require_prebuilt_artifacts: true,
-            allow_runtime_jit: false,
+            packaging_strategy: sock_core::PackagingStrategy::PreferPrebuiltThenAot,
+            runtime_jit_policy: sock_core::RuntimeJitPolicy {
+                disposition: sock_core::RuntimeJitDisposition::Forbidden,
+                max_residual_node_count: 0,
+            },
             correctness_target: GuaranteeTarget {
                 level: GuaranteeLevel::ShapeBoundedAot,
                 failure_mode: FailureMode::FailClosed,

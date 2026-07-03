@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::CanonicalHash;
 use crate::adapter::{CompileRegionKind, SourceEvidence};
+use crate::backend::{
+    ArtifactAdmissibilityProof, BackendAdmissibilityProof, BackendCapabilityRegistry,
+};
 use crate::identity::StructuralIdentity;
 use crate::request::{GuaranteeTarget, NormalizedRequest};
 use crate::rewrite::PassTrace;
@@ -219,6 +222,7 @@ pub struct BackendCandidate {
     pub family: BackendFamily,
     pub acquisition: ArtifactAcquisition,
     pub reason: String,
+    pub admissibility: BackendAdmissibilityProof,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -280,6 +284,7 @@ pub struct ArtifactRequirement {
     pub expected_bytes: Option<u64>,
     pub expected_compile_ms: Option<u64>,
     pub expected_transfer_ms: Option<u64>,
+    pub admissibility: ArtifactAdmissibilityProof,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -359,6 +364,7 @@ pub struct ArtifactManifestEntry {
     pub class: ArtifactClass,
     pub backend: BackendFamily,
     pub scope: String,
+    pub admissibility: ArtifactAdmissibilityProof,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -370,6 +376,7 @@ pub struct ArtifactClosure {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedBuildPlan {
     pub normalized_request: NormalizedRequest,
+    pub backend_registry: BackendCapabilityRegistry,
     pub selected_backends: BackendSelection,
     pub compile_regions: Vec<CompileRegion>,
     pub shape_envelope: ShapeEnvelope,
@@ -471,6 +478,100 @@ impl ResolvedBuildPlan {
             });
         }
 
+        let residual_shape_nodes = self
+            .shape_envelope
+            .nodes
+            .iter()
+            .filter(|node| node.intent == RangeIntent::UncoveredResidual)
+            .count();
+
+        if residual_shape_nodes > 0
+            && self
+                .normalized_request
+                .backend_policy
+                .runtime_jit_policy
+                .disposition
+                == crate::RuntimeJitDisposition::Forbidden
+        {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "residual_jit_forbidden".to_owned(),
+                message: "Residual runtime JIT is present while policy requires fail-closed prebuilt/AoT closure."
+                    .to_owned(),
+            });
+        }
+
+        if self
+            .normalized_request
+            .backend_policy
+            .runtime_jit_policy
+            .disposition
+            == crate::RuntimeJitDisposition::ShapeBounded
+            && self.normalized_request.backend_policy.packaging_strategy
+                != crate::PackagingStrategy::PreferPrebuiltThenAotThenJit
+        {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "bounded_jit_policy_mismatch".to_owned(),
+                message:
+                    "Shape-bounded residual JIT requires the explicit prebuilt->AoT->bounded-JIT packaging strategy."
+                        .to_owned(),
+            });
+        }
+
+        if residual_shape_nodes
+            > usize::from(
+                self.normalized_request
+                    .backend_policy
+                    .runtime_jit_policy
+                    .max_residual_node_count,
+            )
+        {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "residual_jit_budget_exceeded".to_owned(),
+                message: format!(
+                    "Residual runtime JIT nodes {} exceed policy budget {}",
+                    residual_shape_nodes,
+                    self.normalized_request
+                        .backend_policy
+                        .runtime_jit_policy
+                        .max_residual_node_count
+                ),
+            });
+        }
+
+        if self.selected_backends.primary.admissibility.verdict
+            != crate::AdmissibilityVerdict::Admissible
+        {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "backend_selection_not_admissible".to_owned(),
+                message: format!(
+                    "Primary backend {:?} is not admissible: {}",
+                    self.selected_backends.primary.family,
+                    self.selected_backends
+                        .primary
+                        .admissibility
+                        .rejected_reasons
+                        .join(", ")
+                ),
+            });
+        }
+
+        for artifact in &self.artifact_requirements {
+            if !artifact.admissibility.fail_closed {
+                issues.push(ValidationIssue {
+                    severity: ValidationSeverity::Error,
+                    code: "artifact_not_fail_closed".to_owned(),
+                    message: format!(
+                        "Artifact {} does not carry a fail-closed admissibility proof",
+                        artifact.scope
+                    ),
+                });
+            }
+        }
+
         for pass in &self.rewrite_trace {
             if let Err(message) = pass.validate() {
                 issues.push(ValidationIssue {
@@ -546,8 +647,11 @@ mod tests {
                     crate::BackendFamily::FlashInfer,
                     crate::BackendFamily::Triton,
                 ],
-                require_prebuilt_artifacts: true,
-                allow_runtime_jit: false,
+                packaging_strategy: crate::PackagingStrategy::PreferPrebuiltThenAot,
+                runtime_jit_policy: crate::RuntimeJitPolicy {
+                    disposition: crate::RuntimeJitDisposition::Forbidden,
+                    max_residual_node_count: 0,
+                },
                 correctness_target: crate::GuaranteeTarget {
                     level: crate::GuaranteeLevel::ShapeBoundedAot,
                     failure_mode: crate::FailureMode::FailClosed,

@@ -46,6 +46,7 @@ pub struct PortabilityFingerprint {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StructuralIdentity {
     pub request_identity: CanonicalHash,
+    pub backend_registry_identity: CanonicalHash,
     pub shape_envelope_identity: CanonicalHash,
     pub compile_region_identity: CanonicalHash,
     pub capability_identity: CanonicalHash,
