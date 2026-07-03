@@ -93,6 +93,21 @@ def _load_caching_module():
     envs_mod.compile_factors = lambda: []
     envs_mod.compile_factor_manifest = lambda: {"schema_version": 1}
 
+    env_override_mod = types.ModuleType("vllm.env_override")
+    env_override_mod.patch_profile_manifest = lambda: {
+        "schema_version": 1,
+        "torch_version": "2.9.0-light",
+        "patches": [
+            {
+                "patch_id": "lightweight-stub",
+                "category": "correctness_patch",
+                "eligible": True,
+                "applied": True,
+                "detail": "stubbed patch profile",
+            }
+        ],
+    }
+
     codegen_mod = types.ModuleType("vllm.compilation.codegen")
     codegen_mod.compile_execution_fn = lambda *args, **kwargs: None
 
@@ -126,6 +141,7 @@ def _load_caching_module():
     sys.modules["vllm.config"] = config_mod
     sys.modules["vllm.config.utils"] = config_utils_mod
     sys.modules["vllm.envs"] = envs_mod
+    sys.modules["vllm.env_override"] = env_override_mod
     sys.modules["vllm.logger"] = logger_mod
     sys.modules["vllm.utils"] = utils_pkg
     sys.modules["vllm.utils.hashing"] = hashing_mod
@@ -324,6 +340,19 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "toolchain_identity": {
             "python_version": ".".join(str(part) for part in sys.version_info[:3]),
             "torch_version": "2.9.0-light",
+        },
+        "patch_profile": {
+            "schema_version": 1,
+            "torch_version": "2.9.0-light",
+            "patches": [
+                {
+                    "patch_id": "lightweight-stub",
+                    "category": "correctness_patch",
+                    "eligible": True,
+                    "applied": True,
+                    "detail": "stubbed patch profile",
+                }
+            ],
         },
         "shape_envelope": {
             "schema_version": 1,
@@ -526,6 +555,19 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
         "toolchain_identity": {
             "python_version": ".".join(str(part) for part in sys.version_info[:3]),
             "torch_version": "2.9.0-light",
+        },
+        "patch_profile": {
+            "schema_version": 1,
+            "torch_version": "2.9.0-light",
+            "patches": [
+                {
+                    "patch_id": "lightweight-stub",
+                    "category": "correctness_patch",
+                    "eligible": True,
+                    "applied": True,
+                    "detail": "stubbed patch profile",
+                }
+            ],
         },
         "shape_envelope": {
             "schema_version": 1,

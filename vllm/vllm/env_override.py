@@ -871,3 +871,180 @@ if os.environ.get("VLLM_TRITON_FORCE_FIRST_CONFIG", "0").strip().lower() in (
     )
 
     _install_force_first_config()
+
+
+def patch_profile_manifest() -> dict[str, object]:
+    """Return a machine-readable snapshot of the active local patch surface.
+
+    This is intended for compile/build artifact metadata, explain output, and
+    replay diagnostics. It should stay conservative: if a patch's applied state
+    cannot be proven from local runtime state, report it as not applied.
+    """
+    patches = []
+
+    def add_patch(
+        patch_id: str,
+        *,
+        category: str,
+        eligible: bool,
+        applied: bool,
+        detail: str,
+    ) -> None:
+        patches.append(
+            {
+                "patch_id": patch_id,
+                "category": category,
+                "eligible": eligible,
+                "applied": applied,
+                "detail": detail,
+            }
+        )
+
+    add_patch(
+        "cuda_compatibility_path",
+        category="runtime_env",
+        eligible=os.environ.get("VLLM_ENABLE_CUDA_COMPATIBILITY", "0")
+        .strip()
+        .lower()
+        in ("1", "true"),
+        applied=bool(os.environ.get("LD_LIBRARY_PATH", "")),
+        detail="LD_LIBRARY_PATH bootstrap for CUDA forward compatibility",
+    )
+
+    add_patch(
+        "torch_2_9_memory_plan_reuse",
+        category="performance_patch",
+        eligible=is_torch_equal("2.9.0"),
+        applied=is_torch_equal("2.9.0"),
+        detail="PythonWrapperCodegen.memory_plan_reuse override",
+    )
+    add_patch(
+        "torch_2_9_graph_partition_signature",
+        category="correctness_patch",
+        eligible=is_torch_equal("2.9.0"),
+        applied=is_torch_equal("2.9.0"),
+        detail="Graph partition signature override for Inductor partitioning",
+    )
+    add_patch(
+        "torch_2_9_scheduler_partition",
+        category="workaround_patch",
+        eligible=is_torch_equal("2.9.0"),
+        applied=is_torch_equal("2.9.0"),
+        detail="Scheduler.should_partition and GraphLowering._update_scheduler override",
+    )
+    add_patch(
+        "torch_2_9_get_raw_stream",
+        category="workaround_patch",
+        eligible=is_torch_equal("2.9.0") or is_torch_equal("2.9.1"),
+        applied=hasattr(__import__("builtins"), "get_raw_stream"),
+        detail="builtins.get_raw_stream injection for Inductor autotune",
+    )
+    add_patch(
+        "graph_capture_runtime_env",
+        category="correctness_patch",
+        eligible=is_torch_equal_or_newer("2.10.0")
+        and not is_torch_equal_or_newer("2.12.0.dev"),
+        applied=is_torch_equal_or_newer("2.10.0")
+        and not is_torch_equal_or_newer("2.12.0.dev"),
+        detail="GraphCaptureOutput.get_runtime_env builtins backport",
+    )
+    add_patch(
+        "constrain_to_fx_strides",
+        category="correctness_patch",
+        eligible=is_torch_equal_or_newer("2.11.0.dev")
+        and not is_torch_equal_or_newer("2.12.0.dev"),
+        applied=_constrain_to_fx_strides_patched,
+        detail="Inductor lowering.constrain_to_fx_strides opaque-meta fix",
+    )
+    add_patch(
+        "fxgraphcache_pickle",
+        category="correctness_patch",
+        eligible=is_torch_equal_or_newer("2.10.0")
+        and not is_torch_equal_or_newer("2.11.0"),
+        applied=bool(
+            getattr(
+                getattr(
+                    getattr(torch, "_inductor", None),
+                    "codecache",
+                    None,
+                ),
+                "FxGraphCachePickler",
+                None,
+            )
+            and getattr(
+                getattr(torch._inductor.codecache, "FxGraphCachePickler"),
+                "_vllm_fxgraph_dumps_patched",
+                False,
+            )
+        )
+        if hasattr(torch, "_inductor")
+        else False,
+        detail="FxGraphCachePickler.dumps ValueError backport",
+    )
+    add_patch(
+        "cpp_indirect_assert",
+        category="correctness_patch",
+        eligible=is_torch_equal_or_newer("2.11.0")
+        and not is_torch_equal_or_newer("2.12.0.dev"),
+        applied=bool(
+            getattr(
+                getattr(
+                    getattr(getattr(torch, "_inductor", None), "codegen", None),
+                    "cpp",
+                    None,
+                ),
+                "CppVecKernel",
+                None,
+            )
+            and getattr(
+                torch._inductor.codegen.cpp.CppVecKernel,
+                "_vllm_indirect_assert_patched",
+                False,
+            )
+        )
+        if hasattr(torch, "_inductor")
+        and hasattr(torch._inductor, "codegen")
+        and hasattr(torch._inductor.codegen, "cpp")
+        else False,
+        detail="CppVecKernel.indirect_assert scalar-mask fix",
+    )
+    add_patch(
+        "fallback_allow_list",
+        category="performance_patch",
+        eligible=True,
+        applied=bool(
+            getattr(
+                getattr(getattr(torch, "_inductor", None), "lowering", None),
+                "FALLBACK_ALLOW_LIST",
+                None,
+            )
+            and getattr(
+                torch._inductor.lowering.FALLBACK_ALLOW_LIST,
+                "_vllm_patched",
+                False,
+            )
+        )
+        if hasattr(torch, "_inductor")
+        and hasattr(torch._inductor, "lowering")
+        else False,
+        detail="vllm::*/vllm_aiter::* FALLBACK_ALLOW_LIST fast-path",
+    )
+    add_patch(
+        "triton_force_first_config",
+        category="determinism_patch",
+        eligible=os.environ.get("VLLM_TRITON_FORCE_FIRST_CONFIG", "0")
+        .strip()
+        .lower()
+        in ("1", "true"),
+        applied=os.environ.get("VLLM_TRITON_FORCE_FIRST_CONFIG", "0")
+        .strip()
+        .lower()
+        in ("1", "true"),
+        detail="Force Triton autotuner to select first running config",
+    )
+
+    return {
+        "schema_version": 1,
+        "torch_version": getattr(torch, "__version__", "<unknown>"),
+        "patches": patches,
+    }

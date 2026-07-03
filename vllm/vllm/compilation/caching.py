@@ -20,6 +20,7 @@ from torch.fx._graph_pickler import GraphPickler, Options
 from torch.utils import _pytree as pytree
 
 import vllm.envs as envs
+import vllm.env_override as env_override
 from vllm.compilation.codegen import compile_execution_fn
 from vllm.compilation.compiler_interface import get_inductor_factors
 from vllm.compilation.counter import compilation_counter
@@ -996,6 +997,7 @@ def build_standalone_artifact_proof_manifest(
             "python_version": ".".join(str(part) for part in sys.version_info[:3]),
             "torch_version": getattr(torch, "__version__", "<unknown>"),
         },
+        "patch_profile": env_override.patch_profile_manifest(),
         "shape_envelope": build_shape_envelope_summary(
             standalone_compile_artifacts,
             sym_shape_indices_map,
