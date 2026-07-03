@@ -45,6 +45,9 @@ envs = load_module_from_path("envs", os.path.join(ROOT_DIR, "vllm", "envs.py"))
 rust_build = load_module_from_path(
     "rust_build", os.path.join(ROOT_DIR, "tools", "build_rust.py")
 )
+build_profiles = load_module_from_path(
+    "build_profiles", os.path.join(ROOT_DIR, "vllm", "build_profiles.py")
+)
 
 VLLM_TARGET_DEVICE = envs.VLLM_TARGET_DEVICE
 USE_PRECOMPILED_EXTENSIONS = envs.VLLM_USE_PRECOMPILED
@@ -253,6 +256,15 @@ class cmake_build_ext(build_ext):
             "-DCMAKE_BUILD_TYPE={}".format(cfg),
             "-DVLLM_TARGET_DEVICE={}".format(VLLM_TARGET_DEVICE),
         ]
+        build_profile = build_profiles.resolve_build_profile(envs.VLLM_BUILD_PROFILE)
+        logger.info(
+            "Using VLLM_BUILD_PROFILE=%s enabled=%s disabled=%s",
+            build_profile.profile,
+            ",".join(build_profile.enabled_components) or "<none>",
+            ",".join(build_profile.disabled_components) or "<none>",
+        )
+        cmake_args += [f"-DVLLM_BUILD_PROFILE={build_profile.profile}"]
+        cmake_args += list(build_profile.cmake_defines)
 
         verbose = envs.VERBOSE
         if verbose:

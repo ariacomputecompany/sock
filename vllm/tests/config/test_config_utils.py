@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+import json
 from dataclasses import dataclass
 from enum import Enum
 
@@ -201,3 +202,47 @@ print(hash_factors(envs.compile_factors()))
         "compile_factors hash differs between fresh initializations - "
         "dynamic env vars may not be properly ignored"
     )
+
+
+def test_render_compile_factor_manifest_stable():
+    import subprocess
+    import sys
+
+    code = """
+import logging
+logging.disable(logging.CRITICAL)
+from vllm import envs
+print(envs.render_compile_factor_manifest())
+"""
+
+    def get_manifest_in_subprocess():
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**dict(__import__("os").environ), "VLLM_LOGGING_LEVEL": "ERROR"},
+        )
+        return json.loads(result.stdout.strip())
+
+    manifest1 = get_manifest_in_subprocess()
+    manifest2 = get_manifest_in_subprocess()
+
+    assert manifest1 == manifest2
+    assert manifest1["schema_version"] == 1
+    assert "VLLM_DISABLE_COMPILE_CACHE" in manifest1["included_keys"]
+    assert "VLLM_BUILD_PROFILE" in manifest1["ignored_keys"]
+
+
+def test_render_aot_compile_factor_manifest_exposes_env_and_config_hashes() -> None:
+    from vllm.compilation.caching import render_aot_compile_factor_manifest
+
+    class DummyConfig:
+        def compute_hash(self) -> str:
+            return "dummy-config-hash"
+
+    manifest = json.loads(render_aot_compile_factor_manifest(DummyConfig()))
+    assert manifest["schema_version"] == 1
+    assert manifest["vllm_config_hash"] == "dummy-config-hash"
+    assert "env" in manifest
+    assert "included_keys" in manifest["env"]

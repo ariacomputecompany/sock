@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+import json
 import os
 from unittest.mock import patch
 
@@ -34,6 +35,36 @@ def test_nixl_side_channel_host_is_not_compile_factor(
     monkeypatch.setenv("VLLM_NIXL_SIDE_CHANNEL_HOST", "10.0.0.15")
 
     assert "VLLM_NIXL_SIDE_CHANNEL_HOST" not in envs.compile_factors()
+
+
+def test_build_profile_is_not_compile_factor(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("VLLM_BUILD_PROFILE", "minimal-dev")
+
+    assert "VLLM_BUILD_PROFILE" not in envs.compile_factors()
+
+
+def test_compile_factor_manifest_classifies_known_inputs() -> None:
+    manifest = envs.compile_factor_manifest()
+
+    assert manifest["categories"]["VLLM_BUILD_PROFILE"] == "host_only"
+    assert manifest["categories"]["VLLM_CACHE_ROOT"] == "cache_location_only"
+    assert manifest["categories"]["VLLM_LOGGING_LEVEL"] == "debug_only"
+    assert manifest["categories"]["VLLM_NIXL_SIDE_CHANNEL_HOST"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_DISABLE_COMPILE_CACHE"] == "compile_affecting"
+    assert "VLLM_BUILD_PROFILE" in manifest["ignored_keys"]
+    assert "VLLM_DISABLE_COMPILE_CACHE" in manifest["included_keys"]
+
+
+def test_render_compile_factor_manifest_is_stable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VLLM_DISABLE_COMPILE_CACHE", "1")
+    monkeypatch.setenv("VLLM_BUILD_PROFILE", "minimal-dev")
+
+    rendered = envs.render_compile_factor_manifest()
+    parsed = json.loads(rendered)
+
+    assert parsed["factors"]["VLLM_DISABLE_COMPILE_CACHE"] is True
+    assert "VLLM_BUILD_PROFILE" not in parsed["factors"]
+    assert rendered == envs.render_compile_factor_manifest()
 
 
 def test_getattr_with_cache(monkeypatch: pytest.MonkeyPatch):

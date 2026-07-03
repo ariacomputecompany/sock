@@ -522,6 +522,92 @@ def get_env_or_set_default(
 
 logger = logging.getLogger(__name__)
 
+_CACHE_LOCATION_ONLY_ENV_VARS: set[str] = {
+    "VLLM_CACHE_ROOT",
+    "VLLM_TUNED_CONFIG_FOLDER",
+    "VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR",
+    "VLLM_ASSETS_CACHE",
+    "VLLM_CONFIG_ROOT",
+    "VLLM_XLA_CACHE_PATH",
+    "VLLM_DEBUG_DUMP_PATH",
+}
+
+_HOST_ONLY_ENV_VARS: set[str] = {
+    "MAX_JOBS",
+    "NVCC_THREADS",
+    "LD_LIBRARY_PATH",
+    "CUDA_VISIBLE_DEVICES",
+    "LOCAL_RANK",
+    "VLLM_HOST_IP",
+    "VLLM_PORT",
+    "VLLM_RPC_BASE_PATH",
+    "VLLM_DP_MASTER_IP",
+    "VLLM_DP_MASTER_PORT",
+    "CUDA_HOME",
+    "VLLM_NCCL_SO_PATH",
+    "VLLM_WORKER_MULTIPROC_METHOD",
+    "VLLM_BUILD_PROFILE",
+}
+
+_DEBUG_ONLY_ENV_VARS: set[str] = {
+    "VLLM_RINGBUFFER_WARNING_INTERVAL",
+    "VLLM_LOGGING_LEVEL",
+    "VLLM_LOGGING_PREFIX",
+    "VLLM_LOGGING_STREAM",
+    "VLLM_LOGGING_CONFIG_PATH",
+    "VLLM_LOGGING_COLOR",
+    "VLLM_LOG_STATS_INTERVAL",
+    "VLLM_DEBUG_LOG_API_SERVER_RESPONSE",
+    "VLLM_SERVER_DEV_MODE",
+    "VLLM_TRACE_FUNCTION",
+    "NO_COLOR",
+}
+
+_NON_COMPILE_RUNTIME_ENV_VARS: set[str] = {
+    "VLLM_USE_MODELSCOPE",
+    "VLLM_RANDOMIZE_DP_DUMMY_INPUTS",
+    "VLLM_CI_USE_S3",
+    "VLLM_MODEL_REDIRECT_PATH",
+    "VLLM_FORCE_AOT_LOAD",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "S3_ENDPOINT_URL",
+    "VLLM_USAGE_STATS_SERVER",
+    "VLLM_NO_USAGE_STATS",
+    "VLLM_DO_NOT_TRACK",
+    "VLLM_ENGINE_ITERATION_TIMEOUT_S",
+    "VLLM_HTTP_TIMEOUT_KEEP_ALIVE",
+    "VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS",
+    "VLLM_WORKER_SHUTDOWN_TIMEOUT_SECONDS",
+    "VLLM_KEEP_ALIVE_ON_ENGINE_DEATH",
+    "VLLM_IMAGE_FETCH_TIMEOUT",
+    "VLLM_VIDEO_FETCH_TIMEOUT",
+    "VLLM_AUDIO_FETCH_TIMEOUT",
+    "VLLM_MEDIA_CACHE",
+    "VLLM_MEDIA_CACHE_MAX_SIZE_MB",
+    "VLLM_MEDIA_CACHE_TTL_HOURS",
+    "VLLM_MEDIA_FETCH_MAX_RETRIES",
+    "VLLM_MEDIA_URL_ALLOW_REDIRECTS",
+    "VLLM_MEDIA_LOADING_THREAD_COUNT",
+    "VLLM_MAX_AUDIO_CLIP_FILESIZE_MB",
+    "VLLM_MAX_AUDIO_DECODE_DURATION_S",
+    "VLLM_MAX_AUDIO_PREPROCESS_WORKERS",
+    "VLLM_MAX_IMAGE_PIXELS",
+    "VLLM_VIDEO_LOADER_BACKEND",
+    "VLLM_MEDIA_CONNECTOR",
+    "VLLM_OBJECT_STORAGE_SHM_BUFFER_NAME",
+    "VLLM_ASSETS_CACHE_MODEL_CLEAN",
+    "VLLM_ENABLE_V1_MULTIPROCESSING",
+    "VLLM_V1_OUTPUT_PROC_CHUNK_SIZE",
+    "VLLM_CPU_KVCACHE_SPACE",
+    "VLLM_CPU_MOE_PREPACK",
+    "VLLM_ZENTORCH_WEIGHT_PREPACK",
+    "VLLM_TEST_FORCE_LOAD_FORMAT",
+    "VLLM_ENABLE_CUDA_COMPATIBILITY",
+    "VLLM_CUDA_COMPATIBILITY_PATH",
+    "VLLM_SKIP_MODEL_NAME_VALIDATION",
+}
+
 
 def _resolve_rust_frontend_path() -> str | None:
     """Resolve the Rust frontend binary path.
@@ -623,6 +709,15 @@ environment_variables: dict[str, Callable[[], Any]] = {
     # Available options: "Debug", "Release", "RelWithDebInfo"
     "CMAKE_BUILD_TYPE": env_with_choices(
         "CMAKE_BUILD_TYPE", None, ["Debug", "Release", "RelWithDebInfo"]
+    ),
+    # Native extension build profile.
+    # This only shapes installation-time native target fanout and must not
+    # participate in the torch.compile cache identity.
+    "VLLM_BUILD_PROFILE": env_with_choices(
+        "VLLM_BUILD_PROFILE",
+        "full",
+        ["full", "core", "minimal-dev", "hopper-flashinfer"],
+        case_sensitive=False,
     ),
     # If set, vllm will print verbose logs during installation
     "VERBOSE": lambda: bool(int(os.getenv("VERBOSE", "0"))),
@@ -2041,82 +2136,12 @@ def compile_factors() -> dict[str, object]:
     Start with every known vLLM env var; drop entries in `ignored_factors`;
     hash everything else. This keeps the cache key aligned across workers."""
 
-    ignored_factors: set[str] = {
-        "MAX_JOBS",
-        "VLLM_RPC_BASE_PATH",
-        "VLLM_USE_MODELSCOPE",
-        "VLLM_RINGBUFFER_WARNING_INTERVAL",
-        "VLLM_DEBUG_DUMP_PATH",
-        "VLLM_PORT",
-        "VLLM_CACHE_ROOT",
-        "LD_LIBRARY_PATH",
-        "VLLM_SERVER_DEV_MODE",
-        "VLLM_DP_MASTER_IP",
-        "VLLM_DP_MASTER_PORT",
-        "VLLM_NIXL_SIDE_CHANNEL_HOST",
-        "VLLM_RANDOMIZE_DP_DUMMY_INPUTS",
-        "VLLM_CI_USE_S3",
-        "VLLM_MODEL_REDIRECT_PATH",
-        "VLLM_HOST_IP",
-        "VLLM_FORCE_AOT_LOAD",
-        "S3_ACCESS_KEY_ID",
-        "S3_SECRET_ACCESS_KEY",
-        "S3_ENDPOINT_URL",
-        "VLLM_USAGE_STATS_SERVER",
-        "VLLM_NO_USAGE_STATS",
-        "VLLM_DO_NOT_TRACK",
-        "VLLM_LOGGING_LEVEL",
-        "VLLM_LOGGING_PREFIX",
-        "VLLM_LOGGING_STREAM",
-        "VLLM_LOGGING_CONFIG_PATH",
-        "VLLM_LOGGING_COLOR",
-        "VLLM_LOG_STATS_INTERVAL",
-        "VLLM_DEBUG_LOG_API_SERVER_RESPONSE",
-        "VLLM_TUNED_CONFIG_FOLDER",
-        "VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR",
-        "VLLM_ENGINE_ITERATION_TIMEOUT_S",
-        "VLLM_HTTP_TIMEOUT_KEEP_ALIVE",
-        "VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS",
-        "VLLM_WORKER_SHUTDOWN_TIMEOUT_SECONDS",
-        "VLLM_KEEP_ALIVE_ON_ENGINE_DEATH",
-        "VLLM_IMAGE_FETCH_TIMEOUT",
-        "VLLM_VIDEO_FETCH_TIMEOUT",
-        "VLLM_AUDIO_FETCH_TIMEOUT",
-        "VLLM_MEDIA_CACHE",
-        "VLLM_MEDIA_CACHE_MAX_SIZE_MB",
-        "VLLM_MEDIA_CACHE_TTL_HOURS",
-        "VLLM_MEDIA_FETCH_MAX_RETRIES",
-        "VLLM_MEDIA_URL_ALLOW_REDIRECTS",
-        "VLLM_MEDIA_LOADING_THREAD_COUNT",
-        "VLLM_MAX_AUDIO_CLIP_FILESIZE_MB",
-        "VLLM_MAX_AUDIO_DECODE_DURATION_S",
-        "VLLM_MAX_AUDIO_PREPROCESS_WORKERS",
-        "VLLM_MAX_IMAGE_PIXELS",
-        "VLLM_VIDEO_LOADER_BACKEND",
-        "VLLM_MEDIA_CONNECTOR",
-        "VLLM_OBJECT_STORAGE_SHM_BUFFER_NAME",
-        "VLLM_ASSETS_CACHE",
-        "VLLM_ASSETS_CACHE_MODEL_CLEAN",
-        "VLLM_WORKER_MULTIPROC_METHOD",
-        "VLLM_ENABLE_V1_MULTIPROCESSING",
-        "VLLM_V1_OUTPUT_PROC_CHUNK_SIZE",
-        "VLLM_CPU_KVCACHE_SPACE",
-        "VLLM_CPU_MOE_PREPACK",
-        "VLLM_ZENTORCH_WEIGHT_PREPACK",
-        "VLLM_TEST_FORCE_LOAD_FORMAT",
-        "VLLM_ENABLE_CUDA_COMPATIBILITY",
-        "VLLM_CUDA_COMPATIBILITY_PATH",
-        "VLLM_SKIP_MODEL_NAME_VALIDATION",
-        "LOCAL_RANK",
-        "CUDA_VISIBLE_DEVICES",
-        "NO_COLOR",
-    }
-
     from vllm.config.utils import normalize_value
 
+    categories = compile_factor_categories()
     factors: dict[str, object] = {}
     for factor, getter in environment_variables.items():
-        if factor in ignored_factors:
+        if categories[factor] != "compile_affecting":
             continue
 
         try:
@@ -2157,3 +2182,53 @@ def compile_factors() -> dict[str, object]:
         factors[var] = normalize_value(os.getenv(var))
 
     return factors
+
+
+def compile_factor_categories() -> dict[str, str]:
+    declared_factors = set(environment_variables)
+    cache_location_only = _CACHE_LOCATION_ONLY_ENV_VARS & declared_factors
+    host_only = _HOST_ONLY_ENV_VARS & declared_factors
+    debug_only = _DEBUG_ONLY_ENV_VARS & declared_factors
+    runtime_non_compile = (
+        _NON_COMPILE_RUNTIME_ENV_VARS | {"VLLM_NIXL_SIDE_CHANNEL_HOST"}
+    ) & declared_factors
+    categories: dict[str, str] = {}
+    for factor in environment_variables:
+        if factor in cache_location_only:
+            categories[factor] = "cache_location_only"
+        elif factor in host_only:
+            categories[factor] = "host_only"
+        elif factor in debug_only:
+            categories[factor] = "debug_only"
+        elif factor in runtime_non_compile:
+            categories[factor] = "runtime_non_compile"
+        else:
+            categories[factor] = "compile_affecting"
+    assert set(categories) == declared_factors
+    return categories
+
+
+def compile_factor_manifest() -> dict[str, object]:
+    factors = compile_factors()
+    categories = compile_factor_categories()
+    included_keys = sorted(factors)
+    ignored_keys = sorted(
+        factor
+        for factor, category in categories.items()
+        if category != "compile_affecting"
+    )
+    return {
+        "schema_version": 1,
+        "factors": {key: factors[key] for key in included_keys},
+        "categories": {key: categories[key] for key in sorted(categories)},
+        "included_keys": included_keys,
+        "ignored_keys": ignored_keys,
+    }
+
+
+def render_compile_factor_manifest() -> str:
+    return json.dumps(
+        compile_factor_manifest(),
+        sort_keys=True,
+        separators=(",", ":"),
+    )

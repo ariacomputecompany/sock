@@ -581,6 +581,16 @@ def aot_compile_hash_factors(vllm_config: VllmConfig) -> list[str]:
     return factors
 
 
+def render_aot_compile_factor_manifest(vllm_config: VllmConfig) -> str:
+    manifest = {
+        "schema_version": 1,
+        "env": envs.compile_factor_manifest(),
+        "vllm_config_hash": vllm_config.compute_hash(),
+        "inductor_factors": get_inductor_factors() if envs.VLLM_USE_MEGA_AOT_ARTIFACT else [],
+    }
+    return json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+
+
 def _compute_code_hash_with_content(file_contents: dict[str, str]) -> str:
     items = list(sorted(file_contents.items(), key=lambda x: x[0]))
     hash_content = []

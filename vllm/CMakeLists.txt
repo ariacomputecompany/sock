@@ -31,8 +31,18 @@ endif()
 
 # CUDA by default, can be overridden by using -DVLLM_TARGET_DEVICE=... (used by setup.py)
 set(VLLM_TARGET_DEVICE "cuda" CACHE STRING "Target device backend for vLLM")
+set(VLLM_BUILD_PROFILE "full" CACHE STRING "Native extension build profile")
+set_property(CACHE VLLM_BUILD_PROFILE PROPERTY STRINGS "full" "core" "minimal-dev" "hopper-flashinfer")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Target device: ${VLLM_TARGET_DEVICE}")
+message(STATUS "Build profile: ${VLLM_BUILD_PROFILE}")
+
+option(VLLM_BUILD_TRITON_KERNELS "Build triton_kernels external package" ON)
+option(VLLM_BUILD_DEEPGEMM "Build DeepGEMM external package" ON)
+option(VLLM_BUILD_FMHA_SM100 "Build fmha_sm100 external package" ON)
+option(VLLM_BUILD_FLASHMLA "Build FlashMLA external package" ON)
+option(VLLM_BUILD_QUTLASS "Build Qutlass external package" ON)
+option(VLLM_BUILD_FLASH_ATTN "Build vllm-flash-attn external package" ON)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/utils.cmake)
 
@@ -1388,17 +1398,27 @@ if (VLLM_GPU_LANG STREQUAL "HIP")
 endif()
 
 # For CUDA and HIP builds also build the triton_kernels external package.
-if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
+if((VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP") AND VLLM_BUILD_TRITON_KERNELS)
     include(cmake/external_projects/triton_kernels.cmake)
 endif()
 
 # For CUDA we also build and ship some external projects.
 if (VLLM_GPU_LANG STREQUAL "CUDA")
-    include(cmake/external_projects/deepgemm.cmake)
-    include(cmake/external_projects/fmha_sm100.cmake)
-    include(cmake/external_projects/flashmla.cmake)
-    include(cmake/external_projects/qutlass.cmake)
+    if(VLLM_BUILD_DEEPGEMM)
+        include(cmake/external_projects/deepgemm.cmake)
+    endif()
+    if(VLLM_BUILD_FMHA_SM100)
+        include(cmake/external_projects/fmha_sm100.cmake)
+    endif()
+    if(VLLM_BUILD_FLASHMLA)
+        include(cmake/external_projects/flashmla.cmake)
+    endif()
+    if(VLLM_BUILD_QUTLASS)
+        include(cmake/external_projects/qutlass.cmake)
+    endif()
 
     # vllm-flash-attn should be last as it overwrites some CMake functions
-    include(cmake/external_projects/vllm_flash_attn.cmake)
+    if(VLLM_BUILD_FLASH_ATTN)
+        include(cmake/external_projects/vllm_flash_attn.cmake)
+    endif()
 endif ()
