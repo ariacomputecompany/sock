@@ -398,6 +398,17 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                 "compiler_name": "inductor-light",
             },
         )
+        expected_compile_replay_manifest = caching.build_compile_replay_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors=None,
+            graph_artifact_store=expected_graph_artifact_store,
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": None,
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
         backend = types.SimpleNamespace(
             vllm_config=types.SimpleNamespace(compute_hash=lambda: "cfg-hash"),
             compilation_config=types.SimpleNamespace(local_cache_dir=tmpdir),
@@ -526,6 +537,9 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             "source_fingerprint": None,
             "compile_surface_fingerprint": None,
             "canonical_compile_plan": None,
+            "root_identity": expected_compile_replay_manifest["root_identity"],
+            "replay_plan": None,
+            "compile_replay_manifest": expected_compile_replay_manifest,
             "graph_artifact_store": expected_graph_artifact_store,
             "patch_profile": {
                 "schema_version": 1,
@@ -742,6 +756,9 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "source_fingerprint": None,
         "compile_surface_fingerprint": None,
         "canonical_compile_plan": None,
+        "root_identity": expected_compile_replay_manifest["root_identity"],
+        "replay_plan": None,
+        "compile_replay_manifest": expected_compile_replay_manifest,
         "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
@@ -1095,6 +1112,25 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                 "compiler_name": "inductor-light",
             },
         )
+        expected_compile_replay_manifest = caching.build_compile_replay_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+                "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
+            },
+            graph_artifact_store=expected_graph_artifact_store,
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": True,
+                "compiler_name": "inductor-light",
+            },
+        )
         backend = types.SimpleNamespace(
             prefix="unit-prefix",
             is_encoder=True,
@@ -1139,6 +1175,9 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
         "source_fingerprint": source_fingerprint,
         "compile_surface_fingerprint": compile_surface_fingerprint,
         "canonical_compile_plan": canonical_compile_plan,
+        "root_identity": expected_compile_replay_manifest["root_identity"],
+        "replay_plan": expected_compile_replay_manifest["replay_plan"],
+        "compile_replay_manifest": expected_compile_replay_manifest,
         "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
@@ -1610,6 +1649,122 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
         "computation_graph",
     ]
     assert all(item["present"] for item in manifest["artifacts"])
+
+
+def test_compile_replay_manifest_roundtrip() -> None:
+    caching, _ = _load_caching_module()
+    source_fingerprint = caching.build_compile_source_fingerprint_from_content(
+        {
+            "computation_graph.py": "def forward(x):\n    return x + 1\n",
+            "vllm_compile_cache.py": "compiled = True\n",
+        }
+    )
+    compile_surface_fingerprint = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x) -> add",
+        placeholder_names=["x"],
+        node_targets=["placeholder:x", "call_function:add", "output:output"],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
+    canonical_compile_plan = caching.build_canonical_compile_plan(
+        env_factors={"A": "B"},
+        config_hash="cfg-from-file",
+        compiler_hash="compiler-from-file",
+        source_fingerprint=source_fingerprint,
+        compile_surface_fingerprint=compile_surface_fingerprint,
+        backend_identity={
+            "backend_class": "SimpleNamespace",
+            "prefix": "unit-prefix",
+            "is_encoder": False,
+            "compiler_name": "inductor-light",
+        },
+        cache_enabled=True,
+        cache_namespace_prefix="unit-prefix",
+        rank=0,
+        data_parallel_rank=0,
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "cache_key_factors.json").write_text(
+            json.dumps(
+                {
+                    "env": {"A": "B"},
+                    "config_hash": "cfg-from-file",
+                    "code_hash": "code-from-file",
+                    "compiler_hash": "compiler-from-file",
+                    "source_fingerprint": source_fingerprint,
+                    "compile_surface_fingerprint": compile_surface_fingerprint,
+                    "canonical_compile_plan": canonical_compile_plan,
+                }
+            )
+        )
+        Path(tmpdir, "vllm_compile_cache.py").write_text("# cache\n")
+        Path(tmpdir, "computation_graph.py").write_text("# graph\n")
+        graph_artifact_store = caching.write_graph_artifact_store_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+                "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
+            },
+            artifact_files={
+                "cache_key_factors": "cache_key_factors.json",
+                "compiler_cache": "vllm_compile_cache.py",
+                "computation_graph": "computation_graph.py",
+            },
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
+        manifest = caching.write_compile_replay_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+                "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
+            },
+            graph_artifact_store=graph_artifact_store,
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
+        reloaded = caching.load_compile_replay_manifest(tmpdir)
+
+    assert reloaded == manifest
+    assert manifest["payload_kind"] == "vllm_compile_replay_manifest"
+    assert manifest["root_identity"]["root_plan_kind"] == "canonical_compile_plan"
+    assert (
+        manifest["root_identity"]["root_plan_id"]
+        == canonical_compile_plan["canonical_compile_plan_id"]
+    )
+    assert (
+        manifest["replay_plan"]["replay_plan_id"]
+        == canonical_compile_plan["verification_plan_id"]
+    )
+    assert manifest["canonical_compile_plan"] == canonical_compile_plan
+    assert manifest["graph_artifact_store"] == graph_artifact_store
 
 
 def test_canonical_compile_plan_is_structural_and_renderable() -> None:

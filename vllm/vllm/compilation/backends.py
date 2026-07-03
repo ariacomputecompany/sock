@@ -1019,6 +1019,7 @@ class VllmBackend:
             build_compile_surface_fingerprint,
             build_compile_source_fingerprint_from_content,
             VllmSerializableFunction,
+            write_compile_replay_manifest,
             write_graph_artifact_store_manifest,
         )
 
@@ -1333,7 +1334,7 @@ class VllmBackend:
 
             logger.debug_once("Computation graph saved to %s", graph_path)
         try:
-            write_graph_artifact_store_manifest(
+            graph_artifact_store = write_graph_artifact_store_manifest(
                 local_cache_dir=local_cache_dir,
                 cache_key_factors=cache_key_factors_payload,
                 artifact_files={
@@ -1343,6 +1344,21 @@ class VllmBackend:
                     ),
                     "computation_graph": os.path.basename(graph_path),
                 },
+                backend_identity={
+                    "backend_class": type(self).__name__,
+                    "prefix": self.prefix,
+                    "is_encoder": bool(self.is_encoder),
+                    "compiler_name": getattr(
+                        getattr(self.compiler_manager, "compiler", None),
+                        "name",
+                        None,
+                    ),
+                },
+            )
+            write_compile_replay_manifest(
+                local_cache_dir=local_cache_dir,
+                cache_key_factors=cache_key_factors_payload,
+                graph_artifact_store=graph_artifact_store,
                 backend_identity={
                     "backend_class": type(self).__name__,
                     "prefix": self.prefix,

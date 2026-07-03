@@ -1714,6 +1714,78 @@ def load_compile_cache_key_factors(
         return None
 
 
+def build_compile_root_identity(
+    *,
+    local_cache_dir: str | None,
+    cache_key_factors: dict[str, object] | None,
+    backend_identity: dict[str, object] | None = None,
+) -> dict[str, object]:
+    canonical_compile_plan = (
+        cache_key_factors.get("canonical_compile_plan")
+        if cache_key_factors is not None
+        else None
+    )
+    root = Path(local_cache_dir) if local_cache_dir else None
+    return {
+        "schema_version": 1,
+        "cache_kind": "torch_compile_cache",
+        "local_cache_dir": str(root) if root is not None else None,
+        "root_plan_kind": (
+            "canonical_compile_plan" if canonical_compile_plan is not None else None
+        ),
+        "root_plan_id": (
+            canonical_compile_plan.get("canonical_compile_plan_id")
+            if canonical_compile_plan is not None
+            else None
+        ),
+        "requested_policy_id": (
+            canonical_compile_plan.get("requested_policy_id")
+            if canonical_compile_plan is not None
+            else None
+        ),
+        "normalized_policy_id": (
+            canonical_compile_plan.get("normalized_policy_id")
+            if canonical_compile_plan is not None
+            else None
+        ),
+        "resolved_plan_id": (
+            canonical_compile_plan.get("resolved_compile_plan_id")
+            if canonical_compile_plan is not None
+            else None
+        ),
+        "materialization_plan_id": (
+            canonical_compile_plan.get("materialization_plan_id")
+            if canonical_compile_plan is not None
+            else None
+        ),
+        "verification_plan_id": (
+            canonical_compile_plan.get("verification_plan_id")
+            if canonical_compile_plan is not None
+            else None
+        ),
+        "backend_identity": _json_ready(backend_identity),
+    }
+
+
+def build_compile_replay_plan(
+    cache_key_factors: dict[str, object] | None,
+) -> dict[str, object] | None:
+    canonical_compile_plan = (
+        cache_key_factors.get("canonical_compile_plan")
+        if cache_key_factors is not None
+        else None
+    )
+    if canonical_compile_plan is None:
+        return None
+    return {
+        "schema_version": 1,
+        "replay_plan_kind": "canonical_compile_verification_plan",
+        "root_plan_id": canonical_compile_plan.get("canonical_compile_plan_id"),
+        "replay_plan_id": canonical_compile_plan.get("verification_plan_id"),
+        "replay_plan": _json_ready(canonical_compile_plan.get("verification_plan")),
+    }
+
+
 def build_graph_artifact_store_manifest(
     *,
     local_cache_dir: str | None,
@@ -1776,6 +1848,12 @@ def build_graph_artifact_store_manifest(
         "payload_kind": "vllm_graph_artifact_store",
         "store_kind": "torch_compile_cache",
         "local_cache_dir": str(root),
+        "root_identity": build_compile_root_identity(
+            local_cache_dir=local_cache_dir,
+            cache_key_factors=cache_key_factors,
+            backend_identity=backend_identity,
+        ),
+        "replay_plan": build_compile_replay_plan(cache_key_factors),
         "compile_hashes": compile_hashes,
         "cache_key_factors_source": (
             "cache_key_factors_file" if cache_key_factors is not None else "live_fallback"
@@ -1853,6 +1931,76 @@ def load_graph_artifact_store_manifest(
         return None
 
 
+def build_compile_replay_manifest(
+    *,
+    local_cache_dir: str | None,
+    cache_key_factors: dict[str, object] | None,
+    graph_artifact_store: dict[str, object] | None,
+    backend_identity: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+    return {
+        "schema_version": 1,
+        "payload_kind": "vllm_compile_replay_manifest",
+        "root_identity": build_compile_root_identity(
+            local_cache_dir=local_cache_dir,
+            cache_key_factors=cache_key_factors,
+            backend_identity=backend_identity,
+        ),
+        "replay_plan": build_compile_replay_plan(cache_key_factors),
+        "canonical_compile_plan": (
+            _json_ready(cache_key_factors.get("canonical_compile_plan"))
+            if cache_key_factors is not None
+            else None
+        ),
+        "graph_artifact_store": _json_ready(graph_artifact_store),
+        "backend_identity": _json_ready(backend_identity),
+    }
+
+
+def write_compile_replay_manifest(
+    *,
+    local_cache_dir: str | None,
+    cache_key_factors: dict[str, object] | None,
+    graph_artifact_store: dict[str, object] | None,
+    backend_identity: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    manifest = build_compile_replay_manifest(
+        local_cache_dir=local_cache_dir,
+        cache_key_factors=cache_key_factors,
+        graph_artifact_store=graph_artifact_store,
+        backend_identity=backend_identity,
+    )
+    if manifest is None:
+        return None
+
+    meta_path = Path(local_cache_dir) / "compile_replay_manifest.json"
+    meta_path.write_text(
+        json.dumps(
+            manifest,
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return manifest
+
+
+def load_compile_replay_manifest(
+    local_cache_dir: str | None,
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+    meta_path = Path(local_cache_dir) / "compile_replay_manifest.json"
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text())
+    except Exception:
+        logger.warning("could not read compile replay manifest from %s", meta_path)
+        return None
+
+
 def build_shape_envelope_summary(
     standalone_compile_artifacts: StandaloneCompiledArtifacts,
     sym_shape_indices_map: dict[str, list[int]] | None,
@@ -1899,10 +2047,27 @@ def build_standalone_artifact_proof_manifest(
         local_cache_dir
     )
     graph_artifact_store = load_graph_artifact_store_manifest(local_cache_dir)
+    compile_replay_manifest = load_compile_replay_manifest(local_cache_dir)
     if graph_artifact_store is None:
         graph_artifact_store = build_graph_artifact_store_manifest(
             local_cache_dir=local_cache_dir,
             cache_key_factors=cache_key_factors,
+            backend_identity={
+                "backend_class": type(vllm_backend).__name__,
+                "prefix": getattr(vllm_backend, "prefix", None),
+                "is_encoder": bool(getattr(vllm_backend, "is_encoder", False)),
+                "compiler_name": (
+                    getattr(getattr(compiler_manager, "compiler", None), "name", None)
+                    if compiler_manager is not None
+                    else None
+                ),
+            },
+        )
+    if compile_replay_manifest is None:
+        compile_replay_manifest = build_compile_replay_manifest(
+            local_cache_dir=local_cache_dir,
+            cache_key_factors=cache_key_factors,
+            graph_artifact_store=graph_artifact_store,
             backend_identity={
                 "backend_class": type(vllm_backend).__name__,
                 "prefix": getattr(vllm_backend, "prefix", None),
@@ -1973,6 +2138,17 @@ def build_standalone_artifact_proof_manifest(
             if cache_key_factors is not None
             else None
         ),
+        "root_identity": (
+            _json_ready(compile_replay_manifest.get("root_identity"))
+            if compile_replay_manifest is not None
+            else None
+        ),
+        "replay_plan": (
+            _json_ready(compile_replay_manifest.get("replay_plan"))
+            if compile_replay_manifest is not None
+            else None
+        ),
+        "compile_replay_manifest": compile_replay_manifest,
         "graph_artifact_store": graph_artifact_store,
         "patch_profile": env_override.patch_profile_manifest(),
         "fallback_namespace_coverage": env_override.fallback_namespace_manifest(),
