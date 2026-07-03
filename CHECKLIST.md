@@ -17,26 +17,6 @@ Working rule:
 - remove completed items instead of annotating them
 - treat any runtime-adjacent drift as an escalation out of Lane A
 
-## 14. Build System Simplification
-
-- [ ] Split native build targets into:
-  - core required
-  - optional backend packs
-  - experimental packs
-  - benchmark/test-only packs
-- [ ] Add a minimal local developer build profile.
-- [ ] Add model/backend-focused build profiles for active development.
-- [ ] Ensure local edits do not require rebuilding unrelated kernel families.
-- [ ] Audit `vllm/CMakeLists.txt`, `vllm/setup.py`, and `vllm/cmake/` for always-on build cost.
-- [ ] Gate rarely used external projects behind explicit opt-in flags.
-- [ ] Reduce architecture fanout for local dev builds.
-- [ ] Reduce target fanout when only Python-side changes are being tested.
-- [ ] Reduce repeated configure cost across extension targets.
-- [ ] Improve default build caching behavior for local iteration.
-- [ ] Add explicit feature bundles such as `core`, `flashattn`, `deepgemm`, `flashmla`, `qutlass`, and `minimal-dev`.
-- [ ] Ensure the default local profile does not build mutually exclusive backend packs unless a chosen model/profile actually needs them.
-- [ ] Add selected-backend-only wheel and editable-build paths so a deployment like `hopper+flashinfer` or `blackwell+fa3` does not compile the broader CUDA extension superset.
-
 ## 15. Native Extension Surface Reduction
 
 - [ ] Audit `vllm/csrc/` and identify:

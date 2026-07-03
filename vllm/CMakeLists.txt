@@ -32,7 +32,17 @@ endif()
 # CUDA by default, can be overridden by using -DVLLM_TARGET_DEVICE=... (used by setup.py)
 set(VLLM_TARGET_DEVICE "cuda" CACHE STRING "Target device backend for vLLM")
 set(VLLM_BUILD_PROFILE "full" CACHE STRING "Native extension build profile")
-set_property(CACHE VLLM_BUILD_PROFILE PROPERTY STRINGS "full" "core" "minimal-dev" "hopper-flashinfer")
+set_property(CACHE VLLM_BUILD_PROFILE PROPERTY STRINGS
+  "full"
+  "core"
+  "minimal-dev"
+  "flashattn"
+  "deepgemm"
+  "flashmla"
+  "qutlass"
+  "hopper-flashinfer"
+  "blackwell-fa3")
+set(VLLM_CUDA_ARCH_LIST "" CACHE STRING "Focused CUDA architecture list for narrow local or targeted builds")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Target device: ${VLLM_TARGET_DEVICE}")
 message(STATUS "Build profile: ${VLLM_BUILD_PROFILE}")
@@ -222,6 +232,10 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
   #
   clear_cuda_arches(CUDA_ARCH_FLAGS)
   extract_unique_cuda_archs_ascending(CUDA_ARCHS "${CUDA_ARCH_FLAGS}")
+  if(VLLM_CUDA_ARCH_LIST)
+    set(CUDA_ARCHS "${VLLM_CUDA_ARCH_LIST}")
+    message(STATUS "Using focused CUDA architectures: ${CUDA_ARCHS}")
+  endif()
   message(STATUS "CUDA target architectures: ${CUDA_ARCHS}")
   # Filter the target architectures by the supported supported archs
   # since for some files we will build for all CUDA_ARCHS.

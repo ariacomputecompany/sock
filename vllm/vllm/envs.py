@@ -819,7 +819,17 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "VLLM_BUILD_PROFILE": env_with_choices(
         "VLLM_BUILD_PROFILE",
         "full",
-        ["full", "core", "minimal-dev", "hopper-flashinfer"],
+        [
+            "full",
+            "core",
+            "minimal-dev",
+            "flashattn",
+            "deepgemm",
+            "flashmla",
+            "qutlass",
+            "hopper-flashinfer",
+            "blackwell-fa3",
+        ],
         case_sensitive=False,
     ),
     # If set, vllm will print verbose logs during installation

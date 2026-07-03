@@ -55,6 +55,7 @@ USE_PRECOMPILED_EXTENSIONS = envs.VLLM_USE_PRECOMPILED
 USE_PRECOMPILED_RUST_FRONTEND = (
     envs.VLLM_USE_PRECOMPILED or envs.VLLM_USE_PRECOMPILED_RUST
 )
+BUILD_PROFILE = build_profiles.resolve_build_profile(envs.VLLM_BUILD_PROFILE)
 
 
 def should_require_rust_frontend() -> bool:
@@ -184,6 +185,51 @@ def bundle_tcmalloc(build_lib: str) -> None:
     logger.info("Bundled tcmalloc into wheel: %s", bundle_path)
 
 
+def profile_enables(component: str) -> bool:
+    return build_profiles.component_enabled(BUILD_PROFILE, component)
+
+
+def profile_syncs(root: str) -> bool:
+    return build_profiles.editable_sync_enabled(BUILD_PROFILE, root)
+
+
+def detect_local_cuda_arch_list() -> tuple[str, ...]:
+    if not _is_cuda():
+        return ()
+    try:
+        if not torch.cuda.is_available():
+            return ()
+        return tuple(
+            sorted(
+                {
+                    f"{major}.{minor}"
+                    for major, minor in (
+                        torch.cuda.get_device_capability(index)
+                        for index in range(torch.cuda.device_count())
+                    )
+                }
+            )
+        )
+    except Exception as exc:
+        logger.warning("Failed to detect local CUDA architectures: %s", exc)
+        return ()
+
+
+def select_profile_cuda_arches() -> tuple[str, ...]:
+    explicit_override = (
+        os.getenv("VLLM_CUDA_ARCH_LIST")
+        or os.getenv("TORCH_CUDA_ARCH_LIST")
+        or os.getenv("CMAKE_CUDA_ARCHITECTURES")
+    )
+    if explicit_override:
+        return ()
+    if BUILD_PROFILE.cuda_arches:
+        return BUILD_PROFILE.cuda_arches
+    if BUILD_PROFILE.developer_friendly:
+        return detect_local_cuda_arch_list()
+    return ()
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, cmake_lists_dir: str = ".", **kwa) -> None:
         super().__init__(name, sources=[], py_limited_api=not is_freethreaded(), **kwa)
@@ -256,15 +302,22 @@ class cmake_build_ext(build_ext):
             "-DCMAKE_BUILD_TYPE={}".format(cfg),
             "-DVLLM_TARGET_DEVICE={}".format(VLLM_TARGET_DEVICE),
         ]
-        build_profile = build_profiles.resolve_build_profile(envs.VLLM_BUILD_PROFILE)
         logger.info(
-            "Using VLLM_BUILD_PROFILE=%s enabled=%s disabled=%s",
-            build_profile.profile,
-            ",".join(build_profile.enabled_components) or "<none>",
-            ",".join(build_profile.disabled_components) or "<none>",
+            "Using VLLM_BUILD_PROFILE=%s family=%s enabled=%s disabled=%s",
+            BUILD_PROFILE.profile,
+            BUILD_PROFILE.profile_family,
+            ",".join(BUILD_PROFILE.enabled_components) or "<none>",
+            ",".join(BUILD_PROFILE.disabled_components) or "<none>",
         )
-        cmake_args += [f"-DVLLM_BUILD_PROFILE={build_profile.profile}"]
-        cmake_args += list(build_profile.cmake_defines)
+        cmake_args += [f"-DVLLM_BUILD_PROFILE={BUILD_PROFILE.profile}"]
+        cmake_args += list(BUILD_PROFILE.cmake_defines)
+        if focused_cuda_arches := select_profile_cuda_arches():
+            cmake_args += [f"-DVLLM_CUDA_ARCH_LIST={';'.join(focused_cuda_arches)}"]
+            logger.info(
+                "Focused CUDA architectures for profile %s: %s",
+                BUILD_PROFILE.profile,
+                ",".join(focused_cuda_arches),
+            )
 
         verbose = envs.VERBOSE
         if verbose:
@@ -354,6 +407,12 @@ class cmake_build_ext(build_ext):
             self.configure(ext)
             targets.append(target_name(ext.name))
 
+        logger.info(
+            "Selected native extension targets for profile %s: %s",
+            BUILD_PROFILE.profile,
+            ",".join(targets) or "<none>",
+        )
+
         num_jobs, _ = self.compute_num_jobs()
 
         build_args = [
@@ -404,33 +463,33 @@ class cmake_build_ext(build_ext):
         # directory so that they can be included in the editable build
         import glob
 
-        files = glob.glob(
-            os.path.join(self.build_lib, "vllm", "vllm_flash_attn", "**", "*.py"),
-            recursive=True,
-        )
-        for file in files:
-            dst_file = os.path.join(
-                "vllm/vllm_flash_attn", file.split("vllm/vllm_flash_attn/")[-1]
+        if profile_syncs("vllm/vllm_flash_attn"):
+            files = glob.glob(
+                os.path.join(self.build_lib, "vllm", "vllm_flash_attn", "**", "*.py"),
+                recursive=True,
             )
-            print(f"Copying {file} to {dst_file}")
-            os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-            self.copy_file(file, dst_file)
+            for file in files:
+                dst_file = os.path.join(
+                    "vllm/vllm_flash_attn", file.split("vllm/vllm_flash_attn/")[-1]
+                )
+                print(f"Copying {file} to {dst_file}")
+                os.makedirs(os.path.dirname(dst_file), exist_ok=True)
+                self.copy_file(file, dst_file)
 
-        if _is_cuda() or _is_hip():
+        if (_is_cuda() or _is_hip()) and profile_syncs("vllm/third_party/triton_kernels"):
             # copy vllm/third_party/triton_kernels/**/*.py from self.build_lib
             # to current directory so that they can be included in the editable
             # build
-            print(
-                f"Copying {self.build_lib}/vllm/third_party/triton_kernels "
-                "to vllm/third_party/triton_kernels"
-            )
-            shutil.copytree(
-                f"{self.build_lib}/vllm/third_party/triton_kernels",
-                "vllm/third_party/triton_kernels",
-                dirs_exist_ok=True,
-            )
+            triton_build = f"{self.build_lib}/vllm/third_party/triton_kernels"
+            if os.path.exists(triton_build):
+                print(f"Copying {triton_build} to vllm/third_party/triton_kernels")
+                shutil.copytree(
+                    triton_build,
+                    "vllm/third_party/triton_kernels",
+                    dirs_exist_ok=True,
+                )
 
-        if _is_cuda():
+        if _is_cuda() and profile_syncs("vllm/third_party/deep_gemm"):
             # copy vendored deep_gemm package from build_lib to source tree
             # for editable installs
             deep_gemm_build = os.path.join(
@@ -444,6 +503,7 @@ class cmake_build_ext(build_ext):
                     dirs_exist_ok=True,
                 )
 
+        if _is_cuda() and profile_syncs("vllm/third_party/fmha_sm100"):
             # copy vendored fmha_sm100 package from build_lib to source tree
             # for editable installs
             fmha_sm100_build = os.path.join(
@@ -1111,9 +1171,10 @@ ext_modules = []
 
 if _is_cuda() or _is_hip():
     ext_modules.append(CMakeExtension(name="vllm.cumem_allocator"))
-    # Optional since this doesn't get built (produce an .so file). This is just
-    # copying the relevant .py files from the source repository.
-    ext_modules.append(CMakeExtension(name="vllm.triton_kernels", optional=True))
+    if profile_enables("triton_kernels"):
+        # Optional since this doesn't get built (produce an .so file). This is just
+        # copying the relevant .py files from the source repository.
+        ext_modules.append(CMakeExtension(name="vllm.triton_kernels", optional=True))
 
 if sys.version_info >= (3, 11):
     ext_modules.append(CMakeExtension(name="vllm.spinloop"))
@@ -1123,36 +1184,48 @@ if _is_hip():
     ext_modules.append(CMakeExtension(name="vllm._rocm_C"))
 
 if _is_cuda():
-    ext_modules.append(CMakeExtension(name="vllm.vllm_flash_attn._vllm_fa2_C"))
-    if USE_PRECOMPILED_EXTENSIONS or (
-        CUDA_HOME and get_nvcc_cuda_version() >= Version("12.3")
-    ):
-        # FA3 requires CUDA 12.3 or later
-        ext_modules.append(CMakeExtension(name="vllm.vllm_flash_attn._vllm_fa3_C"))
-    # FA4 CuteDSL - Python-only component for FA4's cute DSL support
-    # Optional since this doesn't produce a .so file, just copies Python files
-    ext_modules.append(
-        CMakeExtension(name="vllm.vllm_flash_attn._vllm_fa4_cutedsl_C", optional=True)
-    )
-    if USE_PRECOMPILED_EXTENSIONS or (
-        CUDA_HOME and get_nvcc_cuda_version() >= Version("12.9")
+    if profile_enables("flash_attn"):
+        ext_modules.append(CMakeExtension(name="vllm.vllm_flash_attn._vllm_fa2_C"))
+        if USE_PRECOMPILED_EXTENSIONS or (
+            CUDA_HOME and get_nvcc_cuda_version() >= Version("12.3")
+        ):
+            # FA3 requires CUDA 12.3 or later
+            ext_modules.append(
+                CMakeExtension(name="vllm.vllm_flash_attn._vllm_fa3_C")
+            )
+        # FA4 CuteDSL - Python-only component for FA4's cute DSL support
+        # Optional since this doesn't produce a .so file, just copies Python files
+        ext_modules.append(
+            CMakeExtension(
+                name="vllm.vllm_flash_attn._vllm_fa4_cutedsl_C", optional=True
+            )
+        )
+    if profile_enables("flashmla") and (
+        USE_PRECOMPILED_EXTENSIONS
+        or (CUDA_HOME and get_nvcc_cuda_version() >= Version("12.9"))
     ):
         # FlashMLA requires CUDA 12.9 or later
         # Optional since this doesn't get built (produce an .so file) when
         # not targeting a hopper system
         ext_modules.append(CMakeExtension(name="vllm._flashmla_C", optional=True))
-        ext_modules.append(
-            CMakeExtension(name="vllm._flashmla_extension_C", optional=True)
+        ext_modules.append(CMakeExtension(name="vllm._flashmla_extension_C", optional=True))
+    if profile_enables("deepgemm") and (
+        envs.VLLM_USE_PRECOMPILED or (
+            CUDA_HOME and get_nvcc_cuda_version() >= Version("12.3")
         )
-    if envs.VLLM_USE_PRECOMPILED or (
-        CUDA_HOME and get_nvcc_cuda_version() >= Version("12.3")
     ):
         # DeepGEMM requires CUDA 12.3+ (SM90/SM100)
         # Optional since it won't build on unsupported architectures
         ext_modules.append(CMakeExtension(name="vllm._deep_gemm_C", optional=True))
+    if profile_enables("qutlass") and (
+        envs.VLLM_USE_PRECOMPILED or (
+            CUDA_HOME and get_nvcc_cuda_version() >= Version("12.3")
+        )
+    ):
         ext_modules.append(CMakeExtension(name="vllm._qutlass_C", optional=True))
-    # fmha_sm100 is a Python/CuTe-DSL package installed into vllm.third_party.
-    ext_modules.append(CMakeExtension(name="vllm.fmha_sm100", optional=True))
+    if profile_enables("fmha_sm100"):
+        # fmha_sm100 is a Python/CuTe-DSL package installed into vllm.third_party.
+        ext_modules.append(CMakeExtension(name="vllm.fmha_sm100", optional=True))
 
 if _is_cpu():
     import platform
