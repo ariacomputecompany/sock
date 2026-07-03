@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 
 use sock_core::{
-    AdapterError, AdapterSurvey, ArtifactAcquisition, ArtifactClass, ArtifactClosure,
-    ArtifactManifestEntry, ArtifactPortability, ArtifactRequirement, BackendCandidate,
-    BackendFamily, BackendSelection, CanonicalError, CapabilityWitness, CompileRegion,
-    CompileRegionKind, CoveragePlane, CoverageState, CoverageWitness, EngineAdapter,
-    ExecutionTopology, GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel,
-    HazardClass, LeaderAssignment, MaterializationGraph, MaterializationNode,
-    MaterializationNodeKind, MaterializationWave, NormalizedRequest, OperatingSystem, PassTrace,
-    QueueKind, RangeIntent, RankDisposition, RawRequest, ResidualRuntimeRisk, ResolvedBuildPlan,
+    AbiFingerprint, AdapterError, AdapterSurvey, ArtifactAcquisition, ArtifactClass,
+    ArtifactClosure, ArtifactManifestEntry, ArtifactPortability, ArtifactRequirement,
+    BackendCandidate, BackendExtensionFingerprint, BackendFamily, BackendSelection, CanonicalError,
+    CapabilityWitness, CompileRegion, CompileRegionKind, CoveragePlane, CoverageState,
+    CoverageWitness, EngineAdapter, ExecutionTopology, GuaranteeDimension, GuaranteeEnvelope,
+    GuaranteeEvidence, GuaranteeLevel, HazardClass, LeaderAssignment, MaterializationGraph,
+    MaterializationNode, MaterializationNodeKind, MaterializationWave, NormalizedRequest,
+    OperatingSystem, PassTrace, PortabilityFingerprint, QueueKind, RangeIntent, RankDisposition,
+    RawRequest, ResidualRuntimeRisk, ResolvedBuildPlan, RewritePassContract, RewritePhase,
     ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapeRange, StructuralIdentity, ValidationStatus,
     WarmupObligation, WaveEstimate, canonical_hash,
 };
@@ -721,23 +722,43 @@ impl Planner {
         let guarantee_id = canonical_hash(guarantee_envelope)?.to_string();
         Ok(vec![
             pass(
-                "parse-cleanup",
+                RewritePassContract::new(
+                    "parse-cleanup",
+                    RewritePhase::NormalizeRequest,
+                    vec!["raw-request"],
+                    vec!["normalized-request"],
+                    vec!["request-canonicalization"],
+                ),
                 &request_id,
                 &request_id,
                 vec!["raw-request-ingested"],
                 vec![],
                 vec![],
+                vec!["request-canonicalization"],
             ),
             pass(
-                "layered-config-normalization",
+                RewritePassContract::new(
+                    "layered-config-normalization",
+                    RewritePhase::NormalizeRequest,
+                    vec!["normalized-request", "layered-config"],
+                    vec!["normalized-config"],
+                    vec!["request-canonicalization", "config-precedence-order"],
+                ),
                 &request_id,
                 &request_id,
                 vec!["config-layers-sorted", "duplicate-entries-removed"],
                 vec![],
                 vec![],
+                vec!["request-canonicalization", "config-precedence-order"],
             ),
             pass(
-                "survey-vllm-surface",
+                RewritePassContract::new(
+                    "survey-vllm-surface",
+                    RewritePhase::SurveyEngine,
+                    vec!["normalized-request", "vendored-vllm-source"],
+                    vec!["adapter-survey"],
+                    vec!["source-anchored-engine-seam"],
+                ),
                 &request_id,
                 &request_id,
                 vec![
@@ -751,62 +772,112 @@ impl Planner {
                     adapter_survey.compile_regions.len(),
                     adapter_survey.residual_jit_surfaces.len()
                 )],
+                vec!["source-anchored-engine-seam"],
             ),
             pass(
-                "backend-legality-filtering",
+                RewritePassContract::new(
+                    "backend-legality-filtering",
+                    RewritePhase::SelectBackends,
+                    vec!["adapter-survey", "capability-witnesses", "backend-policy"],
+                    vec!["backend-selection"],
+                    vec!["fail-closed-legality"],
+                ),
                 &request_id,
                 &backend_id,
                 vec!["v1-linux-nvidia-constraint", "prebuilt-first-resolution"],
                 vec![],
                 vec!["illegal-backends-pruned"],
+                vec!["fail-closed-legality"],
             ),
             pass(
-                "compile-region-discovery",
+                RewritePassContract::new(
+                    "compile-region-discovery",
+                    RewritePhase::DiscoverCompileRegions,
+                    vec!["backend-selection", "adapter-survey"],
+                    vec!["compile-regions"],
+                    vec!["region-source-evidence"],
+                ),
                 &backend_id,
                 &region_id,
                 vec!["regional-transformer-segmentation"],
                 vec![],
                 vec![],
+                vec!["region-source-evidence"],
             ),
             pass(
-                "shape-envelope-lattice-construction",
+                RewritePassContract::new(
+                    "shape-envelope-lattice-construction",
+                    RewritePhase::BuildShapeEnvelope,
+                    vec!["compile-regions", "shape-policy"],
+                    vec!["shape-envelope"],
+                    vec!["correctness-range-preserved", "hot-shape-bounds-preserved"],
+                ),
                 &region_id,
                 &shape_id,
                 vec!["hot-shape-specialization", "range-node-deduplication"],
                 vec![],
                 vec![],
+                vec!["correctness-range-preserved", "hot-shape-bounds-preserved"],
             ),
             pass(
-                "warmup-coverage-elaboration",
+                RewritePassContract::new(
+                    "warmup-coverage-elaboration",
+                    RewritePhase::ElaborateWarmup,
+                    vec!["shape-envelope", "compile-regions", "warmup-policy"],
+                    vec!["warmup-obligations"],
+                    vec!["non-residual-shapes-covered"],
+                ),
                 &shape_id,
                 &warmup_id,
                 vec!["warmup-obligations-attached"],
                 vec![],
                 vec![],
+                vec!["non-residual-shapes-covered"],
             ),
             pass(
-                "materialization-wave-planning",
+                RewritePassContract::new(
+                    "materialization-wave-planning",
+                    RewritePhase::PlanMaterialization,
+                    vec!["artifact-requirements", "warmup-obligations", "topology"],
+                    vec!["materialization-graph"],
+                    vec!["dependency-order-preserved", "replay-boundaries-assigned"],
+                ),
                 &warmup_id,
                 &wave_id,
                 vec!["phase-local-cache-skipping"],
                 vec![],
                 vec![],
+                vec!["dependency-order-preserved", "replay-boundaries-assigned"],
             ),
             pass(
-                "guarantee-envelope-shaping",
+                RewritePassContract::new(
+                    "guarantee-envelope-shaping",
+                    RewritePhase::ShapeGuarantees,
+                    vec!["materialization-graph", "shape-envelope", "residual-risks"],
+                    vec!["guarantee-envelope"],
+                    vec!["correctness-performance-split"],
+                ),
                 &wave_id,
                 &guarantee_id,
                 vec!["correctness-performance-split"],
                 vec![],
                 vec![],
+                vec!["correctness-performance-split"],
             ),
             pass(
-                "artifact-emission-shaping",
+                RewritePassContract::new(
+                    "artifact-emission-shaping",
+                    RewritePhase::EmitArtifacts,
+                    vec!["guarantee-envelope", "artifact-requirements"],
+                    vec!["artifact-closure"],
+                    vec!["closure-manifest-derived-from-plan"],
+                ),
                 &guarantee_id,
                 &artifact_id,
                 vec!["closure-manifest-derived-from-plan"],
                 vec![],
                 vec![],
+                vec!["closure-manifest-derived-from-plan"],
             ),
         ])
     }
@@ -827,12 +898,25 @@ impl Planner {
         let shape_envelope_identity = canonical_hash(shape_envelope)?;
         let compile_region_identity = canonical_hash(compile_regions)?;
         let capability_identity = canonical_hash(capability_witnesses)?;
-        let abi_identity = canonical_hash(&(
-            normalized.environment.cuda_version.clone(),
-            normalized.environment.driver_version.clone(),
-            normalized.environment.python_abi.clone(),
-            normalized.environment.libc_abi.clone(),
+        let abi_identity = canonical_hash(&AbiFingerprint {
+            operating_system: normalized.environment.operating_system,
+            accelerator_vendor: normalized.environment.accelerator_vendor,
+            gpu_arches: normalized.environment.gpu_arches.clone(),
+            cuda_version: normalized.environment.cuda_version.clone(),
+            driver_version: normalized.environment.driver_version.clone(),
+            python_abi: normalized.environment.python_abi.clone(),
+            libc_abi: normalized.environment.libc_abi.clone(),
+            topology: normalized.topology.clone(),
+        })?;
+        let backend_extension_identity = canonical_hash(&BackendExtensionFingerprint::from_plan(
+            selected_backends,
+            compile_regions,
+        ))?;
+        let portability_identity = canonical_hash(&PortabilityFingerprint::from_plan(
+            normalized.cache_policy.namespace.clone(),
+            normalized.cache_policy.allow_cross_machine_reuse,
             normalized.topology.clone(),
+            artifact_requirements,
         ))?;
         let artifact_identity = canonical_hash(artifact_requirements)?;
         let evidence_identity = canonical_hash(guarantee_evidence)?;
@@ -846,6 +930,8 @@ impl Planner {
             &request_identity,
             &capability_identity,
             &abi_identity,
+            &backend_extension_identity,
+            &portability_identity,
         ))?;
         Ok(StructuralIdentity {
             request_identity,
@@ -853,6 +939,8 @@ impl Planner {
             compile_region_identity,
             capability_identity,
             abi_identity,
+            backend_extension_identity,
+            portability_identity,
             artifact_identity,
             evidence_identity,
             plan_identity,
@@ -1035,15 +1123,16 @@ fn build_waves(nodes: &[MaterializationNode]) -> Vec<MaterializationWave> {
 }
 
 fn pass(
-    name: &str,
+    contract: RewritePassContract,
     before: &str,
     after: &str,
     matched_rules: Vec<&str>,
     repairs: Vec<&str>,
     invalidated_assumptions: Vec<&str>,
+    validated_invariants: Vec<&str>,
 ) -> PassTrace {
     PassTrace {
-        pass_name: name.to_owned(),
+        contract,
         before_identity: before.to_owned(),
         after_identity: after.to_owned(),
         matched_rules: matched_rules.into_iter().map(str::to_owned).collect(),
@@ -1052,5 +1141,158 @@ fn pass(
             .into_iter()
             .map(str::to_owned)
             .collect(),
+        validated_invariants: validated_invariants
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+        violations: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sock_core::{
+        AcceleratorVendor, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer, EngineSource,
+        FailureMode, GuaranteeLevel, GuaranteeTarget, ModelRef, OperatingSystem,
+        RequestedEnvironment, ShapePoint, ShapePolicy, ShapeRange, TargetEngine, WarmupPolicy,
+    };
+
+    fn host() -> PlannerHostSnapshot {
+        PlannerHostSnapshot {
+            operating_system: OperatingSystem::Linux,
+            accelerator_vendor: AcceleratorVendor::Nvidia,
+            gpu_arches: vec!["sm90".to_owned()],
+            cuda_version: "12.4".to_owned(),
+            driver_version: "550.54".to_owned(),
+            python_abi: "cp311".to_owned(),
+            libc_abi: "glibc-2.35".to_owned(),
+            flashinfer_prebuilt_available: true,
+        }
+    }
+
+    fn request() -> RawRequest {
+        RawRequest {
+            engine: TargetEngine::Vllm,
+            model: ModelRef {
+                repository: "meta-llama/Llama-3.1-8B-Instruct".to_owned(),
+                revision: "main".to_owned(),
+            },
+            engine_source: EngineSource {
+                kind: "vendored".to_owned(),
+                revision: crate::vllm::revision().to_owned(),
+            },
+            environment: RequestedEnvironment {
+                operating_system: OperatingSystem::Linux,
+                accelerator_vendor: AcceleratorVendor::Nvidia,
+                gpu_arches: vec!["sm90".to_owned()],
+                cuda_version: "12.4".to_owned(),
+                driver_version: "550.54".to_owned(),
+                python_abi: "cp311".to_owned(),
+                libc_abi: "glibc-2.35".to_owned(),
+            },
+            topology: ExecutionTopology {
+                tensor_parallelism: 2,
+                pipeline_parallelism: 1,
+                replicas: 1,
+            },
+            backend_policy: BackendPolicy {
+                preferred_families: vec![
+                    BackendFamily::FlashInfer,
+                    BackendFamily::Triton,
+                    BackendFamily::CudaGraphs,
+                ],
+                require_prebuilt_artifacts: true,
+                allow_runtime_jit: false,
+                correctness_target: GuaranteeTarget {
+                    level: GuaranteeLevel::ShapeBoundedAot,
+                    failure_mode: FailureMode::FailClosed,
+                },
+                performance_target: GuaranteeTarget {
+                    level: GuaranteeLevel::WarmupBounded,
+                    failure_mode: FailureMode::FailClosed,
+                },
+            },
+            shape_policy: ShapePolicy {
+                correctness_range: ShapeRange {
+                    min_batch_size: 1,
+                    max_batch_size: 8,
+                    min_sequence_length: 1,
+                    max_sequence_length: 4096,
+                },
+                performance_range: ShapeRange {
+                    min_batch_size: 1,
+                    max_batch_size: 4,
+                    min_sequence_length: 1,
+                    max_sequence_length: 2048,
+                },
+                hot_shapes: vec![ShapePoint {
+                    batch_size: 1,
+                    sequence_length: 128,
+                    plane: CoveragePlane::Performance,
+                }],
+                cuda_graph_shapes: vec![ShapePoint {
+                    batch_size: 1,
+                    sequence_length: 128,
+                    plane: CoveragePlane::CudaGraph,
+                }],
+            },
+            cache_policy: CachePolicy {
+                namespace: "prod".to_owned(),
+                allow_cross_machine_reuse: false,
+            },
+            warmup_policy: WarmupPolicy {
+                max_warmup_steps: 6,
+                verify_cuda_graph_capture: true,
+            },
+            layered_config: vec![
+                ConfigLayer {
+                    name: "env".to_owned(),
+                    precedence: 0,
+                    entries: vec![ConfigEntry {
+                        key: "VLLM_USE_V1".to_owned(),
+                        value: "1".to_owned(),
+                    }],
+                },
+                ConfigLayer {
+                    name: "project".to_owned(),
+                    precedence: 1,
+                    entries: vec![ConfigEntry {
+                        key: "tensor_parallel_size".to_owned(),
+                        value: "2".to_owned(),
+                    }],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn portability_policy_changes_plan_identity() {
+        let planner = Planner::new(host());
+        let baseline = planner.resolve(request()).expect("baseline plan");
+
+        let mut changed_request = request();
+        changed_request.cache_policy.allow_cross_machine_reuse = true;
+        let changed = planner.resolve(changed_request).expect("changed plan");
+
+        assert_ne!(
+            baseline.plan.structural_identity.portability_identity,
+            changed.plan.structural_identity.portability_identity
+        );
+        assert_ne!(
+            baseline.plan.structural_identity.plan_identity,
+            changed.plan.structural_identity.plan_identity
+        );
+    }
+
+    #[test]
+    fn rewrite_trace_contracts_validate() {
+        let planner = Planner::new(host());
+        let outcome = planner.resolve(request()).expect("plan");
+
+        assert!(!outcome.plan.rewrite_trace.is_empty());
+        for pass in &outcome.plan.rewrite_trace {
+            pass.validate().expect("rewrite pass contract");
+        }
     }
 }

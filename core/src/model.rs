@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::adapter::{CompileRegionKind, SourceEvidence};
 use crate::canonical::{CanonicalError, CanonicalHash, canonical_hash};
+use crate::identity::StructuralIdentity;
+use crate::rewrite::PassTrace;
+use crate::verification::{GuaranteeEvidence, ValidationIssue, VerificationReport};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum TargetEngine {
@@ -564,62 +567,6 @@ pub struct ArtifactClosure {
     pub artifacts: Vec<ArtifactManifestEntry>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct CoverageWitness {
-    pub plane: CoveragePlane,
-    pub node_name: String,
-    pub evidence: String,
-    pub coverage_states: Vec<CoverageState>,
-    pub artifact_scopes: Vec<String>,
-    pub uncovered_residuals: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GuaranteeEvidence {
-    pub capability_witnesses: Vec<CapabilityWitness>,
-    pub artifact_manifest: Vec<ArtifactManifestEntry>,
-    pub warmup_obligations: Vec<WarmupObligation>,
-    pub coverage_witnesses: Vec<CoverageWitness>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ValidationIssue {
-    pub severity: ValidationSeverity,
-    pub code: String,
-    pub message: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct VerificationReport {
-    pub level: ValidationLevel,
-    pub status: ValidationStatus,
-    pub issues: Vec<ValidationIssue>,
-    pub phase_timings: Vec<(QueueKind, Option<u64>)>,
-    pub runtime_jit_witnesses: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct PassTrace {
-    pub pass_name: String,
-    pub before_identity: String,
-    pub after_identity: String,
-    pub matched_rules: Vec<String>,
-    pub repairs: Vec<String>,
-    pub invalidated_assumptions: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct StructuralIdentity {
-    pub request_identity: CanonicalHash,
-    pub shape_envelope_identity: CanonicalHash,
-    pub compile_region_identity: CanonicalHash,
-    pub capability_identity: CanonicalHash,
-    pub abi_identity: CanonicalHash,
-    pub artifact_identity: CanonicalHash,
-    pub evidence_identity: CanonicalHash,
-    pub plan_identity: CanonicalHash,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedBuildPlan {
     pub normalized_request: NormalizedRequest,
@@ -722,6 +669,16 @@ impl ResolvedBuildPlan {
                 code: "artifact_scope_missing".to_owned(),
                 message: "Artifact manifest contains an unscoped artifact".to_owned(),
             });
+        }
+
+        for pass in &self.rewrite_trace {
+            if let Err(message) = pass.validate() {
+                issues.push(ValidationIssue {
+                    severity: ValidationSeverity::Error,
+                    code: "rewrite_pass_contract_violation".to_owned(),
+                    message,
+                });
+            }
         }
 
         let status = if issues

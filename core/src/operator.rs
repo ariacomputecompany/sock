@@ -393,7 +393,9 @@ pub fn render_explain(
     for pass in &rewrite_trace.passes {
         out.push_str(&format!(
             "  - {} {} -> {}\n",
-            pass.pass_name, pass.before_identity, pass.after_identity
+            pass.pass_name(),
+            pass.before_identity,
+            pass.after_identity
         ));
     }
     out.push_str("diagnostics:\n");
@@ -915,12 +917,20 @@ mod tests {
             residual_risks: Vec::new(),
         };
         let rewrite_trace = vec![PassTrace {
-            pass_name: "artifact-emission-shaping".to_owned(),
+            contract: crate::RewritePassContract::new(
+                "artifact-emission-shaping",
+                crate::RewritePhase::EmitArtifacts,
+                vec!["guarantee-envelope", "artifact-requirements"],
+                vec!["artifact-closure"],
+                vec!["closure-manifest-derived-from-plan"],
+            ),
             before_identity: normalized_request.identity.to_string(),
             after_identity: "after".to_owned(),
             matched_rules: vec!["closure-manifest-derived-from-plan".to_owned()],
             repairs: Vec::new(),
             invalidated_assumptions: Vec::new(),
+            validated_invariants: vec!["closure-manifest-derived-from-plan".to_owned()],
+            violations: Vec::new(),
         }];
         let structural_identity = StructuralIdentity {
             request_identity: normalized_request.identity.clone(),
@@ -928,14 +938,31 @@ mod tests {
             compile_region_identity: canonical_hash(&compile_regions).expect("region identity"),
             capability_identity: canonical_hash(&guarantee_evidence.capability_witnesses)
                 .expect("capability identity"),
-            abi_identity: canonical_hash(&(
-                normalized_request.environment.cuda_version.clone(),
-                normalized_request.environment.driver_version.clone(),
-                normalized_request.environment.python_abi.clone(),
-                normalized_request.environment.libc_abi.clone(),
-                normalized_request.topology.clone(),
-            ))
+            abi_identity: canonical_hash(&crate::AbiFingerprint {
+                operating_system: normalized_request.environment.operating_system,
+                accelerator_vendor: normalized_request.environment.accelerator_vendor,
+                gpu_arches: normalized_request.environment.gpu_arches.clone(),
+                cuda_version: normalized_request.environment.cuda_version.clone(),
+                driver_version: normalized_request.environment.driver_version.clone(),
+                python_abi: normalized_request.environment.python_abi.clone(),
+                libc_abi: normalized_request.environment.libc_abi.clone(),
+                topology: normalized_request.topology.clone(),
+            })
             .expect("abi identity"),
+            backend_extension_identity: canonical_hash(
+                &crate::BackendExtensionFingerprint::from_plan(
+                    &selected_backends,
+                    &compile_regions,
+                ),
+            )
+            .expect("backend extension identity"),
+            portability_identity: canonical_hash(&crate::PortabilityFingerprint::from_plan(
+                normalized_request.cache_policy.namespace.clone(),
+                normalized_request.cache_policy.allow_cross_machine_reuse,
+                normalized_request.topology.clone(),
+                &artifact_requirements,
+            ))
+            .expect("portability identity"),
             artifact_identity: canonical_hash(&artifact_requirements).expect("artifact identity"),
             evidence_identity: canonical_hash(&guarantee_evidence).expect("evidence identity"),
             plan_identity: canonical_hash(&(
@@ -945,6 +972,32 @@ mod tests {
                 &artifact_requirements,
                 &materialization_graph,
                 &guarantee_envelope,
+                &normalized_request.identity,
+                &canonical_hash(&guarantee_evidence.capability_witnesses)
+                    .expect("capability identity"),
+                &canonical_hash(&crate::AbiFingerprint {
+                    operating_system: normalized_request.environment.operating_system,
+                    accelerator_vendor: normalized_request.environment.accelerator_vendor,
+                    gpu_arches: normalized_request.environment.gpu_arches.clone(),
+                    cuda_version: normalized_request.environment.cuda_version.clone(),
+                    driver_version: normalized_request.environment.driver_version.clone(),
+                    python_abi: normalized_request.environment.python_abi.clone(),
+                    libc_abi: normalized_request.environment.libc_abi.clone(),
+                    topology: normalized_request.topology.clone(),
+                })
+                .expect("abi identity"),
+                &canonical_hash(&crate::BackendExtensionFingerprint::from_plan(
+                    &selected_backends,
+                    &compile_regions,
+                ))
+                .expect("backend extension identity"),
+                &canonical_hash(&crate::PortabilityFingerprint::from_plan(
+                    normalized_request.cache_policy.namespace.clone(),
+                    normalized_request.cache_policy.allow_cross_machine_reuse,
+                    normalized_request.topology.clone(),
+                    &artifact_requirements,
+                ))
+                .expect("portability identity"),
             ))
             .expect("plan identity"),
         };
