@@ -416,6 +416,9 @@ impl ResolvedBuildPlan {
     #[must_use]
     pub fn validate(&self) -> VerificationReport {
         let mut issues = Vec::new();
+        let selected_backend_families = std::iter::once(self.selected_backends.primary.family)
+            .chain(self.selected_backends.secondary.iter().map(|candidate| candidate.family))
+            .collect::<BTreeSet<_>>();
         let expected_artifact_manifest = self
             .artifact_requirements
             .iter()
@@ -437,6 +440,40 @@ impl ResolvedBuildPlan {
         sorted_expected_artifact_manifest.sort();
         actual_artifact_manifest.sort();
         let operator_gates = operator_gates();
+
+        let widened_compile_regions = self
+            .compile_regions
+            .iter()
+            .filter(|region| !selected_backend_families.contains(&region.family))
+            .map(|region| format!("{}:{:?}", region.name, region.family))
+            .collect::<Vec<_>>();
+        if !widened_compile_regions.is_empty() {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "compile_region_backend_out_of_selection".to_owned(),
+                message: format!(
+                    "Compile regions widened beyond the selected backend set: {}",
+                    widened_compile_regions.join(", ")
+                ),
+            });
+        }
+
+        let widened_artifact_requirements = self
+            .artifact_requirements
+            .iter()
+            .filter(|artifact| !selected_backend_families.contains(&artifact.backend))
+            .map(|artifact| format!("{}:{:?}", artifact.scope, artifact.backend))
+            .collect::<Vec<_>>();
+        if !widened_artifact_requirements.is_empty() {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "artifact_backend_out_of_selection".to_owned(),
+                message: format!(
+                    "Artifact requirements widened beyond the selected backend set: {}",
+                    widened_artifact_requirements.join(", ")
+                ),
+            });
+        }
 
         if self.selected_backends.primary.family == BackendFamily::FlashInfer
             && !self

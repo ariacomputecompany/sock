@@ -957,4 +957,46 @@ mod tests {
         let err = ReplayBundle::load_from(dir.path()).expect_err("invalid reuse should fail");
         assert!(matches!(err, ReplayBundleError::VerificationMismatch));
     }
+
+    #[test]
+    fn replay_bundle_rejects_backend_surface_widening_after_digest_refresh() {
+        let dir = tempdir().expect("tempdir");
+        let bundle = sample_bundle();
+        let metadata = bundle.write_to(dir.path()).expect("write bundle");
+        let mut build_plan: crate::ResolvedBuildPlan = serde_json::from_str(
+            &fs::read_to_string(dir.path().join("buildplan.json")).expect("read buildplan"),
+        )
+        .expect("parse buildplan");
+        build_plan.compile_regions[0].family = crate::BackendFamily::AotInductor;
+        fs::write(
+            dir.path().join("buildplan.json"),
+            serde_json::to_string_pretty(&build_plan).expect("serialize buildplan"),
+        )
+        .expect("write buildplan");
+
+        let mut digests = metadata.file_digests.clone();
+        digests.insert(
+            "buildplan.json".to_owned(),
+            digest(
+                fs::read(dir.path().join("buildplan.json"))
+                    .expect("read buildplan for digest")
+                    .as_slice(),
+            ),
+        );
+        let metadata = ReplayBundleMetadata {
+            schema_version: metadata.schema_version,
+            plan_identity: metadata.plan_identity,
+            file_digests: digests,
+            replay_entrypoint: metadata.replay_entrypoint,
+        };
+        fs::write(
+            dir.path().join("bundle_metadata.json"),
+            crate::canonical_json(&metadata).expect("serialize metadata"),
+        )
+        .expect("write metadata");
+
+        let err =
+            ReplayBundle::load_from(dir.path()).expect_err("backend widening should fail");
+        assert!(matches!(err, ReplayBundleError::VerificationMismatch));
+    }
 }
