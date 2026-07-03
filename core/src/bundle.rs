@@ -683,6 +683,7 @@ mod tests {
         };
         let plan = crate::ResolvedBuildPlan {
             normalized_request,
+            requested_readiness: None,
             backend_registry,
             selected_backends,
             compile_regions,

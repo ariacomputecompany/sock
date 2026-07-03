@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     ArtifactAcquisition, ArtifactClass, BackendFamily, CanonicalHash, FanoutStrategy,
     MaterializationNodeKind, QueueDiscipline, QueueKind, RankDisposition, SchemaVersion,
-    SourceAnchor,
+    SourceAnchor, ValidationStatus,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,6 +82,39 @@ pub struct ClosureExpansionRecord {
     pub deterministically_closed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservedReadinessLevel {
+    EarlyServe,
+    Correctness,
+    Performance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadinessObservation {
+    pub requested_readiness: ObservedReadinessLevel,
+    pub achieved_readiness: ObservedReadinessLevel,
+    pub blocking_warmups_complete: bool,
+    pub early_serve_frontier_complete: bool,
+    pub deferred_warmups_complete: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeJitObservationStatus {
+    Bounded,
+    Contradicted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeJitObservation {
+    pub surface_name: String,
+    pub status: RuntimeJitObservationStatus,
+    pub observed_artifacts: Vec<String>,
+    pub observed_warmup_proofs: Vec<String>,
+    pub contradiction_reasons: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MaterializationExecutionReport {
     pub schema_version: SchemaVersion,
@@ -97,6 +130,10 @@ pub struct MaterializationExecutionReport {
     pub total_transfer_ms: u64,
     pub total_rebuild_ms: u64,
     pub closure_expansion: ClosureExpansionRecord,
+    pub readiness: ReadinessObservation,
+    pub runtime_jit_observations: Vec<RuntimeJitObservation>,
+    pub verify_replay_compile_free: bool,
+    pub verify_replay_status: ValidationStatus,
     pub artifacts: Vec<MaterializedArtifactRecord>,
     pub nodes: Vec<MaterializationNodeRecord>,
     pub waves: Vec<MaterializationWaveRecord>,

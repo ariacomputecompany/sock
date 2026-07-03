@@ -170,6 +170,11 @@ impl Planner {
         )?;
         let plan = ResolvedBuildPlan {
             normalized_request: normalized,
+            requested_readiness: scope.readiness.map(|readiness| match readiness {
+                BuildReadiness::EarlyServe => "early_serve".to_owned(),
+                BuildReadiness::Correctness => "correctness".to_owned(),
+                BuildReadiness::Performance => "performance".to_owned(),
+            }),
             backend_registry,
             selected_backends,
             compile_regions,
@@ -794,6 +799,7 @@ impl Planner {
         }
         if let Some(readiness) = scope.readiness {
             obligations.retain(|obligation| match readiness {
+                BuildReadiness::EarlyServe => false,
                 BuildReadiness::Correctness => obligation.blocking,
                 BuildReadiness::Performance => true,
             });
@@ -909,6 +915,7 @@ impl Planner {
                     trigger_inputs: surface.trigger_inputs.clone(),
                     affected_regions,
                     required_artifacts,
+                    declared_required_warmup_scopes: surface.required_warmup_scopes.clone(),
                     required_warmup_proofs,
                     topology_context: surface.topology_context.clone(),
                     bounded_by: bounded_by(
@@ -1469,6 +1476,7 @@ fn scoped_shape_envelope(
                 .any(|region| region.shape_planes.contains(&node.plane))
         })
         .filter(|node| match scope.readiness {
+            Some(BuildReadiness::EarlyServe) => true,
             Some(BuildReadiness::Correctness) => node.plane == CoveragePlane::Correctness,
             Some(BuildReadiness::Performance) | None => true,
         })

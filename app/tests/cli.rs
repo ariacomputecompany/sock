@@ -78,6 +78,10 @@ fn build_verify_and_replay_bundle_round_trip() {
         materialization["closure_expansion"]["deterministically_closed"],
         Value::Bool(true)
     );
+    assert_eq!(
+        materialization["verify_replay_compile_free"],
+        Value::Bool(true)
+    );
     assert!(
         materialization["waves"]
             .as_array()
@@ -91,6 +95,17 @@ fn build_verify_and_replay_bundle_round_trip() {
             .expect("waves array")
             .iter()
             .all(|wave| wave.get("scheduling_mode").is_some())
+    );
+    assert_eq!(
+        materialization["readiness"]["achieved_readiness"],
+        Value::String("performance".to_owned())
+    );
+    assert!(
+        materialization["runtime_jit_observations"]
+            .as_array()
+            .expect("runtime jit observations")
+            .iter()
+            .all(|observation| observation.get("status").is_some())
     );
 
     let integration: Value = serde_json::from_str(
@@ -502,6 +517,10 @@ fn scoped_prefill_build_emits_minimal_closure() {
         materialization["closure_expansion"]["deterministically_closed"],
         Value::Bool(true)
     );
+    assert_eq!(
+        materialization["readiness"]["achieved_readiness"],
+        Value::String("correctness".to_owned())
+    );
     assert!(
         materialization["waves"]
             .as_array()
@@ -561,6 +580,67 @@ fn scoped_prefill_build_emits_minimal_closure() {
         .and_then(|entrypoint| entrypoint["wrapper_path"].as_str())
         .expect("prefill wrapper path");
     assert!(dir.path().join(wrapper_path).exists());
+}
+
+#[test]
+fn early_serve_build_skips_warmup_and_records_runtime_jit_contradictions() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            dir.path().to_str().expect("utf8 path"),
+            "--region",
+            "prefill_attention",
+            "--readiness",
+            "early-serve",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("readiness=EarlyServe"));
+
+    let plan: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("buildplan.json")).expect("read buildplan"),
+    )
+    .expect("parse buildplan");
+    assert_eq!(
+        plan["warmup_obligations"]
+            .as_array()
+            .expect("warmup obligations array")
+            .len(),
+        0
+    );
+
+    let materialization: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("materialization_report.json"))
+            .expect("read materialization report"),
+    )
+    .expect("parse materialization report");
+    assert_eq!(
+        materialization["readiness"]["requested_readiness"],
+        Value::String("early_serve".to_owned())
+    );
+    assert_eq!(
+        materialization["readiness"]["achieved_readiness"],
+        Value::String("early_serve".to_owned())
+    );
+    assert_eq!(
+        materialization["readiness"]["blocking_warmups_complete"],
+        Value::Bool(true)
+    );
+    assert_eq!(
+        materialization["readiness"]["deferred_warmups_complete"],
+        Value::Bool(true)
+    );
+    assert!(
+        materialization["runtime_jit_observations"]
+            .as_array()
+            .expect("runtime jit observations")
+            .iter()
+            .any(|observation| observation["status"] == "contradicted")
+    );
 }
 
 #[test]

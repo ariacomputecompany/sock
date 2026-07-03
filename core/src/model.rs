@@ -398,6 +398,7 @@ pub struct ArtifactClosure {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedBuildPlan {
     pub normalized_request: NormalizedRequest,
+    pub requested_readiness: Option<String>,
     pub backend_registry: BackendCapabilityRegistry,
     pub selected_backends: BackendSelection,
     pub compile_regions: Vec<CompileRegion>,
@@ -497,7 +498,8 @@ impl ResolvedBuildPlan {
             })
             .cloned()
             .collect::<Vec<_>>();
-        if !missing_warmup.is_empty() {
+        if !missing_warmup.is_empty() && self.requested_readiness.as_deref() != Some("early_serve")
+        {
             issues.push(ValidationIssue {
                 severity: ValidationSeverity::Error,
                 code: "warmup_incomplete".to_owned(),

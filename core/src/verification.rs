@@ -29,6 +29,7 @@ pub struct RuntimeJitEvidence {
     pub trigger_inputs: Vec<String>,
     pub affected_regions: Vec<String>,
     pub required_artifacts: Vec<String>,
+    pub declared_required_warmup_scopes: Vec<String>,
     pub required_warmup_proofs: Vec<String>,
     pub topology_context: String,
     pub bounded_by: Vec<String>,

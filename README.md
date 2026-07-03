@@ -30,6 +30,7 @@ In practice, that means:
 - if multiple bundle outputs share a cache root, sock reuses only admissible artifacts across them instead of treating each output directory as its own isolated cache universe
 - if a distributed startup needs leader/follower artifact fanout, sock plans and executes that explicitly
 - if an artifact is already valid for reuse, sock proves that and skips rebuilding it
+- if you ask for early-serve readiness, sock materializes the serveable closure without pretending deferred performance warmups already happened
 - if a requested scope would still leak runtime JIT, sock surfaces that as a bounded contract instead of hiding it
 
 ## Product model
@@ -172,6 +173,7 @@ sock verifies:
 - cache and bundle integrity
 - warmup proof coverage
 - runtime-JIT evidence bounds
+- observed runtime-JIT contradictions from the live build path
 - compile-free verify/replay operator gates
 
 Replay bundles are content-digested, identity-checked, and verification-checked.

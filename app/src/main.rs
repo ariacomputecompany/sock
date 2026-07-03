@@ -90,6 +90,7 @@ struct ScopeArgs {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum ReadinessArg {
+    EarlyServe,
     Correctness,
     Performance,
 }
@@ -169,6 +170,7 @@ impl ScopeArgs {
             cache_namespaces: self.cache_namespaces.into_iter().collect(),
             warmup_scopes: self.warmup_scopes.into_iter().collect(),
             readiness: self.readiness.map(|readiness| match readiness {
+                ReadinessArg::EarlyServe => BuildReadiness::EarlyServe,
                 ReadinessArg::Correctness => BuildReadiness::Correctness,
                 ReadinessArg::Performance => BuildReadiness::Performance,
             }),
@@ -234,14 +236,15 @@ fn emit_build(
     match format {
         OutputMode::Summary => {
             println!(
-                "bundle={} plan_identity={} replay_entrypoint={} artifacts={} reused={} bytes_written={} rebuild_ms={}",
+                "bundle={} plan_identity={} replay_entrypoint={} artifacts={} reused={} bytes_written={} rebuild_ms={} readiness={:?}",
                 out.display(),
                 bundle.build_plan.structural_identity.plan_identity,
                 metadata.replay_entrypoint,
                 materialization.artifact_count,
                 materialization.reused_artifact_count,
                 materialization.total_bytes_written,
-                materialization.total_rebuild_ms
+                materialization.total_rebuild_ms,
+                materialization.readiness.achieved_readiness
             );
         }
         OutputMode::Json => {

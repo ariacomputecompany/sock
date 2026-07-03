@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "build-early-serve-readiness",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\nbuild_out=$(cargo run --quiet --bin sock -- build --out \"$bundle_dir\" --region prefill_attention --readiness early-serve)\nprintf '%s' \"$build_out\" | grep -q 'readiness=EarlyServe'\ngrep -q '\"requested_readiness\":\"early_serve\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"achieved_readiness\":\"early_serve\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"status\":\"contradicted\"' \"$bundle_dir/materialization_report.json\"\nif grep -q '\"warmup_obligations\":\\[' \"$bundle_dir/buildplan.json\"; then\n  grep -q '\"warmup_obligations\":\\[\\]' \"$bundle_dir/buildplan.json\"\nfi\nprintf 'early-serve\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "early-serve\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\nbuild_out=$(cargo run --quiet --bin sock -- build --out \"$bundle_dir\" --region prefill_attention --readiness early-serve)\nprintf '%s' \"$build_out\" | grep -q 'readiness=EarlyServe'\ngrep -q '\"requested_readiness\":\"early_serve\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"achieved_readiness\":\"early_serve\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"status\":\"contradicted\"' \"$bundle_dir/materialization_report.json\"\nif grep -q '\"warmup_obligations\":\\[' \"$bundle_dir/buildplan.json\"; then\n  grep -q '\"warmup_obligations\":\\[\\]' \"$bundle_dir/buildplan.json\"\nfi\nprintf 'early-serve\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "early-serve\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

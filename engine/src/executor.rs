@@ -9,12 +9,13 @@ use sock_core::{
     ClosureExpansionRecord, FanoutStrategy, MaterializationDisposition,
     MaterializationExecutionReport, MaterializationNode, MaterializationNodeKind,
     MaterializationNodeRecord, MaterializationSchedulingMode, MaterializationWave,
-    MaterializationWaveRecord, MaterializedArtifactRecord, QueueDiscipline, RankDisposition,
+    MaterializationWaveRecord, MaterializedArtifactRecord, ObservedReadinessLevel, QueueDiscipline,
+    RankDisposition, ReadinessObservation, RuntimeJitObservation, RuntimeJitObservationStatus,
     SchemaVersion, SourceAnchor, WarmupObligation, canonical_hash, canonical_json,
 };
 use thiserror::Error;
 
-use crate::{BuildScope, PlanningOutcome, vllm};
+use crate::{BuildReadiness, BuildScope, PlanningOutcome, vllm};
 
 #[derive(Debug, Error)]
 pub enum MaterializationError {
@@ -206,6 +207,9 @@ impl MaterializationExecutor {
         artifact_records.sort_by(|left, right| left.storage_key.cmp(&right.storage_key));
         node_records.sort_by(|left, right| left.node_name.cmp(&right.node_name));
         wave_records.sort_by(|left, right| left.wave_name.cmp(&right.wave_name));
+        let readiness = observed_readiness(scope, outcome, &completed_nodes);
+        let runtime_jit_observations =
+            observed_runtime_jit(outcome, &artifact_records, &completed_nodes, &warmup_index);
 
         let report = MaterializationExecutionReport {
             schema_version: SchemaVersion::current(),
@@ -224,6 +228,10 @@ impl MaterializationExecutor {
             total_transfer_ms,
             total_rebuild_ms,
             closure_expansion: closure_expansion(scope, outcome),
+            readiness,
+            runtime_jit_observations,
+            verify_replay_compile_free: verify_replay_compile_free(outcome),
+            verify_replay_status: outcome.verification.status.clone(),
             artifacts: artifact_records,
             nodes: node_records,
             waves: wave_records,
@@ -726,6 +734,189 @@ fn closure_expansion(scope: &BuildScope, outcome: &PlanningOutcome) -> ClosureEx
         expanded_warmup_scopes,
         deterministically_closed: true,
     }
+}
+
+fn observed_readiness(
+    scope: &BuildScope,
+    outcome: &PlanningOutcome,
+    completed_nodes: &BTreeSet<String>,
+) -> ReadinessObservation {
+    let requested_readiness = requested_readiness(scope);
+    let blocking_nodes = outcome
+        .plan
+        .materialization_graph
+        .nodes
+        .iter()
+        .filter(|node| {
+            node.execution_contract.serve_phase == sock_core::ServePhase::PreServeBlocking
+        })
+        .map(|node| node.name.clone())
+        .collect::<Vec<_>>();
+    let early_serve_nodes = outcome
+        .plan
+        .materialization_graph
+        .nodes
+        .iter()
+        .filter(|node| {
+            node.execution_contract.serve_phase == sock_core::ServePhase::EarlyServeReady
+        })
+        .map(|node| node.name.clone())
+        .collect::<Vec<_>>();
+    let deferred_nodes = outcome
+        .plan
+        .materialization_graph
+        .nodes
+        .iter()
+        .filter(|node| {
+            node.execution_contract.serve_phase == sock_core::ServePhase::DeferredPerformance
+        })
+        .map(|node| node.name.clone())
+        .collect::<Vec<_>>();
+
+    let blocking_warmups_complete = blocking_nodes
+        .iter()
+        .all(|node_name| completed_nodes.contains(node_name));
+    let early_serve_frontier_complete = early_serve_nodes
+        .iter()
+        .all(|node_name| completed_nodes.contains(node_name));
+    let deferred_warmups_complete = deferred_nodes
+        .iter()
+        .all(|node_name| completed_nodes.contains(node_name));
+    let has_blocking_nodes = !blocking_nodes.is_empty();
+    let has_deferred_nodes = !deferred_nodes.is_empty();
+
+    let achieved_readiness = if has_deferred_nodes && deferred_warmups_complete {
+        ObservedReadinessLevel::Performance
+    } else if has_blocking_nodes && blocking_warmups_complete {
+        ObservedReadinessLevel::Correctness
+    } else {
+        ObservedReadinessLevel::EarlyServe
+    };
+
+    ReadinessObservation {
+        requested_readiness,
+        achieved_readiness,
+        blocking_warmups_complete,
+        early_serve_frontier_complete,
+        deferred_warmups_complete,
+    }
+}
+
+fn requested_readiness(scope: &BuildScope) -> ObservedReadinessLevel {
+    match scope.readiness {
+        Some(BuildReadiness::EarlyServe) => ObservedReadinessLevel::EarlyServe,
+        Some(BuildReadiness::Correctness) => ObservedReadinessLevel::Correctness,
+        Some(BuildReadiness::Performance) | None => ObservedReadinessLevel::Performance,
+    }
+}
+
+fn observed_runtime_jit(
+    outcome: &PlanningOutcome,
+    artifact_records: &[MaterializedArtifactRecord],
+    completed_nodes: &BTreeSet<String>,
+    warmup_index: &BTreeMap<String, WarmupObligation>,
+) -> Vec<RuntimeJitObservation> {
+    let observed_artifact_scopes = artifact_records
+        .iter()
+        .map(|artifact| artifact.scope.clone())
+        .collect::<BTreeSet<_>>();
+    let observed_warmup_proofs = warmup_index
+        .iter()
+        .filter(|(node_name, _)| completed_nodes.contains(*node_name))
+        .map(|(_, obligation)| obligation.proof.proof_id.clone())
+        .collect::<BTreeSet<_>>();
+    let observed_warmup_scopes = warmup_index
+        .iter()
+        .filter(|(node_name, _)| completed_nodes.contains(*node_name))
+        .map(|(_, obligation)| obligation.region_name.clone())
+        .collect::<BTreeSet<_>>();
+
+    outcome
+        .verification
+        .runtime_jit_evidence
+        .iter()
+        .map(|evidence| {
+            let observed_artifacts = evidence
+                .required_artifacts
+                .iter()
+                .filter(|scope| observed_artifact_scopes.contains(*scope))
+                .cloned()
+                .collect::<Vec<_>>();
+            let observed_warmup = evidence
+                .required_warmup_proofs
+                .iter()
+                .filter(|proof| observed_warmup_proofs.contains(*proof))
+                .cloned()
+                .collect::<Vec<_>>();
+
+            let mut contradiction_reasons = evidence.contradiction_reasons.clone();
+            contradiction_reasons.extend(
+                evidence
+                    .required_artifacts
+                    .iter()
+                    .filter(|scope| !observed_artifact_scopes.contains(*scope))
+                    .map(|scope| {
+                        format!(
+                            "required artifact scope {scope} was not observed in the built closure"
+                        )
+                    }),
+            );
+            contradiction_reasons.extend(
+                evidence
+                    .declared_required_warmup_scopes
+                    .iter()
+                    .filter(|scope| !observed_warmup_scopes.contains(*scope))
+                    .map(|scope| {
+                        format!(
+                            "required warmup scope {scope} was not observed during materialization"
+                        )
+                    }),
+            );
+            contradiction_reasons.extend(
+                evidence
+                    .required_warmup_proofs
+                    .iter()
+                    .filter(|proof| !observed_warmup_proofs.contains(*proof))
+                    .map(|proof| {
+                        format!(
+                            "required warmup proof {proof} was not observed during materialization"
+                        )
+                    }),
+            );
+            contradiction_reasons.sort();
+            contradiction_reasons.dedup();
+
+            RuntimeJitObservation {
+                surface_name: evidence.surface_name.clone(),
+                status: if contradiction_reasons.is_empty() {
+                    RuntimeJitObservationStatus::Bounded
+                } else {
+                    RuntimeJitObservationStatus::Contradicted
+                },
+                observed_artifacts,
+                observed_warmup_proofs: observed_warmup,
+                contradiction_reasons,
+            }
+        })
+        .collect()
+}
+
+fn verify_replay_compile_free(outcome: &PlanningOutcome) -> bool {
+    let verify_gate = outcome
+        .verification
+        .operator_gates
+        .iter()
+        .find(|gate| gate.command == "verify")
+        .map(|gate| gate.compile_free)
+        .unwrap_or(false);
+    let replay_gate = outcome
+        .verification
+        .operator_gates
+        .iter()
+        .find(|gate| gate.command == "replay")
+        .map(|gate| gate.compile_free)
+        .unwrap_or(false);
+    verify_gate && replay_gate
 }
 
 fn artifact_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {

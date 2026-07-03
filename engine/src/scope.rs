@@ -4,6 +4,7 @@ use sock_core::BackendFamily;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildReadiness {
+    EarlyServe,
     Correctness,
     Performance,
 }

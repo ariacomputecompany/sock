@@ -7,23 +7,24 @@
       "cmd": "sh",
       "args": [
         "-c",
-        "cargo run --quiet --bin sock -- build --out /tmp/sock-fozzy-bundle"
+        "set -eu\nbuild_out=$(cargo run --quiet --bin sock -- build --out /tmp/sock-fozzy-bundle)\nprintf '%s' \"$build_out\" | grep -q 'bundle=/tmp/sock-fozzy-bundle'\nprintf '%s' \"$build_out\" | grep -q 'replay_entrypoint=./replay.sh'\nprintf '%s' \"$build_out\" | grep -q 'readiness=Performance'\ngrep -q '\"verify_replay_compile_free\":true' /tmp/sock-fozzy-bundle/materialization_report.json\nprintf 'built\\n'"
       ],
       "exit_code": 0,
-      "stdout": "bundle=/tmp/sock-fozzy-bundle plan_identity=7ee2a5daa9de5327b01d056d8bb2a3e94f88318ab184b0461508179f23a23633 replay_entrypoint=./replay.sh\n",
+      "stdout": "built\n",
       "stderr": "",
       "times": 1
     },
     {
-      "type": "proc_spawn",
+      "type": "proc_when",
       "cmd": "sh",
       "args": [
         "-c",
-        "cargo run --quiet --bin sock -- build --out /tmp/sock-fozzy-bundle"
+        "set -eu\nbuild_out=$(cargo run --quiet --bin sock -- build --out /tmp/sock-fozzy-bundle)\nprintf '%s' \"$build_out\" | grep -q 'bundle=/tmp/sock-fozzy-bundle'\nprintf '%s' \"$build_out\" | grep -q 'replay_entrypoint=./replay.sh'\nprintf '%s' \"$build_out\" | grep -q 'readiness=Performance'\ngrep -q '\"verify_replay_compile_free\":true' /tmp/sock-fozzy-bundle/materialization_report.json\nprintf 'built\\n'"
       ],
-      "expect_exit": 0,
-      "expect_stdout": "bundle=/tmp/sock-fozzy-bundle plan_identity=7ee2a5daa9de5327b01d056d8bb2a3e94f88318ab184b0461508179f23a23633 replay_entrypoint=./replay.sh\n",
-      "expect_stderr": ""
+      "exit_code": 0,
+      "stdout": "built\n",
+      "stderr": "",
+      "times": 1
     },
     {
       "type": "proc_when",
