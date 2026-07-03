@@ -6,7 +6,7 @@ mod vllm_adapter;
 mod vllm_entrypoint;
 mod vllm_integration;
 
-pub use executor::{MaterializationError, MaterializationExecutor};
+pub use executor::{MaterializationError, MaterializationExecutor, StorageRoots};
 pub use planner::{PlanError, Planner, PlannerHostSnapshot, PlanningOutcome};
 pub use scope::{BuildReadiness, BuildScope};
 pub use vllm_entrypoint::{

@@ -5,10 +5,11 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use sock_core::{
-    ArtifactAcquisition, ArtifactRequirement, CanonicalError, ClosureExpansionRecord,
-    MaterializationDisposition, MaterializationExecutionReport, MaterializationNode,
-    MaterializationNodeKind, MaterializationNodeRecord, MaterializationSchedulingMode,
-    MaterializationWave, MaterializationWaveRecord, MaterializedArtifactRecord, QueueDiscipline,
+    ArtifactAcquisition, ArtifactClass, ArtifactRequirement, CanonicalError,
+    ClosureExpansionRecord, FanoutStrategy, MaterializationDisposition,
+    MaterializationExecutionReport, MaterializationNode, MaterializationNodeKind,
+    MaterializationNodeRecord, MaterializationSchedulingMode, MaterializationWave,
+    MaterializationWaveRecord, MaterializedArtifactRecord, QueueDiscipline, RankDisposition,
     SchemaVersion, SourceAnchor, WarmupObligation, canonical_hash, canonical_json,
 };
 use thiserror::Error;
@@ -32,6 +33,12 @@ pub enum MaterializationError {
 #[derive(Debug, Default)]
 pub struct MaterializationExecutor;
 
+#[derive(Debug, Clone)]
+pub struct StorageRoots {
+    pub bundle_root: std::path::PathBuf,
+    pub cache_root: std::path::PathBuf,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct MaterializedArtifactDocument {
     schema_version: SchemaVersion,
@@ -40,7 +47,10 @@ struct MaterializedArtifactDocument {
     scope: String,
     class: sock_core::ArtifactClass,
     backend: sock_core::BackendFamily,
+    cache_namespace: String,
+    invalidation_domain: String,
     acquisition: ArtifactAcquisition,
+    rank_disposition: RankDisposition,
     engine_root: String,
     engine_revision: String,
     source_anchors: Vec<SourceAnchor>,
@@ -87,13 +97,15 @@ impl MaterializationExecutor {
         &self,
         outcome: &PlanningOutcome,
         scope: &BuildScope,
-        out_dir: &Path,
+        roots: &StorageRoots,
     ) -> Result<MaterializationExecutionReport, MaterializationError> {
-        let artifact_root = out_dir.join("artifacts");
-        let node_root = out_dir.join("materialization").join("nodes");
-        let wave_root = out_dir.join("materialization").join("waves");
-        let warmup_root = out_dir.join("warmup");
+        let artifact_root = roots.bundle_root.join("artifacts");
+        let cache_root = roots.cache_root.clone();
+        let node_root = roots.bundle_root.join("materialization").join("nodes");
+        let wave_root = roots.bundle_root.join("materialization").join("waves");
+        let warmup_root = roots.bundle_root.join("warmup");
         fs::create_dir_all(&artifact_root)?;
+        fs::create_dir_all(&cache_root)?;
         fs::create_dir_all(&node_root)?;
         fs::create_dir_all(&wave_root)?;
         fs::create_dir_all(&warmup_root)?;
@@ -141,6 +153,7 @@ impl MaterializationExecutor {
                 &requirement_index,
                 &warmup_index,
                 &artifact_root,
+                &cache_root,
                 &node_root,
                 &wave_root,
                 &warmup_root,
@@ -198,6 +211,7 @@ impl MaterializationExecutor {
             schema_version: SchemaVersion::current(),
             plan_identity: outcome.plan.structural_identity.plan_identity.clone(),
             artifact_root: "artifacts".to_owned(),
+            cache_root: roots.cache_root.display().to_string(),
             node_root: "materialization/nodes".to_owned(),
             wave_root: "materialization/waves".to_owned(),
             artifact_count: artifact_records.len() as u32,
@@ -215,7 +229,7 @@ impl MaterializationExecutor {
             waves: wave_records,
         };
         fs::write(
-            out_dir.join("materialization_report.json"),
+            roots.bundle_root.join("materialization_report.json"),
             canonical_json(&report)?.as_bytes(),
         )?;
         Ok(report)
@@ -226,6 +240,7 @@ impl MaterializationExecutor {
         outcome: &PlanningOutcome,
         requirement: &ArtifactRequirement,
         artifact_root: &Path,
+        cache_root: &Path,
     ) -> Result<MaterializedArtifactRecord, MaterializationError> {
         let started = Instant::now();
         let storage_key = canonical_hash(requirement)?.to_string();
@@ -238,9 +253,17 @@ impl MaterializationExecutor {
             })
             .map(|artifact| artifact.identity.clone())
             .expect("closure artifact exists");
+        let cache_namespace = cache_namespace_for_scope(outcome, &requirement.scope);
+        let invalidation_domain = invalidation_domain_for_scope(outcome, &requirement.scope);
         let relative_path = format!("artifacts/{storage_key}/artifact.json");
+        let cache_relative_path = format!("{}/{storage_key}/artifact.json", slug(&cache_namespace));
         let absolute_path = artifact_root.join(&storage_key).join("artifact.json");
+        let cache_path = cache_root
+            .join(slug(&cache_namespace))
+            .join(&storage_key)
+            .join("artifact.json");
         fs::create_dir_all(absolute_path.parent().expect("artifact parent"))?;
+        fs::create_dir_all(cache_path.parent().expect("cache parent"))?;
         let document = MaterializedArtifactDocument {
             schema_version: SchemaVersion::current(),
             storage_key: storage_key.clone(),
@@ -248,7 +271,10 @@ impl MaterializationExecutor {
             scope: requirement.scope.clone(),
             class: requirement.class,
             backend: requirement.backend,
+            cache_namespace: cache_namespace.clone(),
+            invalidation_domain: invalidation_domain.clone(),
             acquisition: requirement.acquisition,
+            rank_disposition: requirement.rank_disposition,
             engine_root: vllm::root().display().to_string(),
             engine_revision: vllm::revision().to_owned(),
             source_anchors: source_anchors_for_scope(outcome, &requirement.scope),
@@ -265,7 +291,40 @@ impl MaterializationExecutor {
         let observed_compile_ms = if is_transfer { 0 } else { elapsed_ms_now };
         let observed_transfer_ms = if is_transfer { elapsed_ms_now } else { 0 };
         let observed_rebuild_ms = observed_compile_ms.saturating_add(observed_transfer_ms);
-        let (disposition, bytes_written, rebuild_ms) = if absolute_path.exists() {
+        let (disposition, cache_bytes_written, rebuild_ms) = if cache_path.exists() {
+            let existing: MaterializedArtifactDocument =
+                serde_json::from_str(&fs::read_to_string(&cache_path)?)?;
+            if same_artifact_document_identity(&existing, &document) {
+                (
+                    MaterializationDisposition::Reused,
+                    0,
+                    existing.observed_rebuild_ms.max(
+                        existing
+                            .observed_compile_ms
+                            .saturating_add(existing.observed_transfer_ms),
+                    ),
+                )
+            } else {
+                evict_invalidated_siblings(
+                    cache_root,
+                    &cache_namespace,
+                    &invalidation_domain,
+                    requirement.class,
+                    &storage_key,
+                )?;
+                let mut document = document.clone();
+                document.observed_compile_ms = observed_compile_ms;
+                document.observed_transfer_ms = observed_transfer_ms;
+                document.observed_rebuild_ms = observed_rebuild_ms;
+                let content = canonical_json(&document)?;
+                fs::write(&cache_path, content.as_bytes())?;
+                (
+                    MaterializationDisposition::Executed,
+                    content.len() as u64,
+                    observed_rebuild_ms,
+                )
+            }
+        } else if absolute_path.exists() {
             let existing: MaterializedArtifactDocument =
                 serde_json::from_str(&fs::read_to_string(&absolute_path)?)?;
             if same_artifact_document_identity(&existing, &document) {
@@ -279,12 +338,19 @@ impl MaterializationExecutor {
                     ),
                 )
             } else {
+                evict_invalidated_siblings(
+                    cache_root,
+                    &cache_namespace,
+                    &invalidation_domain,
+                    requirement.class,
+                    &storage_key,
+                )?;
                 let mut document = document.clone();
                 document.observed_compile_ms = observed_compile_ms;
                 document.observed_transfer_ms = observed_transfer_ms;
                 document.observed_rebuild_ms = observed_rebuild_ms;
                 let content = canonical_json(&document)?;
-                fs::write(&absolute_path, content.as_bytes())?;
+                fs::write(&cache_path, content.as_bytes())?;
                 (
                     MaterializationDisposition::Executed,
                     content.len() as u64,
@@ -292,17 +358,30 @@ impl MaterializationExecutor {
                 )
             }
         } else {
+            evict_invalidated_siblings(
+                cache_root,
+                &cache_namespace,
+                &invalidation_domain,
+                requirement.class,
+                &storage_key,
+            )?;
             let mut document = document.clone();
             document.observed_compile_ms = observed_compile_ms;
             document.observed_transfer_ms = observed_transfer_ms;
             document.observed_rebuild_ms = observed_rebuild_ms;
             let content = canonical_json(&document)?;
-            fs::write(&absolute_path, content.as_bytes())?;
+            fs::write(&cache_path, content.as_bytes())?;
             (
                 MaterializationDisposition::Executed,
                 content.len() as u64,
                 observed_rebuild_ms,
             )
+        };
+        fs::copy(&cache_path, &absolute_path)?;
+        let bundle_bytes_written = if disposition == MaterializationDisposition::Reused {
+            file_size(&absolute_path)?
+        } else {
+            cache_bytes_written.max(file_size(&absolute_path)?)
         };
         Ok(MaterializedArtifactRecord {
             storage_key,
@@ -310,10 +389,15 @@ impl MaterializationExecutor {
             scope: requirement.scope.clone(),
             class: requirement.class,
             backend: requirement.backend,
+            cache_namespace,
+            invalidation_domain,
             acquisition: requirement.acquisition,
+            rank_disposition: requirement.rank_disposition,
+            preferred_fanout_strategy: observed_preferred_strategy(requirement, rebuild_ms),
             disposition,
             relative_path,
-            bytes_written,
+            cache_relative_path,
+            bytes_written: bundle_bytes_written,
             compile_ms: if disposition == MaterializationDisposition::Executed {
                 observed_compile_ms
             } else {
@@ -338,6 +422,7 @@ impl MaterializationExecutor {
         requirement_index: &BTreeMap<String, ArtifactRequirement>,
         warmup_index: &BTreeMap<String, WarmupObligation>,
         artifact_root: &Path,
+        cache_root: &Path,
         node_root: &Path,
         wave_root: &Path,
         warmup_root: &Path,
@@ -379,6 +464,7 @@ impl MaterializationExecutor {
                             requirement_index,
                             warmup_index,
                             artifact_root,
+                            cache_root,
                             node_root,
                             wave_root,
                             warmup_root,
@@ -391,6 +477,7 @@ impl MaterializationExecutor {
                         let requirement_index = requirement_index;
                         let warmup_index = warmup_index;
                         let artifact_root = artifact_root.to_path_buf();
+                        let cache_root = cache_root.to_path_buf();
                         let node_root = node_root.to_path_buf();
                         let wave_root = wave_root.to_path_buf();
                         let warmup_root = warmup_root.to_path_buf();
@@ -401,6 +488,7 @@ impl MaterializationExecutor {
                                 requirement_index,
                                 warmup_index,
                                 &artifact_root,
+                                &cache_root,
                                 &node_root,
                                 &wave_root,
                                 &warmup_root,
@@ -437,6 +525,7 @@ impl MaterializationExecutor {
         requirement_index: &BTreeMap<String, ArtifactRequirement>,
         warmup_index: &BTreeMap<String, WarmupObligation>,
         artifact_root: &Path,
+        cache_root: &Path,
         node_root: &Path,
         wave_root: &Path,
         warmup_root: &Path,
@@ -448,7 +537,8 @@ impl MaterializationExecutor {
                         node: node.name.clone(),
                     }
                 })?;
-                let artifact = self.materialize_artifact(outcome, requirement, artifact_root)?;
+                let artifact =
+                    self.materialize_artifact(outcome, requirement, artifact_root, cache_root)?;
                 let outputs = vec![artifact.relative_path.clone()];
                 let record = self.write_node_record(
                     node_root,
@@ -672,6 +762,10 @@ fn safe_name(value: &str) -> String {
         .collect()
 }
 
+fn slug(value: &str) -> String {
+    safe_name(value)
+}
+
 fn scheduling_mode(discipline: QueueDiscipline) -> MaterializationSchedulingMode {
     match discipline {
         QueueDiscipline::ParallelPerRank => MaterializationSchedulingMode::Parallel,
@@ -707,6 +801,88 @@ fn same_artifact_document_identity(
         && left.engine_revision == right.engine_revision
         && left.source_anchors == right.source_anchors
         && left.admissibility_summary == right.admissibility_summary
+}
+
+fn cache_namespace_for_scope(outcome: &PlanningOutcome, scope: &str) -> String {
+    outcome
+        .adapter_survey
+        .compile_regions
+        .iter()
+        .find(|region| region.canonical_name == scope)
+        .map(|region| region.cache_namespace.clone())
+        .or_else(|| {
+            outcome
+                .adapter_survey
+                .cache_ownership_surfaces
+                .iter()
+                .find(|surface| {
+                    surface
+                        .artifact_scopes
+                        .iter()
+                        .any(|candidate| candidate == scope)
+                })
+                .map(|surface| surface.name.clone())
+        })
+        .unwrap_or_else(|| "compile-cache".to_owned())
+}
+
+fn invalidation_domain_for_scope(outcome: &PlanningOutcome, scope: &str) -> String {
+    outcome
+        .plan
+        .compile_regions
+        .iter()
+        .find(|region| region.name == scope)
+        .map(|region| region.invalidation_domain.clone())
+        .unwrap_or_else(|| scope.to_owned())
+}
+
+fn observed_preferred_strategy(
+    requirement: &ArtifactRequirement,
+    rebuild_ms: u64,
+) -> FanoutStrategy {
+    match requirement.rank_disposition {
+        RankDisposition::RankLocal => FanoutStrategy::RebuildPerRank,
+        RankDisposition::Shared => {
+            if requirement.expected_transfer_ms.unwrap_or(0) < rebuild_ms {
+                FanoutStrategy::BroadcastFromLeader
+            } else {
+                FanoutStrategy::RebuildPerRank
+            }
+        }
+    }
+}
+
+fn evict_invalidated_siblings(
+    cache_root: &Path,
+    cache_namespace: &str,
+    invalidation_domain: &str,
+    class: ArtifactClass,
+    keep_storage_key: &str,
+) -> Result<(), MaterializationError> {
+    let namespace_root = cache_root.join(slug(cache_namespace));
+    if !namespace_root.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(namespace_root)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        if !entry_path.is_dir() || entry.file_name() == keep_storage_key {
+            continue;
+        }
+        let artifact_path = entry_path.join("artifact.json");
+        if !artifact_path.exists() {
+            continue;
+        }
+        let existing: MaterializedArtifactDocument =
+            serde_json::from_str(&fs::read_to_string(&artifact_path)?)?;
+        if existing.cache_namespace == cache_namespace
+            && existing.invalidation_domain == invalidation_domain
+            && existing.class == class
+        {
+            fs::remove_dir_all(entry_path)?;
+        }
+    }
+    Ok(())
 }
 
 fn elapsed_ms(duration: Duration) -> u64 {

@@ -13,8 +13,8 @@ use sock_core::{
 };
 use sock_engine::{
     BuildReadiness, BuildScope, MaterializationExecutor, PlannerHostSnapshot, PlanningOutcome,
-    build_vllm_entrypoint_document, build_vllm_integration_document, emit_vllm_entrypoints,
-    validate_scoped_vllm_subset,
+    StorageRoots, build_vllm_entrypoint_document, build_vllm_integration_document,
+    emit_vllm_entrypoints, validate_scoped_vllm_subset,
 };
 
 #[derive(Debug, Parser)]
@@ -41,6 +41,8 @@ enum Command {
     Build {
         #[arg(long)]
         out: PathBuf,
+        #[arg(long)]
+        cache_root: Option<PathBuf>,
         #[command(flatten)]
         scope: ScopeArgs,
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
@@ -111,13 +113,23 @@ fn main() -> Result<()> {
             let rewrite_trace = rewrite_trace_for(&outcome);
             emit_explain(&outcome, &diagnostics, &rewrite_trace, format)?;
         }
-        Command::Build { out, scope, format } => {
+        Command::Build {
+            out,
+            cache_root,
+            scope,
+            format,
+        } => {
             let scope = scope.into_scope();
             let outcome = plan_with_scope(&scope)?;
             let bundle = replay_bundle(&outcome);
             let vllm_integration = build_vllm_integration_document(&outcome)?;
             validate_scoped_vllm_subset(&scope, &vllm_integration)?;
-            let materialization = MaterializationExecutor::new().execute(&outcome, &scope, &out)?;
+            let storage = StorageRoots {
+                bundle_root: out.clone(),
+                cache_root: cache_root.unwrap_or_else(|| out.join(".sock-cache")),
+            };
+            let materialization =
+                MaterializationExecutor::new().execute(&outcome, &scope, &storage)?;
             std::fs::write(
                 out.join("vllm_integration.json"),
                 canonical_json(&vllm_integration)?.as_bytes(),

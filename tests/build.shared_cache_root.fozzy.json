@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "build-shared-cache-root",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nfirst_dir=$(mktemp -d)\nsecond_dir=$(mktemp -d)\ncache_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$first_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness >/dev/null\ncargo run --quiet --bin sock -- build --out \"$second_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness >\"$second_dir/stdout.txt\"\ngrep -q 'reused=' \"$second_dir/stdout.txt\"\ngrep -q '\"reused_artifact_count\":' \"$second_dir/materialization_report.json\"\ngrep -q '\"cache_root\":\"' \"$second_dir/materialization_report.json\"\ngrep -q '\"cache_namespace\":\"compile-cache\"' \"$second_dir/materialization_report.json\"\nprintf 'shared-cache-root\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "shared-cache-root\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nfirst_dir=$(mktemp -d)\nsecond_dir=$(mktemp -d)\ncache_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$first_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness >/dev/null\ncargo run --quiet --bin sock -- build --out \"$second_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness >\"$second_dir/stdout.txt\"\ngrep -q 'reused=' \"$second_dir/stdout.txt\"\ngrep -q '\"reused_artifact_count\":' \"$second_dir/materialization_report.json\"\ngrep -q '\"cache_root\":\"' \"$second_dir/materialization_report.json\"\ngrep -q '\"cache_namespace\":\"compile-cache\"' \"$second_dir/materialization_report.json\"\nprintf 'shared-cache-root\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "shared-cache-root\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

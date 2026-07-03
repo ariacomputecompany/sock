@@ -221,6 +221,199 @@ fn repeated_build_reuses_materialized_artifacts() {
 }
 
 #[test]
+fn build_reports_split_cache_ownership_surfaces() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args(["build", "--out"])
+        .arg(dir.path())
+        .assert()
+        .success();
+
+    let materialization: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("materialization_report.json"))
+            .expect("read materialization report"),
+    )
+    .expect("parse materialization report");
+    let cache_namespaces = materialization["artifacts"]
+        .as_array()
+        .expect("artifacts array")
+        .iter()
+        .filter_map(|artifact| artifact["cache_namespace"].as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert!(cache_namespaces.contains("compile-cache"));
+    assert!(cache_namespaces.contains("flashinfer-autotune-cache"));
+    assert!(cache_namespaces.contains("cuda-graph-cache"));
+    assert!(
+        materialization["cache_root"]
+            .as_str()
+            .expect("cache root")
+            .ends_with("/.sock-cache")
+    );
+}
+
+#[test]
+fn shared_cache_root_reuses_artifacts_across_bundle_roots() {
+    let first_dir = tempdir().expect("tempdir");
+    let second_dir = tempdir().expect("tempdir");
+    let cache_dir = tempdir().expect("cache tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            first_dir.path().to_str().expect("utf8 path"),
+            "--cache-root",
+            cache_dir.path().to_str().expect("utf8 path"),
+            "--region",
+            "prefill_attention",
+            "--readiness",
+            "correctness",
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            second_dir.path().to_str().expect("utf8 path"),
+            "--cache-root",
+            cache_dir.path().to_str().expect("utf8 path"),
+            "--region",
+            "prefill_attention",
+            "--readiness",
+            "correctness",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("reused="));
+
+    let materialization: Value = serde_json::from_str(
+        &std::fs::read_to_string(second_dir.path().join("materialization_report.json"))
+            .expect("read materialization report"),
+    )
+    .expect("parse materialization report");
+    assert!(
+        materialization["reused_artifact_count"]
+            .as_u64()
+            .expect("reused artifact count")
+            > 0
+    );
+    for artifact in materialization["artifacts"]
+        .as_array()
+        .expect("artifacts array")
+    {
+        let relative_path = artifact["cache_relative_path"]
+            .as_str()
+            .expect("cache relative path");
+        assert!(cache_dir.path().join(relative_path).exists());
+    }
+}
+
+#[test]
+fn invalidation_evicts_only_affected_cache_closure() {
+    let bundle_dir = tempdir().expect("tempdir");
+    let cache_dir = tempdir().expect("cache tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            bundle_dir.path().to_str().expect("utf8 path"),
+            "--cache-root",
+            cache_dir.path().to_str().expect("utf8 path"),
+            "--region",
+            "prefill_attention",
+            "--readiness",
+            "correctness",
+        ])
+        .assert()
+        .success();
+
+    let materialization: Value = serde_json::from_str(
+        &std::fs::read_to_string(bundle_dir.path().join("materialization_report.json"))
+            .expect("read materialization report"),
+    )
+    .expect("parse materialization report");
+    let artifact = materialization["artifacts"]
+        .as_array()
+        .expect("artifacts array")
+        .iter()
+        .find(|artifact| artifact["scope"] == "prefill_attention")
+        .expect("prefill artifact");
+    let cache_relative_path = artifact["cache_relative_path"]
+        .as_str()
+        .expect("cache relative path");
+    let cache_path = cache_dir.path().join(cache_relative_path);
+    let cache_doc: Value =
+        serde_json::from_str(&std::fs::read_to_string(&cache_path).expect("read cached artifact"))
+            .expect("parse cached artifact");
+    let namespace_dir = cache_path
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("namespace dir")
+        .to_path_buf();
+
+    let mut stale_doc = cache_doc.clone();
+    stale_doc["storage_key"] = Value::String("stale-prefill-sibling".to_owned());
+    stale_doc["manifest_identity"] = Value::String("stale-prefill-sibling".to_owned());
+    let stale_dir = namespace_dir.join("stale-prefill-sibling");
+    std::fs::create_dir_all(&stale_dir).expect("create stale dir");
+    std::fs::write(
+        stale_dir.join("artifact.json"),
+        serde_json::to_vec(&stale_doc).expect("serialize stale doc"),
+    )
+    .expect("write stale doc");
+
+    let mut unrelated_doc = cache_doc.clone();
+    unrelated_doc["storage_key"] = Value::String("unrelated-sibling".to_owned());
+    unrelated_doc["manifest_identity"] = Value::String("unrelated-sibling".to_owned());
+    unrelated_doc["invalidation_domain"] = Value::String("other_domain".to_owned());
+    let unrelated_dir = namespace_dir.join("unrelated-sibling");
+    std::fs::create_dir_all(&unrelated_dir).expect("create unrelated dir");
+    std::fs::write(
+        unrelated_dir.join("artifact.json"),
+        serde_json::to_vec(&unrelated_doc).expect("serialize unrelated doc"),
+    )
+    .expect("write unrelated doc");
+
+    let mut corrupted_primary = cache_doc.clone();
+    corrupted_primary["manifest_identity"] = Value::String("corrupted-primary".to_owned());
+    std::fs::write(
+        &cache_path,
+        serde_json::to_vec(&corrupted_primary).expect("serialize corrupted doc"),
+    )
+    .expect("write corrupted primary");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            bundle_dir.path().to_str().expect("utf8 path"),
+            "--cache-root",
+            cache_dir.path().to_str().expect("utf8 path"),
+            "--region",
+            "prefill_attention",
+            "--readiness",
+            "correctness",
+        ])
+        .assert()
+        .success();
+
+    assert!(!stale_dir.exists(), "stale sibling should be evicted");
+    assert!(
+        unrelated_dir.exists(),
+        "unrelated invalidation domain should remain"
+    );
+}
+
+#[test]
 fn scoped_prefill_build_emits_minimal_closure() {
     let dir = tempdir().expect("tempdir");
 

@@ -27,6 +27,7 @@ In practice, that means:
 - if you only need a prefill path, sock builds the prefill closure
 - if a requested subset seam is semantically real in vendored `vLLM`, sock builds only that closure
 - if a requested subset seam actually depends on broader worker startup, sock fails closed instead of pretending it is standalone
+- if multiple bundle outputs share a cache root, sock reuses only admissible artifacts across them instead of treating each output directory as its own isolated cache universe
 - if a distributed startup needs leader/follower artifact fanout, sock plans and executes that explicitly
 - if an artifact is already valid for reuse, sock proves that and skips rebuilding it
 - if a requested scope would still leak runtime JIT, sock surfaces that as a bounded contract instead of hiding it
@@ -122,6 +123,7 @@ Examples:
 - backend autotune caches can be treated as first-class artifacts instead of hidden side effects
 - CUDA graph captures can be handled as topology-scoped rank-local outputs
 - leader/follower artifact fanout can be chosen explicitly instead of emerging accidentally at runtime
+- invalidation evicts only stale siblings in the affected cache namespace and invalidation domain instead of blowing away unrelated artifact closures
 
 ## vLLM integration
 
