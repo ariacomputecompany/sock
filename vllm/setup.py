@@ -22,6 +22,7 @@ from setuptools.command.build_ext import build_ext
 from setuptools_rust.build import build_rust
 from setuptools_scm import get_version
 from torch.utils.cpp_extension import CUDA_HOME, ROCM_HOME
+from dataclasses import dataclass, asdict
 
 
 def load_module_from_path(module_name, path):
@@ -71,6 +72,16 @@ _EXTERNAL_DEPENDENCY_TARGETS = {
     "_vllm_fa4_cutedsl_C",
     "fmha_sm100",
 }
+
+
+@dataclass(frozen=True)
+class BuildConcurrencyPlan:
+    num_jobs: int
+    nvcc_threads: int | None
+    build_tool: str
+    generator_args: tuple[str, ...]
+    cmake_parallel_args: tuple[str, ...]
+    compiler_launcher: str | None
 
 
 def should_require_rust_frontend() -> bool:
@@ -249,15 +260,41 @@ def build_external_dependency_manifest_path(fetchcontent_base_dir: str) -> Path:
     return Path(fetchcontent_base_dir) / "vllm-external-dependencies.json"
 
 
+def build_report_path(build_temp: str) -> Path:
+    return Path(build_temp) / "vllm-build-report.json"
+
+
+def _load_existing_build_report(build_temp: str) -> dict:
+    report_path = build_report_path(build_temp)
+    if not report_path.exists():
+        return {}
+    try:
+        return json.loads(report_path.read_text())
+    except Exception:
+        return {}
+
+
+def update_build_report(build_temp: str, **fields) -> None:
+    report = _load_existing_build_report(build_temp)
+    report.update(fields)
+    build_report_path(build_temp).write_text(json.dumps(report, indent=2, sort_keys=True))
+
+
 def write_ninja_build_metrics(
-    build_temp: str, targets: list[str], build_duration_ms: int
+    build_temp: str,
+    targets: list[str],
+    build_duration_ms: int,
+    concurrency_plan: BuildConcurrencyPlan,
 ) -> None:
     ninja_log = Path(build_temp) / ".ninja_log"
     report_path = Path(build_temp) / "vllm-build-metrics.json"
     report = {
         "build_profile": BUILD_PROFILE.profile,
         "selected_targets": targets,
-        "build_duration_ms": build_duration_ms,
+        "phase_durations_ms": {
+            "build": build_duration_ms,
+        },
+        "parallelism": asdict(concurrency_plan),
         "targets": [],
         "external_dependencies": [],
         "ninja_log_present": ninja_log.exists(),
@@ -320,6 +357,7 @@ class CMakeExtension(Extension):
 class cmake_build_ext(build_ext):
     # A dict of extension directories that have been configured.
     did_config: dict[str, bool] = {}
+    concurrency_plan: BuildConcurrencyPlan | None = None
 
     #
     # Determine number of compilation jobs and optionally nvcc compile threads.
@@ -363,6 +401,36 @@ class cmake_build_ext(build_ext):
 
         return num_jobs, nvcc_threads
 
+    def build_concurrency_plan(self) -> BuildConcurrencyPlan:
+        if self.concurrency_plan is not None:
+            return self.concurrency_plan
+
+        num_jobs, nvcc_threads = self.compute_num_jobs()
+        if is_ninja_available():
+            build_tool = "ninja"
+            generator_args = ("-G", "Ninja")
+            cmake_parallel_args = ("--parallel", str(num_jobs))
+        else:
+            build_tool = "cmake-default"
+            generator_args = ()
+            cmake_parallel_args = ("--parallel", str(num_jobs))
+
+        compiler_launcher = None
+        if is_sccache_available():
+            compiler_launcher = "sccache"
+        elif is_ccache_available():
+            compiler_launcher = "ccache"
+
+        self.concurrency_plan = BuildConcurrencyPlan(
+            num_jobs=num_jobs,
+            nvcc_threads=nvcc_threads,
+            build_tool=build_tool,
+            generator_args=generator_args,
+            cmake_parallel_args=cmake_parallel_args,
+            compiler_launcher=compiler_launcher,
+        )
+        return self.concurrency_plan
+
     #
     # Perform cmake configuration for a single extension.
     #
@@ -405,14 +473,15 @@ class cmake_build_ext(build_ext):
         if verbose:
             cmake_args += ["-DCMAKE_VERBOSE_MAKEFILE=ON"]
 
-        if is_sccache_available():
+        concurrency_plan = self.build_concurrency_plan()
+        if concurrency_plan.compiler_launcher == "sccache":
             cmake_args += [
                 "-DCMAKE_C_COMPILER_LAUNCHER=sccache",
                 "-DCMAKE_CXX_COMPILER_LAUNCHER=sccache",
                 "-DCMAKE_CUDA_COMPILER_LAUNCHER=sccache",
                 "-DCMAKE_HIP_COMPILER_LAUNCHER=sccache",
             ]
-        elif is_ccache_available():
+        elif concurrency_plan.compiler_launcher == "ccache":
             cmake_args += [
                 "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
                 "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
@@ -463,16 +532,18 @@ class cmake_build_ext(build_ext):
         #
         # Setup parallelism and build tool
         #
-        num_jobs, nvcc_threads = self.compute_num_jobs()
+        num_jobs = concurrency_plan.num_jobs
+        nvcc_threads = concurrency_plan.nvcc_threads
 
         if nvcc_threads:
             cmake_args += ["-DNVCC_THREADS={}".format(nvcc_threads)]
 
-        if is_ninja_available():
-            build_tool = ["-G", "Ninja"]
+        if concurrency_plan.build_tool == "ninja":
+            build_tool = list(concurrency_plan.generator_args)
             cmake_args += [
                 "-DCMAKE_JOB_POOL_COMPILE:STRING=compile",
-                "-DCMAKE_JOB_POOLS:STRING=compile={}".format(num_jobs),
+                "-DCMAKE_JOB_POOL_LINK:STRING=link",
+                "-DCMAKE_JOB_POOLS:STRING=compile={};link=1".format(num_jobs),
             ]
         else:
             # Default build tool to whatever cmake picks.
@@ -487,9 +558,40 @@ class cmake_build_ext(build_ext):
         if other_cmake_args:
             cmake_args += other_cmake_args.split()
 
+        configure_started = time.monotonic()
         subprocess.check_call(
             ["cmake", ext.cmake_lists_dir, *build_tool, *cmake_args],
             cwd=self.build_temp,
+        )
+        update_build_report(
+            self.build_temp,
+            build_profile=BUILD_PROFILE.profile,
+            build_tool=concurrency_plan.build_tool,
+            parallelism=asdict(concurrency_plan),
+            explain={
+                "configure_parallelism": {
+                    "generator": concurrency_plan.build_tool,
+                    "job_pools": (
+                        {"compile": num_jobs, "link": 1}
+                        if concurrency_plan.build_tool == "ninja"
+                        else {"compile": num_jobs}
+                    ),
+                },
+                "compile_parallelism": {
+                    "cmake_parallel_args": list(concurrency_plan.cmake_parallel_args),
+                    "num_jobs": num_jobs,
+                    "nvcc_threads": nvcc_threads,
+                },
+                "packaging_parallelism": {
+                    "install_components_are_serial": True,
+                },
+            },
+            phase_durations_ms={
+                **_load_existing_build_report(self.build_temp).get(
+                    "phase_durations_ms", {}
+                ),
+                "configure": int((time.monotonic() - configure_started) * 1000),
+            },
         )
 
     def build_extensions(self) -> None:
@@ -504,6 +606,7 @@ class cmake_build_ext(build_ext):
             os.makedirs(self.build_temp)
 
         targets = []
+        install_components = []
 
         def target_name(s: str) -> str:
             return s.removeprefix("vllm.").removeprefix("vllm_flash_attn.")
@@ -511,7 +614,9 @@ class cmake_build_ext(build_ext):
         # Build all the extensions
         for ext in self.extensions:
             self.configure(ext)
-            targets.append(target_name(ext.name))
+            component = target_name(ext.name)
+            targets.append(component)
+            install_components.append(component)
 
         logger.info(
             "Selected native extension targets for profile %s: %s",
@@ -519,12 +624,12 @@ class cmake_build_ext(build_ext):
             ",".join(targets) or "<none>",
         )
 
-        num_jobs, _ = self.compute_num_jobs()
+        concurrency_plan = self.build_concurrency_plan()
 
         build_args = [
             "--build",
             ".",
-            f"-j={num_jobs}",
+            *concurrency_plan.cmake_parallel_args,
             *[f"--target={name}" for name in targets],
         ]
 
@@ -534,9 +639,11 @@ class cmake_build_ext(build_ext):
             self.build_temp,
             targets,
             int((time.monotonic() - build_started) * 1000),
+            concurrency_plan,
         )
 
         # Install the libraries
+        install_started = time.monotonic()
         for ext in self.extensions:
             # Install the extension into the proper location
             outdir = Path(self.get_ext_fullpath(ext.name)).parent.absolute()
@@ -562,6 +669,25 @@ class cmake_build_ext(build_ext):
                 target_name(ext.name),
             ]
             subprocess.check_call(install_args, cwd=self.build_temp)
+
+        report = _load_existing_build_report(self.build_temp)
+        phase_durations = dict(report.get("phase_durations_ms", {}))
+        phase_durations["build"] = int((time.monotonic() - build_started) * 1000)
+        phase_durations["packaging"] = int((time.monotonic() - install_started) * 1000)
+        update_build_report(
+            self.build_temp,
+            build_profile=BUILD_PROFILE.profile,
+            selected_targets=targets,
+            install_components=sorted(set(install_components)),
+            phase_durations_ms=phase_durations,
+            explain={
+                **report.get("explain", {}),
+                "packaging_parallelism": {
+                    "install_components_are_serial": True,
+                    "install_component_count": len(sorted(set(install_components))),
+                },
+            },
+        )
 
     def run(self):
         # First, run the standard build_ext command to compile the extensions
