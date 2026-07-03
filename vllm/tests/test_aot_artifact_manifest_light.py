@@ -421,6 +421,11 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                 "code_hash": None,
                 "compiler_hash": "compiler-hash",
             },
+            "no_new_compile_expectation": {
+                "schema_version": 1,
+                "expected_new_compiled_artifacts": 0,
+                "proof_mode": "standalone_aot_artifact_reuse",
+            },
             "backend_identity": {
                 "backend_class": "SimpleNamespace",
                 "prefix": None,
@@ -598,6 +603,11 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             "config_hash": "cfg-hash",
             "code_hash": None,
             "compiler_hash": "compiler-hash",
+        },
+        "no_new_compile_expectation": {
+            "schema_version": 1,
+            "expected_new_compiled_artifacts": 0,
+            "proof_mode": "standalone_aot_artifact_reuse",
         },
         "backend_identity": {
             "backend_class": "SimpleNamespace",
@@ -901,6 +911,11 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
             "code_hash": "code-from-file",
             "compiler_hash": "compiler-from-file",
         },
+        "no_new_compile_expectation": {
+            "schema_version": 1,
+            "expected_new_compiled_artifacts": 0,
+            "proof_mode": "standalone_aot_artifact_reuse",
+        },
         "backend_identity": {
             "backend_class": "SimpleNamespace",
             "prefix": "unit-prefix",
@@ -1055,3 +1070,57 @@ def test_compile_artifact_bundle_passthrough_without_sidecar() -> None:
 
     assert caching.pack_serialized_compile_artifact_bundle(payload, None) == payload
     assert caching.unpack_serialized_compile_artifact_bundle(payload) == (None, payload)
+
+
+def test_no_new_compile_verification_tracks_counter_deltas() -> None:
+    caching, _ = _load_caching_module()
+
+    verification = caching.verify_no_new_compile(
+        {
+            "schema_version": 1,
+            "expected_new_compiled_artifacts": 0,
+            "proof_mode": "standalone_aot_artifact_reuse",
+        },
+        compiled_artifacts_saved_before=10,
+        compiled_artifacts_saved_after=10,
+        compiled_artifacts_loaded_before=4,
+        compiled_artifacts_loaded_after=7,
+        load_report={
+            "schema_version": 1,
+            "load_path": "fresh_deserialize",
+            "loaded_artifact_count": 3,
+            "deserialization_wall_time_ms": 1.0,
+        },
+    )
+    assert verification == {
+        "schema_version": 1,
+        "ok": True,
+        "expected_new_compiled_artifacts": 0,
+        "actual_new_compiled_artifacts": 0,
+        "actual_loaded_artifacts": 3,
+        "reasons": [],
+    }
+
+    drifted = caching.verify_no_new_compile(
+        {
+            "schema_version": 1,
+            "expected_new_compiled_artifacts": 0,
+            "proof_mode": "standalone_aot_artifact_reuse",
+        },
+        compiled_artifacts_saved_before=10,
+        compiled_artifacts_saved_after=12,
+        compiled_artifacts_loaded_before=4,
+        compiled_artifacts_loaded_after=5,
+        load_report=None,
+    )
+    assert drifted == {
+        "schema_version": 1,
+        "ok": False,
+        "expected_new_compiled_artifacts": 0,
+        "actual_new_compiled_artifacts": 2,
+        "actual_loaded_artifacts": 1,
+        "reasons": [
+            "unexpected_new_compiled_artifacts",
+            "load_report_missing",
+        ],
+    }

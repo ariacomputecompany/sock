@@ -75,6 +75,14 @@ def build_standalone_artifact_sidecar(
     }
 
 
+def build_no_new_compile_expectation() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "expected_new_compiled_artifacts": 0,
+        "proof_mode": "standalone_aot_artifact_reuse",
+    }
+
+
 def pack_serialized_compile_artifact_bundle(
     payload: bytes,
     sidecar: dict[str, object] | None,
@@ -687,6 +695,12 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                     )
 
             with functorch_ctx:
+                compiled_artifacts_saved_before = (
+                    compilation_counter.num_compiled_artifacts_saved
+                )
+                compiled_artifacts_loaded_before = (
+                    compilation_counter.num_compiled_artifacts_loaded
+                )
                 fn = reconstruct_serializable_fn_from_mega_artifact(
                     state=state,
                     standalone_compile_artifacts=standalone_compile_artifacts,
@@ -695,12 +709,36 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                     returns_tuple_map=returns_tuple_map,
                     fake_mode=fake_mode,
                 )
+                load_report = standalone_compile_artifacts.last_load_report()
+                no_new_compile_verification = verify_no_new_compile(
+                    (
+                        standalone_compile_artifact_proof_manifest.get(
+                            "no_new_compile_expectation"
+                        )
+                        if standalone_compile_artifact_proof_manifest is not None
+                        else None
+                    ),
+                    compiled_artifacts_saved_before=compiled_artifacts_saved_before,
+                    compiled_artifacts_saved_after=(
+                        compilation_counter.num_compiled_artifacts_saved
+                    ),
+                    compiled_artifacts_loaded_before=compiled_artifacts_loaded_before,
+                    compiled_artifacts_loaded_after=(
+                        compilation_counter.num_compiled_artifacts_loaded
+                    ),
+                    load_report=load_report,
+                )
 
             logger.info(
                 "reconstructed serializable fn from standalone compile "
-                "artifacts. num_artifacts=%d num_submods=%d",
+                "artifacts. num_artifacts=%d num_submods=%d no_new_compile=%s",
                 num_artifacts,
                 num_submods,
+                json.dumps(
+                    no_new_compile_verification,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
             )
 
             return fn
@@ -1095,6 +1133,7 @@ def build_standalone_artifact_proof_manifest(
     return {
         "schema_version": 1,
         "compile_hashes": compile_hashes,
+        "no_new_compile_expectation": build_no_new_compile_expectation(),
         "backend_identity": {
             "backend_class": type(vllm_backend).__name__,
             "prefix": getattr(vllm_backend, "prefix", None),
@@ -1141,6 +1180,50 @@ def explain_compatibility_drift(
         "ok": not mismatches,
         "reasons": reasons,
         "mismatches": mismatches,
+    }
+
+
+def verify_no_new_compile(
+    expectation: dict[str, object] | None,
+    *,
+    compiled_artifacts_saved_before: int,
+    compiled_artifacts_saved_after: int,
+    compiled_artifacts_loaded_before: int,
+    compiled_artifacts_loaded_after: int,
+    load_report: dict[str, object] | None,
+) -> dict[str, object]:
+    if expectation is None:
+        return {
+            "schema_version": 1,
+            "ok": False,
+            "expected_new_compiled_artifacts": None,
+            "actual_new_compiled_artifacts": None,
+            "actual_loaded_artifacts": None,
+            "reasons": ["no_new_compile_expectation_missing"],
+        }
+
+    expected_new_compiled_artifacts = int(
+        expectation.get("expected_new_compiled_artifacts", 0)
+    )
+    actual_new_compiled_artifacts = (
+        compiled_artifacts_saved_after - compiled_artifacts_saved_before
+    )
+    actual_loaded_artifacts = (
+        compiled_artifacts_loaded_after - compiled_artifacts_loaded_before
+    )
+    reasons = []
+    if actual_new_compiled_artifacts != expected_new_compiled_artifacts:
+        reasons.append("unexpected_new_compiled_artifacts")
+    if load_report is None:
+        reasons.append("load_report_missing")
+
+    return {
+        "schema_version": 1,
+        "ok": not reasons,
+        "expected_new_compiled_artifacts": expected_new_compiled_artifacts,
+        "actual_new_compiled_artifacts": actual_new_compiled_artifacts,
+        "actual_loaded_artifacts": actual_loaded_artifacts,
+        "reasons": reasons,
     }
 
 
