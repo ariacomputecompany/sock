@@ -24,9 +24,43 @@ fn explain_includes_trace_and_diagnostics() {
         .arg("explain")
         .assert()
         .success()
+        .stdout(predicate::str::contains("request contract:"))
+        .stdout(predicate::str::contains("expanded closure:"))
+        .stdout(predicate::str::contains("estimated work:"))
+        .stdout(predicate::str::contains("vllm native contract:"))
         .stdout(predicate::str::contains("rewrite trace:"))
         .stdout(predicate::str::contains("diagnostics:"))
         .stdout(predicate::str::contains("verified_bundle"));
+}
+
+#[test]
+fn prepare_prefill_path_uses_common_intent_contract() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "prepare",
+            "prefill-path",
+            "--out",
+            dir.path().to_str().expect("utf8 path"),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("readiness=Correctness"))
+        .stdout(predicate::str::contains("intent=prefill_path"))
+        .stdout(predicate::str::contains("requested selectors:"))
+        .stdout(predicate::str::contains("regions=prefill_attention"));
+
+    let plan: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("buildplan.json")).expect("read buildplan"),
+    )
+    .expect("parse buildplan");
+    let compile_regions = plan["compile_regions"]
+        .as_array()
+        .expect("compile regions array");
+    assert_eq!(compile_regions.len(), 1);
+    assert_eq!(compile_regions[0]["name"], "prefill_attention");
 }
 
 #[test]

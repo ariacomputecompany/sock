@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -8,12 +9,12 @@ use sock_app::{
 };
 use sock_core::{
     BackendFamily, DiagnosticsDocument, MaterializationExecutionReport, ReplayBundle,
-    ReplayBundleMetadata, RewriteTraceDocument, canonical_json, render_diagnostics, render_explain,
-    render_plan_summary, render_verification_report,
+    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, canonical_json,
+    render_diagnostics, render_explain, render_plan_summary, render_verification_report,
 };
 use sock_engine::{
-    BuildReadiness, BuildScope, MaterializationExecutor, PlannerHostSnapshot, PlanningOutcome,
-    StorageRoots, build_vllm_entrypoint_document, build_vllm_integration_document,
+    BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, PlannerHostSnapshot,
+    PlanningOutcome, StorageRoots, build_vllm_entrypoint_document, build_vllm_integration_document,
     emit_vllm_entrypoints, validate_scoped_vllm_subset,
 };
 
@@ -45,6 +46,16 @@ enum Command {
         cache_root: Option<PathBuf>,
         #[command(flatten)]
         scope: ScopeArgs,
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
+    Prepare {
+        #[arg(value_enum)]
+        intent: PrepareIntentArg,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        cache_root: Option<PathBuf>,
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
         format: OutputMode,
     },
@@ -80,6 +91,8 @@ struct ScopeArgs {
     artifact_scopes: Vec<String>,
     #[arg(long = "backend-family", value_enum)]
     backend_families: Vec<BackendFamilyArg>,
+    #[arg(long = "topology-scope", value_enum)]
+    topology_scopes: Vec<TopologyScopeArg>,
     #[arg(long = "cache-namespace")]
     cache_namespaces: Vec<String>,
     #[arg(long = "warmup-scope")]
@@ -103,16 +116,46 @@ enum BackendFamilyArg {
     CudaGraphs,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum TopologyScopeArg {
+    Shared,
+    RankLocal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum PrepareIntentArg {
+    PrefillPath,
+    DecodePath,
+    DistributedFlashinferStartup,
+    ReplaySafeClosure,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Plan { scope, format } => emit_plan(&plan(&scope.into_scope())?, format)?,
+        Command::Plan { scope, format } => {
+            let scope = scope.into_scope();
+            emit_plan(
+                &scope,
+                request_label_for_scope(&scope),
+                &plan(&scope)?,
+                format,
+            )?
+        }
         Command::Explain { scope, format } => {
-            let outcome = plan_with_scope(&scope.into_scope())?;
+            let scope = scope.into_scope();
+            let outcome = plan_with_scope(&scope)?;
             let diagnostics = diagnostics_for(&outcome);
             let rewrite_trace = rewrite_trace_for(&outcome);
-            emit_explain(&outcome, &diagnostics, &rewrite_trace, format)?;
+            emit_explain(
+                &scope,
+                request_label_for_scope(&scope),
+                &outcome,
+                &diagnostics,
+                &rewrite_trace,
+                format,
+            )?;
         }
         Command::Build {
             out,
@@ -138,7 +181,49 @@ fn main() -> Result<()> {
             let vllm_entrypoints = build_vllm_entrypoint_document(&outcome, &vllm_integration)?;
             emit_vllm_entrypoints(&out, &vllm_entrypoints)?;
             let metadata = bundle.write_to(&out)?;
-            emit_build(&out, &bundle, &metadata, &materialization, format)?;
+            emit_build(
+                &scope,
+                request_label_for_scope(&scope),
+                &out,
+                &bundle,
+                &metadata,
+                &materialization,
+                format,
+            )?;
+        }
+        Command::Prepare {
+            intent,
+            out,
+            cache_root,
+            format,
+        } => {
+            let scope = intent_scope(intent);
+            let outcome = plan_with_scope(&scope)?;
+            let bundle = replay_bundle(&outcome);
+            let vllm_integration = build_vllm_integration_document(&outcome)?;
+            validate_scoped_vllm_subset(&scope, &vllm_integration)?;
+            let storage = StorageRoots {
+                bundle_root: out.clone(),
+                cache_root: cache_root.unwrap_or_else(|| out.join(".sock-cache")),
+            };
+            let materialization =
+                MaterializationExecutor::new().execute(&outcome, &scope, &storage)?;
+            std::fs::write(
+                out.join("vllm_integration.json"),
+                canonical_json(&vllm_integration)?.as_bytes(),
+            )?;
+            let vllm_entrypoints = build_vllm_entrypoint_document(&outcome, &vllm_integration)?;
+            emit_vllm_entrypoints(&out, &vllm_entrypoints)?;
+            let metadata = bundle.write_to(&out)?;
+            emit_build(
+                &scope,
+                Some(intent_label(intent)),
+                &out,
+                &bundle,
+                &metadata,
+                &materialization,
+                format,
+            )?;
         }
         Command::Verify { bundle, format } => {
             emit_verify(&ReplayBundle::load_from(&bundle)?, format)?;
@@ -167,6 +252,14 @@ impl ScopeArgs {
                     BackendFamilyArg::CudaGraphs => BackendFamily::CudaGraphs,
                 })
                 .collect(),
+            topology_scopes: self
+                .topology_scopes
+                .into_iter()
+                .map(|scope| match scope {
+                    TopologyScopeArg::Shared => BuildTopologyScope::Shared,
+                    TopologyScopeArg::RankLocal => BuildTopologyScope::RankLocal,
+                })
+                .collect(),
             cache_namespaces: self.cache_namespaces.into_iter().collect(),
             warmup_scopes: self.warmup_scopes.into_iter().collect(),
             readiness: self.readiness.map(|readiness| match readiness {
@@ -175,6 +268,39 @@ impl ScopeArgs {
                 ReadinessArg::Performance => BuildReadiness::Performance,
             }),
         }
+    }
+}
+
+fn intent_scope(intent: PrepareIntentArg) -> BuildScope {
+    match intent {
+        PrepareIntentArg::PrefillPath => BuildScope {
+            region_names: ["prefill_attention".to_owned()].into_iter().collect(),
+            readiness: Some(BuildReadiness::Correctness),
+            ..BuildScope::default()
+        },
+        PrepareIntentArg::DecodePath => BuildScope {
+            backend_families: [BackendFamily::CudaGraphs].into_iter().collect(),
+            topology_scopes: [BuildTopologyScope::RankLocal].into_iter().collect(),
+            readiness: Some(BuildReadiness::Performance),
+            ..BuildScope::default()
+        },
+        PrepareIntentArg::DistributedFlashinferStartup => BuildScope {
+            readiness: Some(BuildReadiness::Correctness),
+            ..BuildScope::default()
+        },
+        PrepareIntentArg::ReplaySafeClosure => BuildScope {
+            readiness: Some(BuildReadiness::Performance),
+            ..BuildScope::default()
+        },
+    }
+}
+
+fn intent_label(intent: PrepareIntentArg) -> &'static str {
+    match intent {
+        PrepareIntentArg::PrefillPath => "prefill_path",
+        PrepareIntentArg::DecodePath => "decode_path",
+        PrepareIntentArg::DistributedFlashinferStartup => "distributed_flashinfer_startup",
+        PrepareIntentArg::ReplaySafeClosure => "replay_safe_closure",
     }
 }
 
@@ -190,15 +316,28 @@ fn plan_with_scope(scope: &BuildScope) -> Result<PlanningOutcome> {
     plan(scope)
 }
 
-fn emit_plan(outcome: &PlanningOutcome, format: OutputMode) -> Result<()> {
+fn emit_plan(
+    scope: &BuildScope,
+    request_label: Option<&'static str>,
+    outcome: &PlanningOutcome,
+    format: OutputMode,
+) -> Result<()> {
     match format {
-        OutputMode::Summary => print!("{}", render_plan_summary(&outcome.plan)),
+        OutputMode::Summary => {
+            print!("{}", render_plan_summary(&outcome.plan));
+            print!(
+                "{}",
+                render_request_contract(scope, request_label, &outcome.plan)
+            );
+        }
         OutputMode::Json => println!("{}", canonical_json(&outcome.plan)?),
     }
     Ok(())
 }
 
 fn emit_explain(
+    scope: &BuildScope,
+    request_label: Option<&'static str>,
     outcome: &PlanningOutcome,
     diagnostics: &DiagnosticsDocument,
     rewrite_trace: &RewriteTraceDocument,
@@ -206,9 +345,17 @@ fn emit_explain(
 ) -> Result<()> {
     match format {
         OutputMode::Summary => {
+            print!("{}", render_plan_summary(&outcome.plan));
+            print!(
+                "{}",
+                render_request_contract(scope, request_label, &outcome.plan)
+            );
+            print!("{}", render_vllm_native_contract(outcome)?);
             print!(
                 "{}",
                 render_explain(&outcome.plan, diagnostics, rewrite_trace)
+                    .strip_prefix(&render_plan_summary(&outcome.plan))
+                    .unwrap_or("")
             );
         }
         OutputMode::Json => {
@@ -227,6 +374,8 @@ fn emit_explain(
 }
 
 fn emit_build(
+    scope: &BuildScope,
+    request_label: Option<&'static str>,
     out: &Path,
     bundle: &ReplayBundle,
     metadata: &ReplayBundleMetadata,
@@ -245,6 +394,10 @@ fn emit_build(
                 materialization.total_bytes_written,
                 materialization.total_rebuild_ms,
                 materialization.readiness.achieved_readiness
+            );
+            print!(
+                "{}",
+                render_request_contract(scope, request_label, &bundle.build_plan)
             );
         }
         OutputMode::Json => {
@@ -329,4 +482,171 @@ fn emit_doctor(host: &PlannerHostSnapshot, format: OutputMode) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn request_label_for_scope(scope: &BuildScope) -> Option<&'static str> {
+    if scope.is_unscoped() {
+        None
+    } else {
+        Some("custom_scope")
+    }
+}
+
+fn render_request_contract(
+    scope: &BuildScope,
+    request_label: Option<&'static str>,
+    plan: &ResolvedBuildPlan,
+) -> String {
+    let mut out = String::new();
+    out.push_str("request contract:\n");
+    if let Some(label) = request_label {
+        out.push_str(&format!("  - intent={label}\n"));
+    }
+    out.push_str(&format!(
+        "  - requested selectors: regions={} artifact_scopes={} backends={} topology={} caches={} warmups={} readiness={}\n",
+        list_or_all(scope.region_names.iter().map(String::as_str)),
+        list_or_all(scope.artifact_scopes.iter().map(String::as_str)),
+        list_or_all(scope.backend_families.iter().map(|family| family.as_str())),
+        list_or_all(scope.topology_scopes.iter().map(|scope| match scope {
+            BuildTopologyScope::Shared => "shared",
+            BuildTopologyScope::RankLocal => "rank_local",
+        })),
+        list_or_all(scope.cache_namespaces.iter().map(String::as_str)),
+        list_or_all(scope.warmup_scopes.iter().map(String::as_str)),
+        match scope.readiness {
+            Some(BuildReadiness::EarlyServe) => "early_serve",
+            Some(BuildReadiness::Correctness) => "correctness",
+            Some(BuildReadiness::Performance) => "performance",
+            None => "default",
+        }
+    ));
+
+    let expanded_regions = plan
+        .compile_regions
+        .iter()
+        .map(|region| region.name.as_str())
+        .collect::<Vec<_>>();
+    let expanded_artifacts = plan
+        .artifact_requirements
+        .iter()
+        .map(|artifact| format!("{}:{}", artifact.class.as_str(), artifact.scope))
+        .collect::<Vec<_>>();
+    let expanded_warmups = plan
+        .warmup_obligations
+        .iter()
+        .map(|obligation| obligation.proof.proof_id.clone())
+        .collect::<Vec<_>>();
+    let expanded_topology = plan
+        .artifact_requirements
+        .iter()
+        .map(|artifact| match artifact.rank_disposition {
+            sock_core::RankDisposition::Shared => "shared",
+            sock_core::RankDisposition::RankLocal => "rank_local",
+        })
+        .collect::<BTreeSet<_>>();
+
+    out.push_str(&format!(
+        "  - expanded closure: regions={} artifacts={} warmups={} topology={}\n",
+        list_or_all(expanded_regions.into_iter()),
+        list_or_all(expanded_artifacts.iter().map(String::as_str)),
+        list_or_all(expanded_warmups.iter().map(String::as_str)),
+        list_or_all(expanded_topology.into_iter()),
+    ));
+
+    let compile_ms = plan
+        .materialization_graph
+        .waves
+        .iter()
+        .filter_map(|wave| wave.estimate.expected_compile_ms)
+        .sum::<u64>();
+    let transfer_ms = plan
+        .materialization_graph
+        .waves
+        .iter()
+        .filter_map(|wave| wave.estimate.expected_transfer_ms)
+        .sum::<u64>();
+    let bytes = plan
+        .materialization_graph
+        .waves
+        .iter()
+        .filter_map(|wave| wave.estimate.expected_bytes_written)
+        .sum::<u64>();
+    out.push_str(&format!(
+        "  - estimated work: waves={} compile_ms={} transfer_ms={} bytes_written={}\n",
+        plan.materialization_graph.waves.len(),
+        compile_ms,
+        transfer_ms,
+        bytes
+    ));
+
+    let expansion_reasons = plan
+        .artifact_requirements
+        .iter()
+        .map(|artifact| {
+            format!(
+                "{}:{} because {}",
+                artifact.class.as_str(),
+                artifact.scope,
+                artifact
+                    .admissibility
+                    .rationale
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or("the selected scope requires this artifact")
+            )
+        })
+        .chain(plan.warmup_obligations.iter().map(|obligation| {
+            format!(
+                "{} because requested readiness requires {} proof coverage",
+                obligation.proof.proof_id,
+                if obligation.blocking {
+                    "blocking"
+                } else {
+                    "deferred"
+                }
+            )
+        }))
+        .collect::<Vec<_>>();
+    out.push_str("  - pulled in by closure:\n");
+    for reason in expansion_reasons {
+        out.push_str(&format!("    {}\n", reason));
+    }
+    out
+}
+
+fn render_vllm_native_contract(outcome: &PlanningOutcome) -> Result<String> {
+    let integration = build_vllm_integration_document(outcome)?;
+    let preserved_inputs = integration
+        .surfaces
+        .iter()
+        .flat_map(|surface| surface.preserved_inputs.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let preserved_abstractions = integration
+        .surfaces
+        .iter()
+        .flat_map(|surface| surface.preserved_abstractions.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let mut out = String::new();
+    out.push_str("vllm native contract:\n");
+    out.push_str(&format!(
+        "  - preserved inputs: {}\n",
+        list_or_all(preserved_inputs.iter().map(String::as_str))
+    ));
+    out.push_str(&format!(
+        "  - preserved abstractions: {}\n",
+        list_or_all(preserved_abstractions.iter().map(String::as_str))
+    ));
+    Ok(out)
+}
+
+fn list_or_all<'a>(items: impl IntoIterator<Item = &'a str>) -> String {
+    let collected = items
+        .into_iter()
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+    if collected.is_empty() {
+        "all".to_owned()
+    } else {
+        collected.join(",")
+    }
 }

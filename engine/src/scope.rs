@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use sock_core::BackendFamily;
+use sock_core::{BackendFamily, RankDisposition};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildReadiness {
@@ -9,11 +9,18 @@ pub enum BuildReadiness {
     Performance,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BuildTopologyScope {
+    Shared,
+    RankLocal,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BuildScope {
     pub region_names: BTreeSet<String>,
     pub artifact_scopes: BTreeSet<String>,
     pub backend_families: BTreeSet<BackendFamily>,
+    pub topology_scopes: BTreeSet<BuildTopologyScope>,
     pub cache_namespaces: BTreeSet<String>,
     pub warmup_scopes: BTreeSet<String>,
     pub readiness: Option<BuildReadiness>,
@@ -25,6 +32,7 @@ impl BuildScope {
         !self.region_names.is_empty()
             || !self.artifact_scopes.is_empty()
             || !self.backend_families.is_empty()
+            || !self.topology_scopes.is_empty()
             || !self.cache_namespaces.is_empty()
             || !self.warmup_scopes.is_empty()
     }
@@ -51,6 +59,15 @@ impl BuildScope {
     #[must_use]
     pub fn allows_backend_family(&self, family: BackendFamily) -> bool {
         self.backend_families.is_empty() || self.backend_families.contains(&family)
+    }
+
+    #[must_use]
+    pub fn allows_rank_disposition(&self, rank_disposition: RankDisposition) -> bool {
+        self.topology_scopes.is_empty()
+            || self.topology_scopes.contains(&match rank_disposition {
+                RankDisposition::Shared => BuildTopologyScope::Shared,
+                RankDisposition::RankLocal => BuildTopologyScope::RankLocal,
+            })
     }
 
     #[must_use]

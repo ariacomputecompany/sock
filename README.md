@@ -147,6 +147,8 @@ This is what lets sock compile parts of the engine intentionally instead of trea
 
 The CLI surface is:
 
+- `cargo run --bin sock -- prepare prefill-path --out /tmp/sock-bundle`
+- `cargo run --bin sock -- prepare replay-safe-closure --out /tmp/sock-bundle`
 - `cargo run --bin sock -- plan`
 - `cargo run --bin sock -- explain`
 - `cargo run --bin sock -- build --out /tmp/sock-bundle`
@@ -157,7 +159,7 @@ The CLI surface is:
 The workflow is:
 
 1. describe the serving intent
-2. inspect the resolved closure
+2. inspect the requested scope, expanded closure, and estimated work
 3. build the required subset
 4. verify the emitted bundle
 5. replay the result without new compile work

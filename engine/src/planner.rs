@@ -413,6 +413,7 @@ impl Planner {
             .filter(|region| scope.allows_region(&region.canonical_name))
             .filter(|region| scope.allows_cache_namespace(&region.cache_namespace))
             .filter(|region| scope.allows_warmup_scope(&region.warmup_scope))
+            .filter(|region| scope.allows_rank_disposition(region.rank_disposition))
             .filter(|region| {
                 scope.allows_backend_family(resolve_backend_binding(
                     region.backend_binding,
