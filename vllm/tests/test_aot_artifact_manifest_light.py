@@ -383,14 +383,193 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             caching.VllmSerializableFunction.serialize_graph_module = (
                 original_serialize_graph_module
             )
-    state = pickle.loads(serialized)
+    sidecar, payload = caching.unpack_serialized_compile_artifact_bundle(serialized)
+    state = pickle.loads(payload)
 
-    assert state["standalone_compile_artifact_manifest"] == artifacts.manifest_summary()
+    assert sidecar == {
+        "schema_version": 1,
+        "payload_kind": "vllm_standalone_compile_artifact_sidecar",
+        "artifact_manifest": artifacts.manifest_summary(),
+        "store_identity": artifacts.store_identity(),
+        "compatibility": {
+            "schema_version": 1,
+            "hash_algorithm": "sha256",
+            "python_version": ".".join(str(part) for part in sys.version_info[:3]),
+            "torch_version": "2.9.0-light",
+            "mega_aot_enabled": False,
+            "env": {"schema_version": 1},
+            "vllm_config_hash": "cfg-hash",
+        },
+        "reuse_summary": {
+            "schema_version": 1,
+            "cache_hit_reason": "standalone_aot_artifact_manifest_match",
+            "artifact_reuse_mode": "content_addressed_dedup",
+            "entry_count": 2,
+            "unique_artifact_count": 1,
+            "deduped_entry_count": 2,
+            "duplicate_entry_count": 1,
+            "unique_bytes": len(b"payload"),
+            "expanded_entry_bytes": len(b"payload") * 2,
+            "duplicate_bytes_elided": len(b"payload"),
+            "duplicate_artifact_loads_avoided": 1,
+        },
+        "proof_manifest": {
+            "schema_version": 1,
+            "compile_hashes": {
+                "env_policy_hash": "factors",
+                "config_hash": "cfg-hash",
+                "code_hash": None,
+                "compiler_hash": "compiler-hash",
+            },
+            "backend_identity": {
+                "backend_class": "SimpleNamespace",
+                "prefix": None,
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+            "toolchain_identity": {
+                "python_version": ".".join(str(part) for part in sys.version_info[:3]),
+                "torch_version": "2.9.0-light",
+            },
+            "patch_profile": {
+                "schema_version": 1,
+                "torch_version": "2.9.0-light",
+                "fallback_namespace_coverage": {
+                    "schema_version": 1,
+                    "allow_list_proxy_active": True,
+                    "graph_binding_rebound": True,
+                    "namespaces": [
+                        {
+                            "namespace": "vllm",
+                            "prefix": "vllm::",
+                            "registered_op_count": 2,
+                            "registered_ops_digest": "vllm-digest",
+                            "registered_ops_preview": [
+                                "vllm::all_reduce",
+                                "vllm::fused_add_rms_norm",
+                            ],
+                        },
+                        {
+                            "namespace": "vllm_aiter",
+                            "prefix": "vllm_aiter::",
+                            "registered_op_count": 1,
+                            "registered_ops_digest": "aiter-digest",
+                            "registered_ops_preview": [
+                                "vllm_aiter::rocm_aiter_fused_moe",
+                            ],
+                        },
+                    ],
+                },
+                "obsolete_patch_count": 0,
+                "obsolete_patch_ids": [],
+                "compile_surface_widening_count": 0,
+                "compile_surface_widening_patch_ids": [],
+                "patches": [
+                    {
+                        "patch_id": "lightweight-stub",
+                        "category": "correctness_patch",
+                        "eligible": True,
+                        "applied": True,
+                        "detail": "stubbed patch profile",
+                        "obsolete": False,
+                        "obsolete_reason": None,
+                        "compile_surface_effect": "neutral",
+                        "compile_surface_reason": None,
+                    }
+                ],
+            },
+            "fallback_namespace_coverage": {
+                "schema_version": 1,
+                "allow_list_proxy_active": True,
+                "graph_binding_rebound": True,
+                "namespaces": [
+                    {
+                        "namespace": "vllm",
+                        "prefix": "vllm::",
+                        "registered_op_count": 2,
+                        "registered_ops_digest": "vllm-digest",
+                        "registered_ops_preview": [
+                            "vllm::all_reduce",
+                            "vllm::fused_add_rms_norm",
+                        ],
+                    },
+                    {
+                        "namespace": "vllm_aiter",
+                        "prefix": "vllm_aiter::",
+                        "registered_op_count": 1,
+                        "registered_ops_digest": "aiter-digest",
+                        "registered_ops_preview": [
+                            "vllm_aiter::rocm_aiter_fused_moe",
+                        ],
+                    },
+                ],
+            },
+            "fallback_creation_evidence": {
+                "schema_version": 1,
+                "proxy_active": True,
+                "total_hit_count": 3,
+                "total_unique_op_count": 2,
+                "namespaces": [
+                    {
+                        "namespace": "vllm",
+                        "prefix": "vllm::",
+                        "hit_count": 2,
+                        "unique_op_count": 1,
+                        "ops_preview": [
+                            {"op_name": "vllm::all_reduce", "hit_count": 2},
+                        ],
+                    },
+                    {
+                        "namespace": "vllm_aiter",
+                        "prefix": "vllm_aiter::",
+                        "hit_count": 1,
+                        "unique_op_count": 1,
+                        "ops_preview": [
+                            {
+                                "op_name": "vllm_aiter::rocm_aiter_fused_moe",
+                                "hit_count": 1,
+                            },
+                        ],
+                    },
+                ],
+            },
+            "shape_envelope": {
+                "schema_version": 1,
+                "submodule_count": 2,
+                "total_shape_variants": 2,
+                "submodules": [
+                    {
+                        "submodule_name": "block0",
+                        "shape_variants": ["shape0"],
+                        "shape_count": 1,
+                        "symbolic_input_positions": [0],
+                        "returns_tuple": True,
+                    },
+                    {
+                        "submodule_name": "block1",
+                        "shape_variants": ["shape0"],
+                        "shape_count": 1,
+                        "symbolic_input_positions": [],
+                        "returns_tuple": False,
+                    },
+                ],
+            },
+        },
+        "sym_shape_indices_map": {"block0": [0]},
+        "returns_tuple_map": {"block0": True},
+    }
     assert (
-        state["standalone_compile_artifact_store_identity"]
-        == artifacts.store_identity()
+        state["standalone_compile_artifacts"].manifest_summary()
+        == artifacts.manifest_summary()
     )
-    assert state["standalone_compile_artifact_compatibility"] == {
+    assert "standalone_compile_artifact_manifest" not in state
+    assert "standalone_compile_artifact_store_identity" not in state
+    assert "standalone_compile_artifact_compatibility" not in state
+    assert "standalone_compile_artifact_reuse_summary" not in state
+    assert "standalone_compile_artifact_proof_manifest" not in state
+    assert "sym_shape_indices_map" not in state
+    assert "returns_tuple_map" not in state
+    assert sidecar["compatibility"] == {
         "schema_version": 1,
         "hash_algorithm": "sha256",
         "python_version": ".".join(str(part) for part in sys.version_info[:3]),
@@ -399,7 +578,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "env": {"schema_version": 1},
         "vllm_config_hash": "cfg-hash",
     }
-    assert state["standalone_compile_artifact_reuse_summary"] == {
+    assert sidecar["reuse_summary"] == {
         "schema_version": 1,
         "cache_hit_reason": "standalone_aot_artifact_manifest_match",
         "artifact_reuse_mode": "content_addressed_dedup",
@@ -412,7 +591,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "duplicate_bytes_elided": len(b"payload"),
         "duplicate_artifact_loads_avoided": 1,
     }
-    assert state["standalone_compile_artifact_proof_manifest"] == {
+    assert sidecar["proof_manifest"] == {
         "schema_version": 1,
         "compile_hashes": {
             "env_policy_hash": "factors",
@@ -532,30 +711,28 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                 },
             ],
         },
-        "shape_envelope": {
-            "schema_version": 1,
-            "submodule_count": 2,
-            "total_shape_variants": 2,
-            "submodules": [
-                {
-                    "submodule_name": "block0",
-                    "shape_variants": ("shape0",),
-                    "shape_count": 1,
-                    "symbolic_input_positions": (0,),
-                    "returns_tuple": True,
-                },
-                {
-                    "submodule_name": "block1",
-                    "shape_variants": ("shape0",),
-                    "shape_count": 1,
-                    "symbolic_input_positions": (),
-                    "returns_tuple": False,
-                },
-            ],
-        },
-    }
-    assert state["sym_shape_indices_map"] == {"block0": (0,)}
-    assert state["returns_tuple_map"] == {"block0": True}
+            "shape_envelope": {
+                "schema_version": 1,
+                "submodule_count": 2,
+                "total_shape_variants": 2,
+                "submodules": [
+                    {
+                        "submodule_name": "block0",
+                        "shape_variants": ["shape0"],
+                        "shape_count": 1,
+                        "symbolic_input_positions": [0],
+                        "returns_tuple": True,
+                    },
+                    {
+                        "submodule_name": "block1",
+                        "shape_variants": ["shape0"],
+                        "shape_count": 1,
+                        "symbolic_input_positions": [],
+                        "returns_tuple": False,
+                    },
+                ],
+            },
+        }
 
 
 def test_artifact_manifest_verification_detects_mismatch() -> None:
@@ -869,3 +1046,12 @@ def test_load_report_marks_already_loaded_fast_path() -> None:
         "loaded_artifact_count": 1,
         "deserialization_wall_time_ms": 0.0,
     }
+
+
+def test_compile_artifact_bundle_passthrough_without_sidecar() -> None:
+    caching, _ = _load_caching_module()
+
+    payload = b"legacy-pickle-payload"
+
+    assert caching.pack_serialized_compile_artifact_bundle(payload, None) == payload
+    assert caching.unpack_serialized_compile_artifact_bundle(payload) == (None, payload)

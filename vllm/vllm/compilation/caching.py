@@ -38,6 +38,86 @@ assert isinstance(SerializableCallable, type)
 
 logger = init_logger(__name__)
 
+_COMPILE_ARTIFACT_BUNDLE_MAGIC = b"VLLM_AOT_BUNDLE_V1\n"
+_COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES = 8
+
+
+def _json_ready(value: Any) -> Any:
+    if isinstance(value, tuple):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, list):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    return value
+
+
+def build_standalone_artifact_sidecar(
+    *,
+    standalone_compile_artifact_manifest: dict[str, object],
+    standalone_compile_artifact_store_identity: str,
+    standalone_compile_artifact_compatibility: dict[str, object],
+    standalone_compile_artifact_reuse_summary: dict[str, object],
+    standalone_compile_artifact_proof_manifest: dict[str, object],
+    sym_shape_indices_map: dict[str, list[int]] | dict[str, tuple[int, ...]],
+    returns_tuple_map: dict[str, bool],
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "payload_kind": "vllm_standalone_compile_artifact_sidecar",
+        "artifact_manifest": _json_ready(standalone_compile_artifact_manifest),
+        "store_identity": standalone_compile_artifact_store_identity,
+        "compatibility": _json_ready(standalone_compile_artifact_compatibility),
+        "reuse_summary": _json_ready(standalone_compile_artifact_reuse_summary),
+        "proof_manifest": _json_ready(standalone_compile_artifact_proof_manifest),
+        "sym_shape_indices_map": _json_ready(sym_shape_indices_map),
+        "returns_tuple_map": _json_ready(returns_tuple_map),
+    }
+
+
+def pack_serialized_compile_artifact_bundle(
+    payload: bytes,
+    sidecar: dict[str, object] | None,
+) -> bytes:
+    if sidecar is None:
+        return payload
+
+    sidecar_bytes = json.dumps(
+        sidecar,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return b"".join(
+        (
+            _COMPILE_ARTIFACT_BUNDLE_MAGIC,
+            len(sidecar_bytes).to_bytes(
+                _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES,
+                byteorder="big",
+                signed=False,
+            ),
+            sidecar_bytes,
+            payload,
+        )
+    )
+
+
+def unpack_serialized_compile_artifact_bundle(
+    data: bytes,
+) -> tuple[dict[str, object] | None, bytes]:
+    if not data.startswith(_COMPILE_ARTIFACT_BUNDLE_MAGIC):
+        return None, data
+
+    offset = len(_COMPILE_ARTIFACT_BUNDLE_MAGIC)
+    sidecar_size = int.from_bytes(
+        data[offset : offset + _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES],
+        byteorder="big",
+        signed=False,
+    )
+    offset += _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES
+    sidecar_bytes = data[offset : offset + sidecar_size]
+    payload = data[offset + sidecar_size :]
+    return json.loads(sidecar_bytes), payload
+
 
 class StandaloneCompiledArtifacts:
     """Storage for standalone compiled artifacts with content-based deduplication.
@@ -390,6 +470,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         cls, compiled_fn: "VllmSerializableFunction"
     ) -> bytes:
         state = compiled_fn.__dict__.copy()
+        sidecar = None
         state.pop("optimized_call")
         state.pop("shape_env")
         state.pop("vllm_backend", None)
@@ -430,19 +511,19 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             ) = compiled_fn.vllm_backend.collect_standalone_compile_artifacts()
             vllm_config = getattr(compiled_fn.vllm_backend, "vllm_config", None)
             state["standalone_compile_artifacts"] = standalone_compile_artifacts
-            state["standalone_compile_artifact_manifest"] = (
+            standalone_compile_artifact_manifest = (
                 standalone_compile_artifacts.manifest_summary()
             )
-            state["standalone_compile_artifact_store_identity"] = (
+            standalone_compile_artifact_store_identity = (
                 standalone_compile_artifacts.store_identity()
             )
-            state["standalone_compile_artifact_compatibility"] = (
+            standalone_compile_artifact_compatibility = (
                 build_standalone_artifact_compatibility_manifest(vllm_config)
             )
-            state["standalone_compile_artifact_reuse_summary"] = (
+            standalone_compile_artifact_reuse_summary = (
                 standalone_compile_artifacts.reuse_summary()
             )
-            state["standalone_compile_artifact_proof_manifest"] = (
+            standalone_compile_artifact_proof_manifest = (
                 build_standalone_artifact_proof_manifest(
                     compiled_fn.vllm_backend,
                     standalone_compile_artifacts,
@@ -450,38 +531,69 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                     returns_tuple_map,
                 )
             )
-            state["sym_shape_indices_map"] = sym_shape_indices_map
-            state["returns_tuple_map"] = returns_tuple_map
-        return pickle.dumps(state)
+            sidecar = build_standalone_artifact_sidecar(
+                standalone_compile_artifact_manifest=(
+                    standalone_compile_artifact_manifest
+                ),
+                standalone_compile_artifact_store_identity=(
+                    standalone_compile_artifact_store_identity
+                ),
+                standalone_compile_artifact_compatibility=(
+                    standalone_compile_artifact_compatibility
+                ),
+                standalone_compile_artifact_reuse_summary=(
+                    standalone_compile_artifact_reuse_summary
+                ),
+                standalone_compile_artifact_proof_manifest=(
+                    standalone_compile_artifact_proof_manifest
+                ),
+                sym_shape_indices_map=sym_shape_indices_map,
+                returns_tuple_map=returns_tuple_map,
+            )
+        return pack_serialized_compile_artifact_bundle(pickle.dumps(state), sidecar)
 
     @classmethod
     def deserialize_compile_artifacts(cls, data: bytes) -> "VllmSerializableFunction":
         from torch._guards import TracingContext, tracing
         from torch.fx.experimental.symbolic_shapes import ShapeEnv
 
-        state = pickle.loads(data)
+        sidecar, payload = unpack_serialized_compile_artifact_bundle(data)
+        state = pickle.loads(payload)
         fake_mode = FakeTensorMode(shape_env=ShapeEnv())
 
         state["example_inputs"] = GraphPickler.loads(state["example_inputs"], fake_mode)
 
         standalone_compile_artifacts = state.pop("standalone_compile_artifacts", None)
-        standalone_compile_artifact_manifest = state.pop(
-            "standalone_compile_artifact_manifest", None
-        )
-        standalone_compile_artifact_store_identity = state.pop(
-            "standalone_compile_artifact_store_identity", None
-        )
-        standalone_compile_artifact_compatibility = state.pop(
-            "standalone_compile_artifact_compatibility", None
-        )
-        standalone_compile_artifact_reuse_summary = state.pop(
-            "standalone_compile_artifact_reuse_summary", None
-        )
-        standalone_compile_artifact_proof_manifest = state.pop(
-            "standalone_compile_artifact_proof_manifest", None
-        )
-        sym_shape_indices_map = state.pop("sym_shape_indices_map", {})
-        returns_tuple_map = state.pop("returns_tuple_map", {})
+        sidecar_metadata = sidecar or {}
+        standalone_compile_artifact_manifest = sidecar_metadata.get(
+            "artifact_manifest"
+        ) or state.pop("standalone_compile_artifact_manifest", None)
+        standalone_compile_artifact_store_identity = sidecar_metadata.get(
+            "store_identity"
+        ) or state.pop("standalone_compile_artifact_store_identity", None)
+        standalone_compile_artifact_compatibility = sidecar_metadata.get(
+            "compatibility"
+        ) or state.pop("standalone_compile_artifact_compatibility", None)
+        standalone_compile_artifact_reuse_summary = sidecar_metadata.get(
+            "reuse_summary"
+        ) or state.pop("standalone_compile_artifact_reuse_summary", None)
+        standalone_compile_artifact_proof_manifest = sidecar_metadata.get(
+            "proof_manifest"
+        ) or state.pop("standalone_compile_artifact_proof_manifest", None)
+        sym_shape_indices_map = {
+            name: tuple(indices)
+            for name, indices in (
+                sidecar_metadata.get("sym_shape_indices_map")
+                or state.pop("sym_shape_indices_map", {})
+            ).items()
+        }
+        returns_tuple_map = {
+            name: bool(returns_tuple)
+            for name, returns_tuple in (
+                sidecar_metadata.get("returns_tuple_map")
+                or state.pop("returns_tuple_map", {})
+            ).items()
+        }
 
         saved_aot_autograd_config = state["aot_autograd_config"]
         if saved_aot_autograd_config is not None:
