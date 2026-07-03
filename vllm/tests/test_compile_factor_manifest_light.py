@@ -62,6 +62,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_SKIP_MODEL_NAME_VALIDATION"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_ENFORCE_STRICT_TOOL_CALLING"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_ENABLE_RESPONSES_API_STORE"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_SYSTEM_START_DATE"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_LOG_MODEL_INSPECTION"] == "debug_only"
     assert manifest["categories"]["VLLM_DISABLE_LOG_LOGO"] == "debug_only"
     assert manifest["categories"]["VLLM_COMPUTE_NANS_IN_LOGITS"] == "debug_only"
@@ -134,6 +135,8 @@ def test_compile_factor_manifest_lightweight() -> None:
         manifest["categories"]["VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS"]
         == "runtime_non_compile"
     )
+    assert manifest["categories"]["VLLM_LOOPBACK_IP"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_GC_DEBUG"] == "runtime_non_compile"
     assert (
         manifest["categories"]["VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE"]
         == "runtime_non_compile"
@@ -171,6 +174,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_ENFORCE_STRICT_TOOL_CALLING" in manifest["ignored_keys"]
     assert "VLLM_LOG_MODEL_INSPECTION" in manifest["ignored_keys"]
     assert "VLLM_COMPUTE_NANS_IN_LOGITS" in manifest["ignored_keys"]
+    assert "VLLM_SYSTEM_START_DATE" in manifest["ignored_keys"]
     assert "VLLM_MM_HASHER_ALGORITHM" in manifest["ignored_keys"]
     assert "VLLM_MEDIA_CONNECTOR" in manifest["ignored_keys"]
     assert "VLLM_CPU_KVCACHE_SPACE" in manifest["ignored_keys"]
@@ -210,6 +214,8 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_LOG_BATCHSIZE_INTERVAL" in manifest["ignored_keys"]
     assert "VLLM_MSGPACK_ZERO_COPY_THRESHOLD" in manifest["ignored_keys"]
     assert "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS" in manifest["ignored_keys"]
+    assert "VLLM_LOOPBACK_IP" in manifest["ignored_keys"]
+    assert "VLLM_GC_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE" in manifest["ignored_keys"]
     assert "VLLM_ENABLE_CUDAGRAPH_GC" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_SHARED_EXPERTS_STREAM" in manifest["ignored_keys"]
@@ -317,6 +323,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_API_KEY" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_ENGINE_READY_TIMEOUT_S" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_USAGE_SOURCE" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_SYSTEM_START_DATE" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_MEDIA_CONNECTOR" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_MM_HASHER_ALGORITHM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_USE_SPINLOOP_EXT" in manifest["audit"]["category_keys"]["runtime_non_compile"]
@@ -438,6 +445,8 @@ def test_compile_factor_manifest_lightweight() -> None:
         "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
     )
+    assert "VLLM_LOOPBACK_IP" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_GC_DEBUG" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert (
         "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
