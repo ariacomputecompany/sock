@@ -397,7 +397,6 @@ They should be executed according to the ranked lane order above, not by raw sec
   - fallback behavior patch
 - [ ] Detect when an upstream torch upgrade makes a local patch obsolete.
 - [ ] Avoid allowing patches to silently widen the compile surface.
-- [ ] Surface fallback creation as explicit evidence, not silent behavior.
 
 ## 13. AOT Compile Artifact Improvements
 

@@ -159,6 +159,35 @@ def _load_caching_module():
             },
         ],
     }
+    env_override_mod.fallback_creation_evidence_manifest = lambda: {
+        "schema_version": 1,
+        "proxy_active": True,
+        "total_hit_count": 3,
+        "total_unique_op_count": 2,
+        "namespaces": [
+            {
+                "namespace": "vllm",
+                "prefix": "vllm::",
+                "hit_count": 2,
+                "unique_op_count": 1,
+                "ops_preview": [
+                    {"op_name": "vllm::all_reduce", "hit_count": 2},
+                ],
+            },
+            {
+                "namespace": "vllm_aiter",
+                "prefix": "vllm_aiter::",
+                "hit_count": 1,
+                "unique_op_count": 1,
+                "ops_preview": [
+                    {
+                        "op_name": "vllm_aiter::rocm_aiter_fused_moe",
+                        "hit_count": 1,
+                    },
+                ],
+            },
+        ],
+    }
 
     codegen_mod = types.ModuleType("vllm.compilation.codegen")
     codegen_mod.compile_execution_fn = lambda *args, **kwargs: None
@@ -458,6 +487,35 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                 },
             ],
         },
+        "fallback_creation_evidence": {
+            "schema_version": 1,
+            "proxy_active": True,
+            "total_hit_count": 3,
+            "total_unique_op_count": 2,
+            "namespaces": [
+                {
+                    "namespace": "vllm",
+                    "prefix": "vllm::",
+                    "hit_count": 2,
+                    "unique_op_count": 1,
+                    "ops_preview": [
+                        {"op_name": "vllm::all_reduce", "hit_count": 2},
+                    ],
+                },
+                {
+                    "namespace": "vllm_aiter",
+                    "prefix": "vllm_aiter::",
+                    "hit_count": 1,
+                    "unique_op_count": 1,
+                    "ops_preview": [
+                        {
+                            "op_name": "vllm_aiter::rocm_aiter_fused_moe",
+                            "hit_count": 1,
+                        },
+                    ],
+                },
+            ],
+        },
         "shape_envelope": {
             "schema_version": 1,
             "submodule_count": 2,
@@ -721,6 +779,35 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                     "registered_ops_digest": "aiter-digest",
                     "registered_ops_preview": [
                         "vllm_aiter::rocm_aiter_fused_moe",
+                    ],
+                },
+            ],
+        },
+        "fallback_creation_evidence": {
+            "schema_version": 1,
+            "proxy_active": True,
+            "total_hit_count": 3,
+            "total_unique_op_count": 2,
+            "namespaces": [
+                {
+                    "namespace": "vllm",
+                    "prefix": "vllm::",
+                    "hit_count": 2,
+                    "unique_op_count": 1,
+                    "ops_preview": [
+                        {"op_name": "vllm::all_reduce", "hit_count": 2},
+                    ],
+                },
+                {
+                    "namespace": "vllm_aiter",
+                    "prefix": "vllm_aiter::",
+                    "hit_count": 1,
+                    "unique_op_count": 1,
+                    "ops_preview": [
+                        {
+                            "op_name": "vllm_aiter::rocm_aiter_fused_moe",
+                            "hit_count": 1,
+                        },
                     ],
                 },
             ],

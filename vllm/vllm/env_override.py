@@ -802,11 +802,55 @@ class _VllmFallbackAllowList:
 
     def __init__(self, inner):
         self._inner = inner
+        self._vllm_fallback_hits: dict[str, dict[str, int]] = {
+            prefix: {} for prefix in _VLLM_FALLBACK_NAMESPACE_PREFIXES
+        }
 
     def __contains__(self, item):
-        if isinstance(item, str) and item.startswith(_VLLM_FALLBACK_NAMESPACE_PREFIXES):
-            return True
+        if isinstance(item, str):
+            for prefix in _VLLM_FALLBACK_NAMESPACE_PREFIXES:
+                if item.startswith(prefix):
+                    self._vllm_fallback_hits[prefix][item] = (
+                        self._vllm_fallback_hits[prefix].get(item, 0) + 1
+                    )
+                    return True
         return item in self._inner
+
+    def evidence_manifest(self) -> dict[str, object]:
+        namespaces = []
+        total_hit_count = 0
+        total_unique_op_count = 0
+        for prefix in _VLLM_FALLBACK_NAMESPACE_PREFIXES:
+            namespace = prefix.split("::", 1)[0]
+            op_hits = self._vllm_fallback_hits[prefix]
+            ordered_hits = sorted(op_hits.items())
+            hit_count = sum(count for _, count in ordered_hits)
+            total_hit_count += hit_count
+            total_unique_op_count += len(ordered_hits)
+            namespaces.append(
+                {
+                    "namespace": namespace,
+                    "prefix": prefix,
+                    "hit_count": hit_count,
+                    "unique_op_count": len(ordered_hits),
+                    "ops_preview": [
+                        {"op_name": op_name, "hit_count": count}
+                        for op_name, count in ordered_hits[:8]
+                    ],
+                }
+            )
+
+        return {
+            "schema_version": 1,
+            "proxy_active": True,
+            "total_hit_count": total_hit_count,
+            "total_unique_op_count": total_unique_op_count,
+            "namespaces": namespaces,
+        }
+
+    def reset_evidence(self) -> None:
+        for prefix in _VLLM_FALLBACK_NAMESPACE_PREFIXES:
+            self._vllm_fallback_hits[prefix].clear()
 
     def add(self, item):
         self._inner.add(item)
@@ -825,6 +869,31 @@ class _VllmFallbackAllowList:
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
+
+
+def fallback_creation_evidence_manifest() -> dict[str, object]:
+    """Return explicit evidence that the fallback fast-path was exercised."""
+    try:
+        from torch._inductor import lowering as _lowering
+    except ImportError:
+        return {
+            "schema_version": 1,
+            "proxy_active": False,
+            "total_hit_count": 0,
+            "total_unique_op_count": 0,
+            "namespaces": [],
+        }
+
+    allow_list = getattr(_lowering, "FALLBACK_ALLOW_LIST", None)
+    if allow_list is None or not hasattr(allow_list, "evidence_manifest"):
+        return {
+            "schema_version": 1,
+            "proxy_active": False,
+            "total_hit_count": 0,
+            "total_unique_op_count": 0,
+            "namespaces": [],
+        }
+    return allow_list.evidence_manifest()
 
 
 def _patch_inductor_fallback_allow_list() -> None:

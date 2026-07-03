@@ -999,6 +999,7 @@ def build_standalone_artifact_proof_manifest(
         },
         "patch_profile": env_override.patch_profile_manifest(),
         "fallback_namespace_coverage": env_override.fallback_namespace_manifest(),
+        "fallback_creation_evidence": env_override.fallback_creation_evidence_manifest(),
         "shape_envelope": build_shape_envelope_summary(
             standalone_compile_artifacts,
             sym_shape_indices_map,

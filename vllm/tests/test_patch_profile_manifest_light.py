@@ -75,3 +75,68 @@ def test_patch_profile_manifest_lightweight() -> None:
     patch_ids = {patch["patch_id"] for patch in manifest["patches"]}
     assert "fallback_allow_list" in patch_ids
     assert "triton_force_first_config" in patch_ids
+
+
+def test_fallback_creation_evidence_manifest_tracks_hits() -> None:
+    env_override = _load_env_override_module()
+    proxy = env_override._VllmFallbackAllowList(set())
+
+    assert proxy.evidence_manifest() == {
+        "schema_version": 1,
+        "proxy_active": True,
+        "total_hit_count": 0,
+        "total_unique_op_count": 0,
+        "namespaces": [
+            {
+                "namespace": "vllm",
+                "prefix": "vllm::",
+                "hit_count": 0,
+                "unique_op_count": 0,
+                "ops_preview": [],
+            },
+            {
+                "namespace": "vllm_aiter",
+                "prefix": "vllm_aiter::",
+                "hit_count": 0,
+                "unique_op_count": 0,
+                "ops_preview": [],
+            },
+        ],
+    }
+
+    assert "vllm::all_reduce" in proxy
+    assert "vllm::all_reduce" in proxy
+    assert "vllm_aiter::rocm_aiter_fused_moe" in proxy
+
+    assert proxy.evidence_manifest() == {
+        "schema_version": 1,
+        "proxy_active": True,
+        "total_hit_count": 3,
+        "total_unique_op_count": 2,
+        "namespaces": [
+            {
+                "namespace": "vllm",
+                "prefix": "vllm::",
+                "hit_count": 2,
+                "unique_op_count": 1,
+                "ops_preview": [
+                    {"op_name": "vllm::all_reduce", "hit_count": 2},
+                ],
+            },
+            {
+                "namespace": "vllm_aiter",
+                "prefix": "vllm_aiter::",
+                "hit_count": 1,
+                "unique_op_count": 1,
+                "ops_preview": [
+                    {
+                        "op_name": "vllm_aiter::rocm_aiter_fused_moe",
+                        "hit_count": 1,
+                    },
+                ],
+            },
+        ],
+    }
+
+    proxy.reset_evidence()
+    assert proxy.evidence_manifest()["total_hit_count"] == 0
