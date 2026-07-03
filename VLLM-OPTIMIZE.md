@@ -395,7 +395,6 @@ They should be executed according to the ranked lane order above, not by raw sec
   - performance patch
   - workaround for upstream bug
   - fallback behavior patch
-- [ ] Avoid allowing patches to silently widen the compile surface.
 
 ## 13. AOT Compile Artifact Improvements
 

@@ -59,6 +59,8 @@ def test_patch_profile_manifest_lightweight() -> None:
     assert manifest["torch_version"] == "2.9.0-light"
     assert manifest["obsolete_patch_count"] == 0
     assert manifest["obsolete_patch_ids"] == []
+    assert manifest["compile_surface_widening_count"] == 0
+    assert manifest["compile_surface_widening_patch_ids"] == []
     assert manifest["fallback_namespace_coverage"] == {
         "schema_version": 1,
         "allow_list_proxy_active": False,
@@ -85,6 +87,13 @@ def test_patch_profile_manifest_lightweight() -> None:
     assert "triton_force_first_config" in patch_ids
     assert all(patch["obsolete"] is False for patch in manifest["patches"])
     assert all(patch["obsolete_reason"] is None for patch in manifest["patches"])
+    assert all(
+        patch["compile_surface_effect"] == "neutral"
+        for patch in manifest["patches"]
+    )
+    assert all(
+        patch["compile_surface_reason"] is None for patch in manifest["patches"]
+    )
 
 
 def test_patch_profile_manifest_marks_obsolete_patches_on_newer_torch() -> None:
@@ -110,6 +119,8 @@ def test_patch_profile_manifest_marks_obsolete_patches_on_newer_torch() -> None:
         "fxgraphcache_pickle",
         "cpp_indirect_assert",
     ]
+    assert manifest["compile_surface_widening_count"] == 0
+    assert manifest["compile_surface_widening_patch_ids"] == []
 
     obsolete_by_id = {
         patch["patch_id"]: patch
@@ -120,6 +131,10 @@ def test_patch_profile_manifest_marks_obsolete_patches_on_newer_torch() -> None:
     assert all(
         patch["obsolete_reason"] == "torch_version_outside_patch_window"
         for patch in obsolete_by_id.values()
+    )
+    assert all(
+        patch["compile_surface_effect"] == "neutral"
+        for patch in manifest["patches"]
     )
 
 

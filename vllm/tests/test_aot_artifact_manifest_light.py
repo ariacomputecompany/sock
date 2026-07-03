@@ -125,6 +125,8 @@ def _load_caching_module():
         },
         "obsolete_patch_count": 0,
         "obsolete_patch_ids": [],
+        "compile_surface_widening_count": 0,
+        "compile_surface_widening_patch_ids": [],
         "patches": [
             {
                 "patch_id": "lightweight-stub",
@@ -134,6 +136,8 @@ def _load_caching_module():
                 "detail": "stubbed patch profile",
                 "obsolete": False,
                 "obsolete_reason": None,
+                "compile_surface_effect": "neutral",
+                "compile_surface_reason": None,
             }
         ],
     }
@@ -457,6 +461,8 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             },
             "obsolete_patch_count": 0,
             "obsolete_patch_ids": [],
+            "compile_surface_widening_count": 0,
+            "compile_surface_widening_patch_ids": [],
             "patches": [
                 {
                     "patch_id": "lightweight-stub",
@@ -466,6 +472,8 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                     "detail": "stubbed patch profile",
                     "obsolete": False,
                     "obsolete_reason": None,
+                    "compile_surface_effect": "neutral",
+                    "compile_surface_reason": None,
                 }
             ],
         },
@@ -757,6 +765,8 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
             },
             "obsolete_patch_count": 0,
             "obsolete_patch_ids": [],
+            "compile_surface_widening_count": 0,
+            "compile_surface_widening_patch_ids": [],
             "patches": [
                 {
                     "patch_id": "lightweight-stub",
@@ -766,6 +776,8 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                     "detail": "stubbed patch profile",
                     "obsolete": False,
                     "obsolete_reason": None,
+                    "compile_surface_effect": "neutral",
+                    "compile_surface_reason": None,
                 }
             ],
         },

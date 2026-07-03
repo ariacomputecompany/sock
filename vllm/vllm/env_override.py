@@ -1021,6 +1021,8 @@ def patch_profile_manifest() -> dict[str, object]:
         detail: str,
         obsolete: bool = False,
         obsolete_reason: str | None = None,
+        compile_surface_effect: str = "neutral",
+        compile_surface_reason: str | None = None,
     ) -> None:
         patches.append(
             {
@@ -1031,6 +1033,8 @@ def patch_profile_manifest() -> dict[str, object]:
                 "detail": detail,
                 "obsolete": obsolete,
                 "obsolete_reason": obsolete_reason,
+                "compile_surface_effect": compile_surface_effect,
+                "compile_surface_reason": compile_surface_reason,
             }
         )
 
@@ -1228,6 +1232,11 @@ def patch_profile_manifest() -> dict[str, object]:
     obsolete_patch_ids = [
         patch["patch_id"] for patch in patches if bool(patch.get("obsolete"))
     ]
+    compile_surface_widening_patch_ids = [
+        patch["patch_id"]
+        for patch in patches
+        if patch.get("compile_surface_effect") == "widening"
+    ]
 
     return {
         "schema_version": 1,
@@ -1235,5 +1244,7 @@ def patch_profile_manifest() -> dict[str, object]:
         "fallback_namespace_coverage": fallback_namespace_manifest(),
         "obsolete_patch_count": len(obsolete_patch_ids),
         "obsolete_patch_ids": obsolete_patch_ids,
+        "compile_surface_widening_count": len(compile_surface_widening_patch_ids),
+        "compile_surface_widening_patch_ids": compile_surface_widening_patch_ids,
         "patches": patches,
     }
