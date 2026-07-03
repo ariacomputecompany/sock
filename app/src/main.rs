@@ -14,12 +14,12 @@ use sock_core::{
     MaterializationExecutionReport, MeasurementCaseReport, MeasurementComparisonReport,
     MeasurementPhaseTimings, ReplayBundle, ReplayBundleMetadata, ResolvedBuildPlan,
     RewriteTraceDocument, SchemaVersion, canonical_json, render_diagnostics, render_explain,
-    render_plan_summary, render_verification_report,
+    render_plan_summary, render_soc_explain, render_verification_report,
 };
 use sock_engine::{
     BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, PlannerHostSnapshot,
-    PlanningOutcome, StorageRoots, build_vllm_entrypoint_document, build_vllm_integration_document,
-    emit_vllm_entrypoints, validate_scoped_vllm_subset,
+    PlanningOutcome, StorageRoots, build_soc_plan_document, build_vllm_entrypoint_document,
+    build_vllm_integration_document, emit_vllm_entrypoints, validate_scoped_vllm_subset,
 };
 
 #[derive(Debug, Parser)]
@@ -183,7 +183,7 @@ fn main() -> Result<()> {
         } => {
             let scope = scope.into_scope();
             let outcome = plan_with_scope(&scope)?;
-            let bundle = replay_bundle(&outcome);
+            let bundle = replay_bundle(&outcome, &scope);
             let vllm_integration = build_vllm_integration_document(&outcome)?;
             validate_scoped_vllm_subset(&scope, &vllm_integration)?;
             let storage = StorageRoots {
@@ -363,6 +363,7 @@ fn emit_explain(
                 render_request_contract(scope, request_label, &outcome.plan)
             );
             print!("{}", render_vllm_native_contract(outcome)?);
+            print!("{}", render_soc_contract(scope, outcome)?);
             print!(
                 "{}",
                 render_explain(&outcome.plan, diagnostics, rewrite_trace)
@@ -379,6 +380,11 @@ fn emit_explain(
                     "rewrite_trace": rewrite_trace,
                     "verification": outcome.verification,
                     "vllm_integration": build_vllm_integration_document(outcome)?,
+                    "soc_plan": build_soc_plan_document(
+                        outcome,
+                        scope,
+                        &build_vllm_integration_document(outcome)?,
+                    ),
                 }))?
             );
         }
@@ -424,6 +430,7 @@ fn emit_build(
                     "metadata": metadata,
                     "materialization": materialization,
                     "vllm_integration": bundle.vllm_integration,
+                    "soc_plan": bundle.soc_plan,
                     "vllm_entrypoints": bundle.vllm_entrypoints,
                 }))?
             );
@@ -570,6 +577,11 @@ fn emit_replay(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
                 bundle.vllm_integration.plan_identity,
                 bundle.vllm_integration.replay_roots.len()
             );
+            println!(
+                "soc plan key={} namespaces={}",
+                bundle.soc_plan.plan_identity,
+                bundle.soc_plan.namespaces.len()
+            );
             print!(
                 "{}",
                 render_verification_report(&bundle.verification_report)
@@ -584,6 +596,7 @@ fn emit_replay(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
                     "verification": bundle.verification_report,
                     "diagnostics": bundle.diagnostics,
                     "vllm_integration": bundle.vllm_integration,
+                    "soc_plan": bundle.soc_plan,
                     "vllm_entrypoints": bundle.vllm_entrypoints,
                 }))?
             );
@@ -803,6 +816,12 @@ fn render_vllm_native_contract(outcome: &PlanningOutcome) -> Result<String> {
     Ok(out)
 }
 
+fn render_soc_contract(scope: &BuildScope, outcome: &PlanningOutcome) -> Result<String> {
+    let integration = build_vllm_integration_document(outcome)?;
+    let soc_plan = build_soc_plan_document(outcome, scope, &integration);
+    Ok(render_soc_explain(&soc_plan))
+}
+
 struct BundleBuild {
     bundle: ReplayBundle,
     metadata: ReplayBundleMetadata,
@@ -822,8 +841,9 @@ struct BenchmarkProfile<'a> {
 fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Result<BundleBuild> {
     let configure_started = Instant::now();
     let outcome = plan_with_scope(scope)?;
-    let bundle = replay_bundle(&outcome);
+    let bundle = replay_bundle(&outcome, scope);
     let vllm_integration = build_vllm_integration_document(&outcome)?;
+    let soc_plan = build_soc_plan_document(&outcome, scope, &vllm_integration);
     validate_scoped_vllm_subset(scope, &vllm_integration)?;
     let configure_ms = elapsed_ms(configure_started.elapsed());
 
@@ -837,6 +857,10 @@ fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Resu
     std::fs::write(
         out.join("vllm_integration.json"),
         canonical_json(&vllm_integration)?.as_bytes(),
+    )?;
+    std::fs::write(
+        out.join("soc_plan.json"),
+        canonical_json(&soc_plan)?.as_bytes(),
     )?;
     let vllm_entrypoints = build_vllm_entrypoint_document(&outcome, &vllm_integration)?;
     emit_vllm_entrypoints(out, &vllm_entrypoints)?;

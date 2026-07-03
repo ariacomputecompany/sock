@@ -1,6 +1,7 @@
 mod executor;
 mod planner;
 mod scope;
+mod soc;
 pub mod vllm;
 mod vllm_adapter;
 mod vllm_entrypoint;
@@ -9,6 +10,7 @@ mod vllm_integration;
 pub use executor::{MaterializationError, MaterializationExecutor, StorageRoots};
 pub use planner::{PlanError, Planner, PlannerHostSnapshot, PlanningOutcome};
 pub use scope::{BuildReadiness, BuildScope, BuildTopologyScope};
+pub use soc::build_soc_plan_document;
 pub use vllm_entrypoint::{
     VllmEntrypointError, build_vllm_entrypoint_document, emit_vllm_entrypoints,
 };

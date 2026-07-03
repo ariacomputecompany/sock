@@ -6,7 +6,7 @@ use sock_core::{
     WarmupPolicy,
 };
 use sock_engine::{
-    BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome,
+    BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome, build_soc_plan_document,
     build_vllm_entrypoint_document, build_vllm_integration_document, vllm,
 };
 
@@ -153,9 +153,10 @@ pub fn rewrite_trace_for(outcome: &PlanningOutcome) -> RewriteTraceDocument {
 }
 
 #[must_use]
-pub fn replay_bundle(outcome: &PlanningOutcome) -> ReplayBundle {
+pub fn replay_bundle(outcome: &PlanningOutcome, scope: &BuildScope) -> ReplayBundle {
     let vllm_integration =
         build_vllm_integration_document(outcome).expect("vllm integration document");
+    let soc_plan = build_soc_plan_document(outcome, scope, &vllm_integration);
     let vllm_entrypoints = build_vllm_entrypoint_document(outcome, &vllm_integration)
         .expect("vllm entrypoint document");
     ReplayBundle {
@@ -165,6 +166,7 @@ pub fn replay_bundle(outcome: &PlanningOutcome) -> ReplayBundle {
         diagnostics: diagnostics_for(outcome),
         rewrite_trace: rewrite_trace_for(outcome),
         vllm_integration,
+        soc_plan,
         vllm_entrypoints,
     }
 }

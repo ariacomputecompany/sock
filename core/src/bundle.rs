@@ -9,8 +9,8 @@ use thiserror::Error;
 
 use crate::{
     ArtifactClosure, ArtifactManifestEntry, CanonicalError, CanonicalHash, DiagnosticsDocument,
-    ResolvedBuildPlan, RewriteTraceDocument, VerificationReport, VllmEntrypointDocument,
-    VllmIntegrationDocument, canonical_json,
+    ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument, VerificationReport,
+    VllmEntrypointDocument, VllmIntegrationDocument, canonical_json,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +36,7 @@ pub struct ReplayBundle {
     pub diagnostics: DiagnosticsDocument,
     pub rewrite_trace: RewriteTraceDocument,
     pub vllm_integration: VllmIntegrationDocument,
+    pub soc_plan: SocPlanDocument,
     pub vllm_entrypoints: VllmEntrypointDocument,
 }
 
@@ -93,6 +94,7 @@ impl ReplayBundle {
                 "vllm_integration.json",
                 canonical_json(&self.vllm_integration)?,
             ),
+            ("soc_plan.json", canonical_json(&self.soc_plan)?),
             (
                 "vllm_entrypoints.json",
                 canonical_json(&self.vllm_entrypoints)?,
@@ -148,6 +150,8 @@ impl ReplayBundle {
             serde_json::from_str(&fs::read_to_string(dir.join("rewrite_trace.json"))?)?;
         let vllm_integration: VllmIntegrationDocument =
             serde_json::from_str(&fs::read_to_string(dir.join("vllm_integration.json"))?)?;
+        let soc_plan: SocPlanDocument =
+            serde_json::from_str(&fs::read_to_string(dir.join("soc_plan.json"))?)?;
         let vllm_entrypoints: VllmEntrypointDocument =
             serde_json::from_str(&fs::read_to_string(dir.join("vllm_entrypoints.json"))?)?;
         let plan_identity = build_plan.structural_identity.plan_identity.clone();
@@ -177,6 +181,11 @@ impl ReplayBundle {
                 document: "vllm_integration.json".to_owned(),
             });
         }
+        if soc_plan.plan_identity != plan_identity {
+            return Err(ReplayBundleError::IdentityMismatch {
+                document: "soc_plan.json".to_owned(),
+            });
+        }
         if vllm_entrypoints.plan_identity != plan_identity {
             return Err(ReplayBundleError::IdentityMismatch {
                 document: "vllm_entrypoints.json".to_owned(),
@@ -200,6 +209,7 @@ impl ReplayBundle {
             diagnostics,
             rewrite_trace,
             vllm_integration,
+            soc_plan,
             vllm_entrypoints,
         })
     }
@@ -836,6 +846,41 @@ mod tests {
                 wrapper_path: "vllm-entrypoints/prefill_attention.sh".to_owned(),
             }],
         };
+        let soc_plan = crate::SocPlanDocument {
+            schema_version: SchemaVersion::current(),
+            plan_identity: plan.structural_identity.plan_identity.clone(),
+            derivation_strategy: "derived_from_resolved_build_plan_and_vllm_integration".to_owned(),
+            selectors: crate::SocSelectorSnapshot {
+                requested_regions: vec!["prefill_attention".to_owned()],
+                requested_artifact_scopes: Vec::new(),
+                requested_backend_families: vec!["flashinfer".to_owned()],
+                requested_topology_scopes: vec!["shared".to_owned()],
+                requested_cache_namespaces: vec!["compile-cache".to_owned()],
+                requested_warmup_scopes: vec!["prefill_attention".to_owned()],
+                requested_readiness: "correctness".to_owned(),
+            },
+            namespaces: vec![crate::SocNamespacePlan {
+                namespace: "compile-cache".to_owned(),
+                scope_kind: crate::IntegrationScopeKind::CompileRegion,
+                materialization_mode: crate::SocMaterializationMode::EagerBlocking,
+                subset_build_valid: true,
+                direct_entrypoint_invocable: false,
+                artifact_scopes: vec!["prefill_attention".to_owned()],
+                artifact_classes: vec!["compiled-graph".to_owned(), "triton-binary".to_owned()],
+                required_artifacts: vec![
+                    "compiled-graph:prefill_attention".to_owned(),
+                    "triton-binary:prefill_attention".to_owned(),
+                ],
+                warmup_scopes: vec!["prefill_attention".to_owned()],
+                warmup_proof_ids: vec!["warmup:correctness-range:prefill_attention".to_owned()],
+                replay_root_ids: vec!["replay-root:compile-region:prefill_attention".to_owned()],
+                source_surface_ids: vec!["compile-region:prefill_attention".to_owned()],
+                source_callables: vec!["vllm.fixture::compile_prefill".to_owned()],
+                rationale: "fixture surface".to_owned(),
+            }],
+            replay_root_ids: vec!["replay-root:compile-region:prefill_attention".to_owned()],
+            shared_abstractions: vec!["Graph and region boundaries".to_owned()],
+        };
 
         ReplayBundle {
             build_plan: plan.clone(),
@@ -847,6 +892,7 @@ mod tests {
             diagnostics,
             rewrite_trace,
             vllm_integration,
+            soc_plan,
             vllm_entrypoints,
         }
     }
@@ -863,6 +909,7 @@ mod tests {
         assert_eq!(loaded.diagnostics, bundle.diagnostics);
         assert_eq!(loaded.rewrite_trace, bundle.rewrite_trace);
         assert_eq!(loaded.vllm_integration, bundle.vllm_integration);
+        assert_eq!(loaded.soc_plan, bundle.soc_plan);
         assert_eq!(loaded.vllm_entrypoints, bundle.vllm_entrypoints);
     }
 

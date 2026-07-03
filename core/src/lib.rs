@@ -14,6 +14,7 @@ pub mod operator;
 pub mod request;
 pub mod rewrite;
 pub mod runtime;
+pub mod soc;
 pub mod verification;
 
 pub use adapter::*;
@@ -33,9 +34,11 @@ pub use materialization::*;
 pub use measurement::*;
 pub use model::*;
 pub use operator::{
-    render_diagnostics, render_explain, render_plan_summary, render_verification_report,
+    render_diagnostics, render_explain, render_plan_summary, render_soc_explain,
+    render_verification_report,
 };
 pub use request::*;
 pub use rewrite::*;
 pub use runtime::*;
+pub use soc::*;
 pub use verification::*;

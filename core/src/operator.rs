@@ -1,5 +1,6 @@
 use crate::{
-    DiagnosticsDocument, HazardClass, ResolvedBuildPlan, RewriteTraceDocument, VerificationReport,
+    DiagnosticsDocument, HazardClass, ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument,
+    VerificationReport,
 };
 
 #[must_use]
@@ -37,6 +38,78 @@ pub fn render_explain(
     }
     out.push_str("diagnostics:\n");
     out.push_str(&render_diagnostics(diagnostics));
+    out
+}
+
+#[must_use]
+pub fn render_soc_explain(document: &SocPlanDocument) -> String {
+    let mut out = String::new();
+    out.push_str("soc integration:\n");
+    out.push_str(&format!(
+        "  - derivation={} plan_identity={} replay_roots={}\n",
+        document.derivation_strategy,
+        document.plan_identity,
+        document.replay_root_ids.len()
+    ));
+    out.push_str(&format!(
+        "  - requested selectors: regions={} artifact_scopes={} backends={} topology={} caches={} warmups={} readiness={}\n",
+        if document.selectors.requested_regions.is_empty() {
+            "all".to_owned()
+        } else {
+            document.selectors.requested_regions.join(",")
+        },
+        if document.selectors.requested_artifact_scopes.is_empty() {
+            "all".to_owned()
+        } else {
+            document.selectors.requested_artifact_scopes.join(",")
+        },
+        if document.selectors.requested_backend_families.is_empty() {
+            "all".to_owned()
+        } else {
+            document.selectors.requested_backend_families.join(",")
+        },
+        if document.selectors.requested_topology_scopes.is_empty() {
+            "all".to_owned()
+        } else {
+            document.selectors.requested_topology_scopes.join(",")
+        },
+        if document.selectors.requested_cache_namespaces.is_empty() {
+            "all".to_owned()
+        } else {
+            document.selectors.requested_cache_namespaces.join(",")
+        },
+        if document.selectors.requested_warmup_scopes.is_empty() {
+            "all".to_owned()
+        } else {
+            document.selectors.requested_warmup_scopes.join(",")
+        },
+        document.selectors.requested_readiness
+    ));
+    for namespace in &document.namespaces {
+        out.push_str(&format!(
+            "  - namespace={} mode={:?} subset_build_valid={} direct_entrypoint_invocable={} artifacts={} warmups={} replay_roots={} surfaces={}\n",
+            namespace.namespace,
+            namespace.materialization_mode,
+            namespace.subset_build_valid,
+            namespace.direct_entrypoint_invocable,
+            if namespace.required_artifacts.is_empty() {
+                "none".to_owned()
+            } else {
+                namespace.required_artifacts.join("|")
+            },
+            if namespace.warmup_proof_ids.is_empty() {
+                "none".to_owned()
+            } else {
+                namespace.warmup_proof_ids.join("|")
+            },
+            if namespace.replay_root_ids.is_empty() {
+                "none".to_owned()
+            } else {
+                namespace.replay_root_ids.join("|")
+            },
+            namespace.source_surface_ids.join("|")
+        ));
+    }
     out
 }
 

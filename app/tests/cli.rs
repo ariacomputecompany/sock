@@ -28,6 +28,7 @@ fn explain_includes_trace_and_diagnostics() {
         .stdout(predicate::str::contains("expanded closure:"))
         .stdout(predicate::str::contains("estimated work:"))
         .stdout(predicate::str::contains("vllm native contract:"))
+        .stdout(predicate::str::contains("soc integration:"))
         .stdout(predicate::str::contains("replay root key:"))
         .stdout(predicate::str::contains("rooted vllm replay surfaces:"))
         .stdout(predicate::str::contains("rewrite trace:"))
@@ -86,6 +87,7 @@ fn build_verify_and_replay_bundle_round_trip() {
         "materialization_report.json",
         "replay.sh",
         "rewrite_trace.json",
+        "soc_plan.json",
         "verification_report.json",
         "vllm_integration.json",
         "vllm_entrypoints.json",
@@ -197,12 +199,55 @@ fn build_verify_and_replay_bundle_round_trip() {
         .success()
         .stdout(predicate::str::contains("plan "))
         .stdout(predicate::str::contains("vllm replay roots key="))
+        .stdout(predicate::str::contains("soc plan key="))
         .stdout(predicate::str::contains("verification Passed"))
         .stdout(predicate::str::contains("runtime-jit evidence:"))
         .stdout(predicate::str::contains(
             "replay compile_free=true forbidden_queues=Compile,Assemble,ArtifactIo,Warmup",
         ))
         .stdout(predicate::str::contains("[info] verified_bundle"));
+}
+
+#[test]
+fn soc_plan_maps_cache_namespaces_to_artifacts_and_warmups() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            dir.path().to_str().expect("utf8 path"),
+            "--region",
+            "prefill_attention",
+            "--readiness",
+            "correctness",
+        ])
+        .assert()
+        .success();
+
+    let soc: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("soc_plan.json")).expect("read soc plan"),
+    )
+    .expect("parse soc plan");
+    assert_eq!(
+        soc["derivation_strategy"],
+        Value::String("derived_from_resolved_build_plan_and_vllm_integration".to_owned())
+    );
+    assert_eq!(
+        soc["selectors"]["requested_regions"],
+        Value::Array(vec![Value::String("prefill_attention".to_owned())])
+    );
+    let namespaces = soc["namespaces"].as_array().expect("namespaces array");
+    assert!(namespaces.iter().any(|namespace| {
+        namespace["namespace"] == "compile-cache"
+            && namespace["materialization_mode"] == "eager_blocking"
+            && namespace["source_surface_ids"]
+                .as_array()
+                .expect("source surfaces")
+                .iter()
+                .any(|surface| surface == "compile-region:prefill_attention")
+    }));
 }
 
 #[test]
