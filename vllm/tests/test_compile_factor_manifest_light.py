@@ -148,6 +148,16 @@ def test_compile_factor_manifest_lightweight() -> None:
         manifest["categories"]["VLLM_ALLOW_RUNTIME_LORA_UPDATING"]
         == "runtime_non_compile"
     )
+    assert manifest["categories"]["VLLM_SKIP_P2P_CHECK"] == "runtime_non_compile"
+    assert (
+        manifest["categories"]["VLLM_V1_USE_OUTLINES_CACHE"]
+        == "runtime_non_compile"
+    )
+    assert manifest["categories"]["VLLM_XGRAMMAR_CACHE_MB"] == "runtime_non_compile"
+    assert (
+        manifest["categories"]["VLLM_REGEX_COMPILATION_TIMEOUT_S"]
+        == "runtime_non_compile"
+    )
     assert manifest["categories"]["VLLM_GC_DEBUG"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_PATTERN_MATCH_DEBUG"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_DP_RANK"] == "runtime_non_compile"
@@ -291,6 +301,10 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_LOOPBACK_IP" in manifest["ignored_keys"]
     assert "VLLM_USE_RUST_FRONTEND" in manifest["ignored_keys"]
     assert "VLLM_ALLOW_RUNTIME_LORA_UPDATING" in manifest["ignored_keys"]
+    assert "VLLM_SKIP_P2P_CHECK" in manifest["ignored_keys"]
+    assert "VLLM_V1_USE_OUTLINES_CACHE" in manifest["ignored_keys"]
+    assert "VLLM_XGRAMMAR_CACHE_MB" in manifest["ignored_keys"]
+    assert "VLLM_REGEX_COMPILATION_TIMEOUT_S" in manifest["ignored_keys"]
     assert "VLLM_GC_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_PATTERN_MATCH_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_DP_RANK" in manifest["ignored_keys"]
