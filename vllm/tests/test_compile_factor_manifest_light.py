@@ -156,6 +156,22 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_RAY_PER_WORKER_GPUS"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_RAY_BUNDLE_INDICES"] == "runtime_non_compile"
     assert (
+        manifest["categories"]["VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_USE_RAY_COMPILED_DAG_OVERLAP_COMM"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_USE_RAY_WRAPPED_PP_COMM"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_USE_RAY_V2_EXECUTOR_BACKEND"]
+        == "runtime_non_compile"
+    )
+    assert (
         manifest["categories"]["VLLM_RAY_DP_PACK_STRATEGY"]
         == "runtime_non_compile"
     )
@@ -279,6 +295,10 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_DP_SIZE" in manifest["ignored_keys"]
     assert "VLLM_RAY_PER_WORKER_GPUS" in manifest["ignored_keys"]
     assert "VLLM_RAY_BUNDLE_INDICES" in manifest["ignored_keys"]
+    assert "VLLM_USE_RAY_COMPILED_DAG_CHANNEL_TYPE" in manifest["ignored_keys"]
+    assert "VLLM_USE_RAY_COMPILED_DAG_OVERLAP_COMM" in manifest["ignored_keys"]
+    assert "VLLM_USE_RAY_WRAPPED_PP_COMM" in manifest["ignored_keys"]
+    assert "VLLM_USE_RAY_V2_EXECUTOR_BACKEND" in manifest["ignored_keys"]
     assert "VLLM_RAY_DP_PACK_STRATEGY" in manifest["ignored_keys"]
     assert "VLLM_RAY_DP_PLACEMENT_NODE_IPS" in manifest["ignored_keys"]
     assert "VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY" in manifest["ignored_keys"]
