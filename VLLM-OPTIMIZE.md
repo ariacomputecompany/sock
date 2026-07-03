@@ -398,7 +398,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 ## 13. AOT Compile Artifact Improvements
 
-- [ ] Reduce artifact-load overhead from Python object reconstruction during warm start.
 - [ ] Evaluate a more mmap-friendly or streaming-friendly payload format for compiled artifacts.
 - [ ] Keep opaque pickled Python state off the critical path for the common cache-hit case.
 - [ ] Replace “load everything eagerly” behavior with demand-driven or manifest-guided artifact hydration where practical.

@@ -60,6 +60,18 @@ def _load_caching_module():
     torch_subclasses_mod = types.ModuleType("torch._subclasses")
     torch_subclasses_mod.FakeTensorMode = type("FakeTensorMode", (), {})
 
+    torch_inductor_mod = types.ModuleType("torch._inductor")
+    torch_standalone_compile_mod = types.ModuleType(
+        "torch._inductor.standalone_compile"
+    )
+
+    class AOTCompiledArtifact:
+
+        deserialize = staticmethod(lambda entry: {"deserialized": entry})
+
+    torch_standalone_compile_mod.AOTCompiledArtifact = AOTCompiledArtifact
+    torch_inductor_mod.standalone_compile = torch_standalone_compile_mod
+
     torch_utils_mod = types.ModuleType("torch.utils")
     torch_pytree_mod = types.ModuleType("torch.utils._pytree")
     torch_pytree_mod.tree_map_only = lambda typ, fn, tree: tree
@@ -78,6 +90,10 @@ def _load_caching_module():
     sys.modules["torch.fx"] = torch_fx_mod
     sys.modules["torch.fx._graph_pickler"] = torch_graph_pickler_mod
     sys.modules["torch._subclasses"] = torch_subclasses_mod
+    sys.modules["torch._inductor"] = torch_inductor_mod
+    sys.modules["torch._inductor.standalone_compile"] = (
+        torch_standalone_compile_mod
+    )
     sys.modules["torch.utils"] = torch_utils_mod
     sys.modules["torch.utils._pytree"] = torch_pytree_mod
     sys.modules["torch._dynamo"] = torch_dynamo_mod
@@ -1065,7 +1081,51 @@ def test_load_report_marks_already_loaded_fast_path() -> None:
         "load_path": "already_loaded",
         "loaded_artifact_count": 1,
         "deserialization_wall_time_ms": 0.0,
+        "store_identity": artifacts.store_identity(),
     }
+
+
+def test_load_report_reuses_shared_loaded_store_without_deserializing() -> None:
+    caching, counter = _load_caching_module()
+    first = caching.StandaloneCompiledArtifacts()
+    payload = pickle.dumps({"artifact": "payload"})
+    digest = caching.artifact_bytes_hash(payload)
+    first.submodule_bytes["block0_shape0"] = digest
+    first.submodule_bytes_store[digest] = payload
+
+    first.load_all()
+
+    assert first.last_load_report()["load_path"] == "fresh_deserialize"
+    assert counter.num_compiled_artifacts_loaded == 1
+
+    deserialize_calls = 0
+
+    def _fail_deserialize(entry):
+        nonlocal deserialize_calls
+        deserialize_calls += 1
+        raise AssertionError("shared load path should not deserialize again")
+
+    sys.modules[
+        "torch._inductor.standalone_compile"
+    ].AOTCompiledArtifact.deserialize = staticmethod(_fail_deserialize)
+
+    second = caching.StandaloneCompiledArtifacts()
+    second.submodule_bytes["block0_shape0"] = digest
+    second.submodule_bytes_store[digest] = payload
+    second.load_all()
+
+    assert second.last_load_report() == {
+        "schema_version": 1,
+        "load_path": "shared_loaded_store",
+        "loaded_artifact_count": 1,
+        "deserialization_wall_time_ms": 0.0,
+        "store_identity": second.store_identity(),
+    }
+    assert deserialize_calls == 0
+    assert counter.num_compiled_artifacts_loaded == 1
+    assert second.get_loaded("block0", "shape0") == first.get_loaded(
+        "block0", "shape0"
+    )
 
 
 def test_compile_artifact_bundle_passthrough_without_sidecar() -> None:

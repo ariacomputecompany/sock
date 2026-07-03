@@ -40,6 +40,7 @@ logger = init_logger(__name__)
 
 _COMPILE_ARTIFACT_BUNDLE_MAGIC = b"VLLM_AOT_BUNDLE_V1\n"
 _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES = 8
+_SHARED_LOADED_ARTIFACT_STORES: dict[str, dict[str, Any]] = {}
 
 
 def _json_ready(value: Any) -> Any:
@@ -381,8 +382,13 @@ class StandaloneCompiledArtifacts:
     def last_load_report(self) -> dict[str, object] | None:
         return self._last_load_report
 
+    def _store_cache_identity(self) -> tuple[str, tuple[str, ...]]:
+        return self.store_identity(), tuple(sorted(self.submodule_bytes_store))
+
     def load_all(self) -> None:
         import concurrent.futures
+
+        store_identity, store_keys = self._store_cache_identity()
 
         # check already loaded
         if len(self.loaded_submodule_store) == len(self.submodule_bytes_store):
@@ -391,8 +397,25 @@ class StandaloneCompiledArtifacts:
                 "load_path": "already_loaded",
                 "loaded_artifact_count": len(self.loaded_submodule_store),
                 "deserialization_wall_time_ms": 0.0,
+                "store_identity": store_identity,
             }
             return
+
+        shared_loaded_store = _SHARED_LOADED_ARTIFACT_STORES.get(store_identity)
+        if shared_loaded_store is not None:
+            shared_store_keys = tuple(sorted(shared_loaded_store))
+            if shared_store_keys == store_keys:
+                self.loaded_submodule_store = {
+                    digest: shared_loaded_store[digest] for digest in store_keys
+                }
+                self._last_load_report = {
+                    "schema_version": 1,
+                    "load_path": "shared_loaded_store",
+                    "loaded_artifact_count": len(self.loaded_submodule_store),
+                    "deserialization_wall_time_ms": 0.0,
+                    "store_identity": store_identity,
+                }
+                return
 
         from torch._inductor.standalone_compile import AOTCompiledArtifact
 
@@ -410,11 +433,16 @@ class StandaloneCompiledArtifacts:
         for i, k in enumerate(self.submodule_bytes_store.keys()):
             self.loaded_submodule_store[k] = loaded_entries[i]
 
+        _SHARED_LOADED_ARTIFACT_STORES[store_identity] = dict(
+            self.loaded_submodule_store
+        )
+
         self._last_load_report = {
             "schema_version": 1,
             "load_path": "fresh_deserialize",
             "loaded_artifact_count": len(loaded_entries),
             "deserialization_wall_time_ms": round(elapsed_ms, 6),
+            "store_identity": store_identity,
         }
         logger.debug("loaded all %s submodules", self.num_artifacts())
 
