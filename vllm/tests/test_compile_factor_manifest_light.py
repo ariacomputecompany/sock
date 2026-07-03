@@ -158,6 +158,22 @@ def test_compile_factor_manifest_lightweight() -> None:
         manifest["categories"]["VLLM_REGEX_COMPILATION_TIMEOUT_S"]
         == "runtime_non_compile"
     )
+    assert (
+        manifest["categories"]["VLLM_WEIGHT_OFFLOADING_DISABLE_PIN_MEMORY"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_WEIGHT_OFFLOADING_DISABLE_UVA"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_WSL2_ENABLE_PIN_MEMORY"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_NIXL_EP_MAX_NUM_RANKS"]
+        == "runtime_non_compile"
+    )
     assert manifest["categories"]["VLLM_GC_DEBUG"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_PATTERN_MATCH_DEBUG"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_DP_RANK"] == "runtime_non_compile"
@@ -305,6 +321,10 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_V1_USE_OUTLINES_CACHE" in manifest["ignored_keys"]
     assert "VLLM_XGRAMMAR_CACHE_MB" in manifest["ignored_keys"]
     assert "VLLM_REGEX_COMPILATION_TIMEOUT_S" in manifest["ignored_keys"]
+    assert "VLLM_WEIGHT_OFFLOADING_DISABLE_PIN_MEMORY" in manifest["ignored_keys"]
+    assert "VLLM_WEIGHT_OFFLOADING_DISABLE_UVA" in manifest["ignored_keys"]
+    assert "VLLM_WSL2_ENABLE_PIN_MEMORY" in manifest["ignored_keys"]
+    assert "VLLM_NIXL_EP_MAX_NUM_RANKS" in manifest["ignored_keys"]
     assert "VLLM_GC_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_PATTERN_MATCH_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_DP_RANK" in manifest["ignored_keys"]
