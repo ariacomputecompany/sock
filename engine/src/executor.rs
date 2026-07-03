@@ -378,42 +378,7 @@ impl MaterializationExecutor {
                     document.observed_transfer_ms = observed_transfer_ms;
                     document.observed_rebuild_ms = observed_rebuild_ms;
                     let content = canonical_json(&document)?;
-                    fs::write(&cache_path, content.as_bytes())?;
-                    (
-                        MaterializationDisposition::Executed,
-                        content.len() as u64,
-                        observed_rebuild_ms,
-                        0,
-                    )
-                }
-            } else if absolute_path.exists() {
-                let existing = load_existing_document(&absolute_path)?;
-                if same_artifact_document_identity(&existing.document, &document) {
-                    (
-                        MaterializationDisposition::Reused,
-                        0,
-                        existing.document.observed_rebuild_ms.max(
-                            existing
-                                .document
-                                .observed_compile_ms
-                                .saturating_add(existing.document.observed_transfer_ms),
-                        ),
-                        existing.duration_ms,
-                    )
-                } else {
-                    evict_invalidated_siblings(
-                        cache_root,
-                        &cache_namespace,
-                        &invalidation_domain,
-                        requirement.class,
-                        &storage_key,
-                    )?;
-                    let mut document = document.clone();
-                    document.observed_compile_ms = observed_compile_ms;
-                    document.observed_transfer_ms = observed_transfer_ms;
-                    document.observed_rebuild_ms = observed_rebuild_ms;
-                    let content = canonical_json(&document)?;
-                    fs::write(&cache_path, content.as_bytes())?;
+                    write_bytes_atomically(&cache_path, content.as_bytes())?;
                     (
                         MaterializationDisposition::Executed,
                         content.len() as u64,
@@ -434,7 +399,7 @@ impl MaterializationExecutor {
                 document.observed_transfer_ms = observed_transfer_ms;
                 document.observed_rebuild_ms = observed_rebuild_ms;
                 let content = canonical_json(&document)?;
-                fs::write(&cache_path, content.as_bytes())?;
+                write_bytes_atomically(&cache_path, content.as_bytes())?;
                 (
                     MaterializationDisposition::Executed,
                     content.len() as u64,
@@ -442,7 +407,7 @@ impl MaterializationExecutor {
                     0,
                 )
             };
-        fs::copy(&cache_path, &absolute_path)?;
+        copy_atomically(&cache_path, &absolute_path)?;
         let bundle_bytes_written = if disposition == MaterializationDisposition::Reused {
             file_size(&absolute_path)?
         } else {
@@ -1021,6 +986,32 @@ fn closure_outcome(
     } else {
         StartupClosureOutcome::ClosureByAssumption
     }
+}
+
+fn write_bytes_atomically(path: &Path, bytes: &[u8]) -> Result<(), MaterializationError> {
+    let temp_path = sibling_temp_path(path);
+    fs::write(&temp_path, bytes)?;
+    fs::rename(&temp_path, path)?;
+    Ok(())
+}
+
+fn copy_atomically(source: &Path, destination: &Path) -> Result<(), MaterializationError> {
+    let temp_path = sibling_temp_path(destination);
+    fs::copy(source, &temp_path)?;
+    fs::rename(&temp_path, destination)?;
+    Ok(())
+}
+
+fn sibling_temp_path(path: &Path) -> std::path::PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time before unix epoch")
+        .as_nanos();
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("artifact");
+    path.with_file_name(format!("{file_name}.{nanos}.tmp"))
 }
 
 fn artifact_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {

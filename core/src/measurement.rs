@@ -77,6 +77,50 @@ pub struct BuildMeasurementReport {
     pub warm_vs_cold: MeasurementComparisonReport,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BenchmarkTraceReference {
+    pub scenario: String,
+    pub trace_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BenchmarkCaseArtifactPaths {
+    pub label: String,
+    pub bundle_root: String,
+    pub buildplan_path: String,
+    pub artifact_manifest_path: String,
+    pub materialization_report_path: String,
+    pub measurement_report_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BenchmarkMatrixEntry {
+    pub label: String,
+    pub benchmark_class: String,
+    pub baseline_description: String,
+    pub candidate_description: String,
+    pub selected_backend_only: bool,
+    pub measurement: BuildMeasurementReport,
+    pub artifact_paths: Vec<BenchmarkCaseArtifactPaths>,
+    pub cold_artifact_count_delta: i64,
+    pub cold_unique_artifact_bytes_delta: i64,
+    pub cold_duplicate_load_savings_bytes: i64,
+    pub warm_duplicate_load_savings_bytes: i64,
+    pub warm_start_latency_ms: u64,
+    pub warm_start_reduction_bps: i64,
+    pub trace_references: Vec<BenchmarkTraceReference>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BenchmarkMatrixReport {
+    pub schema_version: SchemaVersion,
+    pub benchmark_program_version: u32,
+    pub verification_manifest_path: String,
+    pub benchmark_trace_scenario: String,
+    pub benchmark_trace_path: String,
+    pub entries: Vec<BenchmarkMatrixEntry>,
+}
+
 impl MeasurementComparisonReport {
     #[must_use]
     pub fn between(

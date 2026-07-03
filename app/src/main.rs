@@ -9,10 +9,12 @@ use sock_app::{
     rewrite_trace_for,
 };
 use sock_core::{
-    BackendFamily, BuildMeasurementReport, DiagnosticsDocument, MaterializationExecutionReport,
-    MeasurementCaseReport, MeasurementComparisonReport, MeasurementPhaseTimings, ReplayBundle,
-    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
-    render_diagnostics, render_explain, render_plan_summary, render_verification_report,
+    BackendFamily, BenchmarkCaseArtifactPaths, BenchmarkMatrixEntry, BenchmarkMatrixReport,
+    BenchmarkTraceReference, BuildMeasurementReport, DiagnosticsDocument,
+    MaterializationExecutionReport, MeasurementCaseReport, MeasurementComparisonReport,
+    MeasurementPhaseTimings, ReplayBundle, ReplayBundleMetadata, ResolvedBuildPlan,
+    RewriteTraceDocument, SchemaVersion, canonical_json, render_diagnostics, render_explain,
+    render_plan_summary, render_verification_report,
 };
 use sock_engine::{
     BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, PlannerHostSnapshot,
@@ -64,6 +66,12 @@ enum Command {
     Measure {
         #[arg(value_enum)]
         intent: PrepareIntentArg,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
+    Benchmark {
         #[arg(long)]
         out: PathBuf,
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
@@ -228,6 +236,7 @@ fn main() -> Result<()> {
             out,
             format,
         } => emit_measure(intent, &out, format)?,
+        Command::Benchmark { out, format } => emit_benchmark(&out, format)?,
         Command::Verify { bundle, format } => {
             emit_verify(&ReplayBundle::load_from(&bundle)?, format)?;
         }
@@ -425,75 +434,7 @@ fn emit_build(
 
 fn emit_measure(intent: PrepareIntentArg, out: &Path, format: OutputMode) -> Result<()> {
     std::fs::create_dir_all(out)?;
-
-    let broad_out = out.join("broad-cold");
-    let scoped_cold_out = out.join("scoped-cold");
-    let scoped_warm_out = out.join("scoped-warm");
-
-    let broad_cache = out.join(".sock-cache-broad");
-    let scoped_cache = out.join(".sock-cache-scoped");
-
-    let broad_scope = BuildScope::default();
-    let scoped_scope = intent_scope(intent);
-
-    let broad = materialize_bundle(&broad_scope, &broad_out, &broad_cache)?;
-    let scoped_cold = materialize_bundle(&scoped_scope, &scoped_cold_out, &scoped_cache)?;
-    let scoped_warm = materialize_bundle(&scoped_scope, &scoped_warm_out, &scoped_cache)?;
-
-    let report = BuildMeasurementReport {
-        schema_version: SchemaVersion::current(),
-        intent: intent_label(intent).to_owned(),
-        broad_cold: measurement_case(
-            "broad_cold",
-            &broad_scope,
-            &broad.materialization,
-            &broad.phase_timings,
-        ),
-        scoped_cold: measurement_case(
-            "scoped_cold",
-            &scoped_scope,
-            &scoped_cold.materialization,
-            &scoped_cold.phase_timings,
-        ),
-        scoped_warm: measurement_case(
-            "scoped_warm",
-            &scoped_scope,
-            &scoped_warm.materialization,
-            &scoped_warm.phase_timings,
-        ),
-        scoped_vs_broad: MeasurementComparisonReport::between(
-            "broad_cold",
-            &measurement_case(
-                "broad_cold",
-                &broad_scope,
-                &broad.materialization,
-                &broad.phase_timings,
-            ),
-            "scoped_cold",
-            &measurement_case(
-                "scoped_cold",
-                &scoped_scope,
-                &scoped_cold.materialization,
-                &scoped_cold.phase_timings,
-            ),
-        ),
-        warm_vs_cold: MeasurementComparisonReport::between(
-            "scoped_cold",
-            &measurement_case(
-                "scoped_cold",
-                &scoped_scope,
-                &scoped_cold.materialization,
-                &scoped_cold.phase_timings,
-            ),
-            "scoped_warm",
-            &measurement_case(
-                "scoped_warm",
-                &scoped_scope,
-                &scoped_warm.materialization,
-                &scoped_warm.phase_timings,
-            ),
-        ),
-    };
+    let report = collect_measurement_report(intent_label(intent), &intent_scope(intent), out)?;
     std::fs::write(
         out.join("measurement_report.json"),
         canonical_json(&report)?.as_bytes(),
@@ -515,6 +456,95 @@ fn emit_measure(intent: PrepareIntentArg, out: &Path, format: OutputMode) -> Res
             );
         }
         OutputMode::Json => println!("{}", canonical_json(&report)?),
+    }
+
+    Ok(())
+}
+
+fn emit_benchmark(out: &Path, format: OutputMode) -> Result<()> {
+    std::fs::create_dir_all(out)?;
+    let benchmark_trace_scenario = "tests/benchmark.matrix.fozzy.json".to_owned();
+    let benchmark_trace_path = ".fozzy-traces/benchmark-matrix.trace.fozzy".to_owned();
+    let profiles = benchmark_profiles();
+    let mut entries = Vec::new();
+
+    for profile in profiles {
+        let profile_root = out.join(profile.label);
+        let report = collect_measurement_report(profile.label, &profile.scope, &profile_root)?;
+        std::fs::write(
+            profile_root.join("measurement_report.json"),
+            canonical_json(&report)?.as_bytes(),
+        )?;
+        entries.push(BenchmarkMatrixEntry {
+            label: profile.label.to_owned(),
+            benchmark_class: profile.benchmark_class.to_owned(),
+            baseline_description:
+                "default upstream surface proxy via broad default materialization".to_owned(),
+            candidate_description: profile.description.to_owned(),
+            selected_backend_only: profile.selected_backend_only,
+            cold_artifact_count_delta: report.broad_cold.artifact_count as i64
+                - report.scoped_cold.artifact_count as i64,
+            cold_unique_artifact_bytes_delta: report.broad_cold.unique_artifact_bytes as i64
+                - report.scoped_cold.unique_artifact_bytes as i64,
+            cold_duplicate_load_savings_bytes: report.broad_cold.duplicate_artifact_bytes as i64
+                - report.scoped_cold.duplicate_artifact_bytes as i64,
+            warm_duplicate_load_savings_bytes: report.broad_cold.duplicate_artifact_bytes as i64
+                - report.scoped_warm.duplicate_artifact_bytes as i64,
+            warm_start_latency_ms: report.scoped_warm.wall_clock_ms,
+            warm_start_reduction_bps: report.warm_vs_cold.wall_clock_reduction_bps,
+            artifact_paths: vec![
+                benchmark_case_paths("broad_cold", &profile_root.join("broad-cold"), true),
+                benchmark_case_paths("scoped_cold", &profile_root.join("scoped-cold"), false),
+                benchmark_case_paths("scoped_warm", &profile_root.join("scoped-warm"), false),
+            ],
+            trace_references: profile
+                .trace_references
+                .iter()
+                .map(|reference| BenchmarkTraceReference {
+                    scenario: reference.0.to_owned(),
+                    trace_path: reference.1.to_owned(),
+                })
+                .collect(),
+            measurement: report,
+        });
+    }
+
+    let matrix = BenchmarkMatrixReport {
+        schema_version: SchemaVersion::current(),
+        benchmark_program_version: 1,
+        verification_manifest_path: "fozzy/verification_program.json".to_owned(),
+        benchmark_trace_scenario,
+        benchmark_trace_path,
+        entries,
+    };
+    std::fs::write(
+        out.join("benchmark_matrix.json"),
+        canonical_json(&matrix)?.as_bytes(),
+    )?;
+
+    match format {
+        OutputMode::Summary => {
+            println!(
+                "benchmark_matrix entries={} verification_manifest={} benchmark_trace_scenario={}",
+                matrix.entries.len(),
+                matrix.verification_manifest_path,
+                matrix.benchmark_trace_scenario,
+            );
+            for entry in &matrix.entries {
+                println!(
+                    "benchmark {} class={} selected_backend_only={} cold_wall_clock_reduction_bps={} warm_start_latency_ms={} artifact_count_delta={} unique_artifact_bytes_delta={} warm_duplicate_load_savings_bytes={}",
+                    entry.label,
+                    entry.benchmark_class,
+                    entry.selected_backend_only,
+                    entry.measurement.scoped_vs_broad.wall_clock_reduction_bps,
+                    entry.warm_start_latency_ms,
+                    entry.cold_artifact_count_delta,
+                    entry.cold_unique_artifact_bytes_delta,
+                    entry.warm_duplicate_load_savings_bytes,
+                );
+            }
+        }
+        OutputMode::Json => println!("{}", canonical_json(&matrix)?),
     }
 
     Ok(())
@@ -780,6 +810,15 @@ struct BundleBuild {
     phase_timings: MeasurementPhaseTimings,
 }
 
+struct BenchmarkProfile<'a> {
+    label: &'a str,
+    benchmark_class: &'a str,
+    description: &'a str,
+    selected_backend_only: bool,
+    scope: BuildScope,
+    trace_references: &'a [(&'a str, &'a str)],
+}
+
 fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Result<BundleBuild> {
     let configure_started = Instant::now();
     let outcome = plan_with_scope(scope)?;
@@ -822,6 +861,151 @@ fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Resu
         materialization,
         phase_timings,
     })
+}
+
+fn collect_measurement_report(
+    label: &str,
+    scoped_scope: &BuildScope,
+    out: &Path,
+) -> Result<BuildMeasurementReport> {
+    std::fs::create_dir_all(out)?;
+
+    let broad_out = out.join("broad-cold");
+    let scoped_cold_out = out.join("scoped-cold");
+    let scoped_warm_out = out.join("scoped-warm");
+
+    let broad_cache = out.join(".sock-cache-broad");
+    let scoped_cache = out.join(".sock-cache-scoped");
+
+    let broad_scope = BuildScope::default();
+    let broad = materialize_bundle(&broad_scope, &broad_out, &broad_cache)?;
+    let scoped_cold = materialize_bundle(scoped_scope, &scoped_cold_out, &scoped_cache)?;
+    let scoped_warm = materialize_bundle(scoped_scope, &scoped_warm_out, &scoped_cache)?;
+
+    let broad_case = measurement_case(
+        "broad_cold",
+        &broad_scope,
+        &broad.materialization,
+        &broad.phase_timings,
+    );
+    let scoped_cold_case = measurement_case(
+        "scoped_cold",
+        scoped_scope,
+        &scoped_cold.materialization,
+        &scoped_cold.phase_timings,
+    );
+    let scoped_warm_case = measurement_case(
+        "scoped_warm",
+        scoped_scope,
+        &scoped_warm.materialization,
+        &scoped_warm.phase_timings,
+    );
+
+    Ok(BuildMeasurementReport {
+        schema_version: SchemaVersion::current(),
+        intent: label.to_owned(),
+        broad_cold: broad_case.clone(),
+        scoped_cold: scoped_cold_case.clone(),
+        scoped_warm: scoped_warm_case.clone(),
+        scoped_vs_broad: MeasurementComparisonReport::between(
+            "broad_cold",
+            &broad_case,
+            "scoped_cold",
+            &scoped_cold_case,
+        ),
+        warm_vs_cold: MeasurementComparisonReport::between(
+            "scoped_cold",
+            &scoped_cold_case,
+            "scoped_warm",
+            &scoped_warm_case,
+        ),
+    })
+}
+
+fn benchmark_profiles<'a>() -> Vec<BenchmarkProfile<'a>> {
+    vec![
+        BenchmarkProfile {
+            label: "prefill_path",
+            benchmark_class: "intent_policy",
+            description: "sock scoped prefill-path materialization policy",
+            selected_backend_only: false,
+            scope: intent_scope(PrepareIntentArg::PrefillPath),
+            trace_references: &[(
+                "tests/measure.prefill_path.fozzy.json",
+                ".fozzy-traces/measure-prefill-path.trace.fozzy",
+            )],
+        },
+        BenchmarkProfile {
+            label: "distributed_flashinfer_startup",
+            benchmark_class: "intent_policy",
+            description: "sock distributed flashinfer startup policy",
+            selected_backend_only: false,
+            scope: intent_scope(PrepareIntentArg::DistributedFlashinferStartup),
+            trace_references: &[(
+                "tests/prepare.distributed_flashinfer_startup.fozzy.json",
+                ".fozzy-traces/prepare-distributed-flashinfer-startup.trace.fozzy",
+            )],
+        },
+        BenchmarkProfile {
+            label: "replay_safe_closure",
+            benchmark_class: "intent_policy",
+            description: "sock replay-safe closure policy",
+            selected_backend_only: false,
+            scope: intent_scope(PrepareIntentArg::ReplaySafeClosure),
+            trace_references: &[(
+                "tests/measure.replay_safe_closure.fozzy.json",
+                ".fozzy-traces/measure-replay-safe-closure.trace.fozzy",
+            )],
+        },
+        BenchmarkProfile {
+            label: "selected_backend_flashinfer_prefill",
+            benchmark_class: "selected_backend_policy",
+            description: "selected-backend-only flashinfer prefill materialization policy",
+            selected_backend_only: true,
+            scope: BuildScope {
+                region_names: ["prefill_attention".to_owned()].into_iter().collect(),
+                backend_families: [BackendFamily::FlashInfer].into_iter().collect(),
+                readiness: Some(BuildReadiness::Correctness),
+                ..BuildScope::default()
+            },
+            trace_references: &[(
+                "tests/build.prefill_scope.fozzy.json",
+                ".fozzy-traces/build-prefill-scope.trace.fozzy",
+            )],
+        },
+    ]
+}
+
+fn benchmark_case_paths(
+    label: &str,
+    bundle_root: &Path,
+    include_measurement_report: bool,
+) -> BenchmarkCaseArtifactPaths {
+    BenchmarkCaseArtifactPaths {
+        label: label.to_owned(),
+        bundle_root: bundle_root.display().to_string(),
+        buildplan_path: bundle_root.join("buildplan.json").display().to_string(),
+        artifact_manifest_path: bundle_root
+            .join("artifact_manifest.json")
+            .display()
+            .to_string(),
+        materialization_report_path: bundle_root
+            .join("materialization_report.json")
+            .display()
+            .to_string(),
+        measurement_report_path: if include_measurement_report {
+            Some(
+                bundle_root
+                    .parent()
+                    .expect("benchmark root")
+                    .join("measurement_report.json")
+                    .display()
+                    .to_string(),
+            )
+        } else {
+            None
+        },
+    }
 }
 
 fn measurement_case(

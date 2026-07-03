@@ -823,3 +823,65 @@ fn measure_reports_phase_and_duplication_telemetry() {
     );
     assert!(report["scoped_vs_broad"].get("changed_phases").is_some());
 }
+
+#[test]
+fn benchmark_matrix_is_versioned_and_tied_to_manifests() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "benchmark",
+            "--out",
+            dir.path().to_str().expect("utf8 path"),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("benchmark_matrix entries=4"))
+        .stdout(predicate::str::contains(
+            "benchmark_trace_scenario=tests/benchmark.matrix.fozzy.json",
+        ));
+
+    let report: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("benchmark_matrix.json"))
+            .expect("read benchmark matrix"),
+    )
+    .expect("parse benchmark matrix");
+    assert_eq!(report["benchmark_program_version"], 1);
+    assert_eq!(
+        report["verification_manifest_path"],
+        Value::String("fozzy/verification_program.json".to_owned())
+    );
+    assert_eq!(
+        report["benchmark_trace_scenario"],
+        Value::String("tests/benchmark.matrix.fozzy.json".to_owned())
+    );
+    assert_eq!(
+        report["entries"].as_array().expect("entries array").len(),
+        4
+    );
+    assert!(
+        report["entries"]
+            .as_array()
+            .expect("entries array")
+            .iter()
+            .any(
+                |entry| entry["label"] == "selected_backend_flashinfer_prefill"
+                    && entry["selected_backend_only"] == Value::Bool(true)
+            )
+    );
+    assert!(
+        report["entries"]
+            .as_array()
+            .expect("entries array")
+            .iter()
+            .all(|entry| entry.get("artifact_paths").is_some())
+    );
+    assert!(
+        report["entries"]
+            .as_array()
+            .expect("entries array")
+            .iter()
+            .all(|entry| entry.get("trace_references").is_some())
+    );
+}
