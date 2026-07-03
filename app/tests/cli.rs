@@ -159,3 +159,90 @@ fn scoped_prefill_build_emits_minimal_closure() {
             .all(|obligation| obligation["blocking"] == true)
     );
 }
+
+#[test]
+fn backend_family_scope_selects_decode_closure() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            dir.path().to_str().expect("utf8 path"),
+            "--backend-family",
+            "cuda-graphs",
+            "--readiness",
+            "performance",
+        ])
+        .assert()
+        .success();
+
+    let plan: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("buildplan.json")).expect("read buildplan"),
+    )
+    .expect("parse buildplan");
+    let compile_regions = plan["compile_regions"]
+        .as_array()
+        .expect("compile regions array");
+    assert_eq!(compile_regions.len(), 1);
+    assert_eq!(compile_regions[0]["name"], "decode_attention");
+}
+
+#[test]
+fn cache_namespace_scope_selects_flashinfer_kv_update_closure() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            dir.path().to_str().expect("utf8 path"),
+            "--cache-namespace",
+            "flashinfer-autotune-cache",
+            "--readiness",
+            "correctness",
+        ])
+        .assert()
+        .success();
+
+    let plan: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("buildplan.json")).expect("read buildplan"),
+    )
+    .expect("parse buildplan");
+    let compile_regions = plan["compile_regions"]
+        .as_array()
+        .expect("compile regions array");
+    assert_eq!(compile_regions.len(), 1);
+    assert_eq!(compile_regions[0]["name"], "kv_cache_update");
+}
+
+#[test]
+fn warmup_scope_selects_prefill_closure() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            dir.path().to_str().expect("utf8 path"),
+            "--warmup-scope",
+            "prefill_attention",
+            "--readiness",
+            "correctness",
+        ])
+        .assert()
+        .success();
+
+    let plan: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("buildplan.json")).expect("read buildplan"),
+    )
+    .expect("parse buildplan");
+    let compile_regions = plan["compile_regions"]
+        .as_array()
+        .expect("compile regions array");
+    assert_eq!(compile_regions.len(), 1);
+    assert_eq!(compile_regions[0]["name"], "prefill_attention");
+}

@@ -7,8 +7,9 @@ use sock_app::{
     rewrite_trace_for,
 };
 use sock_core::{
-    DiagnosticsDocument, ReplayBundle, ReplayBundleMetadata, RewriteTraceDocument, canonical_json,
-    render_diagnostics, render_explain, render_plan_summary, render_verification_report,
+    BackendFamily, DiagnosticsDocument, ReplayBundle, ReplayBundleMetadata, RewriteTraceDocument,
+    canonical_json, render_diagnostics, render_explain, render_plan_summary,
+    render_verification_report,
 };
 use sock_engine::{BuildReadiness, BuildScope, PlannerHostSnapshot, PlanningOutcome};
 
@@ -71,6 +72,12 @@ struct ScopeArgs {
     regions: Vec<String>,
     #[arg(long = "artifact-scope")]
     artifact_scopes: Vec<String>,
+    #[arg(long = "backend-family", value_enum)]
+    backend_families: Vec<BackendFamilyArg>,
+    #[arg(long = "cache-namespace")]
+    cache_namespaces: Vec<String>,
+    #[arg(long = "warmup-scope")]
+    warmup_scopes: Vec<String>,
     #[arg(long, value_enum)]
     readiness: Option<ReadinessArg>,
 }
@@ -79,6 +86,14 @@ struct ScopeArgs {
 enum ReadinessArg {
     Correctness,
     Performance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum BackendFamilyArg {
+    Flashinfer,
+    Triton,
+    AotInductor,
+    CudaGraphs,
 }
 
 fn main() -> Result<()> {
@@ -115,6 +130,18 @@ impl ScopeArgs {
         BuildScope {
             region_names: self.regions.into_iter().collect(),
             artifact_scopes: self.artifact_scopes.into_iter().collect(),
+            backend_families: self
+                .backend_families
+                .into_iter()
+                .map(|family| match family {
+                    BackendFamilyArg::Flashinfer => BackendFamily::FlashInfer,
+                    BackendFamilyArg::Triton => BackendFamily::Triton,
+                    BackendFamilyArg::AotInductor => BackendFamily::AotInductor,
+                    BackendFamilyArg::CudaGraphs => BackendFamily::CudaGraphs,
+                })
+                .collect(),
+            cache_namespaces: self.cache_namespaces.into_iter().collect(),
+            warmup_scopes: self.warmup_scopes.into_iter().collect(),
             readiness: self.readiness.map(|readiness| match readiness {
                 ReadinessArg::Correctness => BuildReadiness::Correctness,
                 ReadinessArg::Performance => BuildReadiness::Performance,
