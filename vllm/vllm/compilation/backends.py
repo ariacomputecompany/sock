@@ -1016,6 +1016,7 @@ class VllmBackend:
     @dynamo_timed("vllm_backend")
     def __call__(self, graph: fx.GraphModule, example_inputs: Sequence[Any]) -> Any:
         from .caching import (
+            build_compile_surface_fingerprint,
             build_compile_source_fingerprint_from_content,
             VllmSerializableFunction,
             write_graph_artifact_store_manifest,
@@ -1055,7 +1056,51 @@ class VllmBackend:
         source_fingerprint = build_compile_source_fingerprint_from_content(
             traced_file_contents
         )
-        code_hash = str(source_fingerprint["aggregate_hash"])
+        enabled_passes = [
+            f.name
+            for f in dataclasses.fields(self.compilation_config.pass_config)
+            if isinstance(
+                getattr(self.compilation_config.pass_config, f.name), bool
+            )
+            and getattr(self.compilation_config.pass_config, f.name)
+        ]
+        node_targets = []
+        placeholder_names = []
+        for node in graph.graph.nodes:
+            if node.op == "placeholder":
+                placeholder_names.append(node.name)
+            target = node.target
+            if callable(target):
+                target_str = getattr(
+                    target,
+                    "__qualname__",
+                    getattr(target, "__name__", str(target)),
+                )
+            else:
+                target_str = str(target)
+            node_targets.append(f"{node.op}:{target_str}")
+        compile_surface_fingerprint = build_compile_surface_fingerprint(
+            source_fingerprint=source_fingerprint,
+            graph_text=graph.print_readable(print_output=False),
+            placeholder_names=placeholder_names,
+            node_targets=node_targets,
+            splitting_ops=self.compilation_config.splitting_ops,
+            custom_ops=self.compilation_config.custom_ops,
+            enabled_passes=enabled_passes,
+            inductor_passes=list(self.compilation_config.inductor_passes.keys()),
+            dynamic_shapes_type=str(
+                self.compilation_config.dynamic_shapes_config.type
+            ),
+            dynamic_shapes_evaluate_guards=(
+                self.compilation_config.dynamic_shapes_config.evaluate_guards
+            ),
+            use_inductor_graph_partition=(
+                self.compilation_config.use_inductor_graph_partition
+            ),
+            enabled_custom_ops=dict(self.compilation_config.enabled_custom_ops),
+            disabled_custom_ops=dict(self.compilation_config.disabled_custom_ops),
+        )
+        code_hash = str(compile_surface_fingerprint["aggregate_hash"])
         # Clear after consumption
         self.compilation_config.traced_files.clear()
         if not self.compilation_config.cache_dir:
@@ -1121,6 +1166,7 @@ class VllmBackend:
             "code_hash": code_hash,
             "compiler_hash": compiler_hash,
             "source_fingerprint": source_fingerprint,
+            "compile_surface_fingerprint": compile_surface_fingerprint,
         }
         try:
             logger.debug(

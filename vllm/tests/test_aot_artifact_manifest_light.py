@@ -524,6 +524,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                 "torch_version": "2.9.0-light",
             },
             "source_fingerprint": None,
+            "compile_surface_fingerprint": None,
             "graph_artifact_store": expected_graph_artifact_store,
             "patch_profile": {
                 "schema_version": 1,
@@ -738,6 +739,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             "torch_version": "2.9.0-light",
         },
         "source_fingerprint": None,
+        "compile_surface_fingerprint": None,
         "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
@@ -1018,6 +1020,21 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
             "vllm_compile_cache.py": "compiled = True\n",
         }
     )
+    compile_surface_fingerprint = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x) -> add",
+        placeholder_names=["x"],
+        node_targets=["placeholder:x", "call_function:add", "output:output"],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         meta_path = Path(tmpdir) / "cache_key_factors.json"
@@ -1029,6 +1046,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                     "code_hash": "code-from-file",
                     "compiler_hash": "compiler-from-file",
                     "source_fingerprint": source_fingerprint,
+                    "compile_surface_fingerprint": compile_surface_fingerprint,
                 }
             )
         )
@@ -1042,6 +1060,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
                 "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
             },
             artifact_files={
                 "cache_key_factors": "cache_key_factors.json",
@@ -1097,6 +1116,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
             "torch_version": "2.9.0-light",
         },
         "source_fingerprint": source_fingerprint,
+        "compile_surface_fingerprint": compile_surface_fingerprint,
         "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
@@ -1470,6 +1490,21 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
             "vllm_compile_cache.py": "compiled = True\n",
         }
     )
+    compile_surface_fingerprint = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x) -> add",
+        placeholder_names=["x"],
+        node_targets=["placeholder:x", "call_function:add", "output:output"],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         Path(tmpdir, "cache_key_factors.json").write_text(
@@ -1480,6 +1515,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
                     "code_hash": "code-from-file",
                     "compiler_hash": "compiler-from-file",
                     "source_fingerprint": source_fingerprint,
+                    "compile_surface_fingerprint": compile_surface_fingerprint,
                 }
             )
         )
@@ -1494,6 +1530,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
                 "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
             },
             artifact_files={
                 "cache_key_factors": "cache_key_factors.json",
@@ -1520,6 +1557,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
         "compiler_hash": "compiler-from-file",
     }
     assert manifest["source_fingerprint"] == source_fingerprint
+    assert manifest["compile_surface_fingerprint"] == compile_surface_fingerprint
     assert [item["artifact_kind"] for item in manifest["artifacts"]] == [
         "cache_key_factors",
         "compiler_cache",
@@ -1541,6 +1579,47 @@ def test_compile_source_fingerprint_ignores_python_comments() -> None:
     assert with_comment["aggregate_hash"] == without_comment["aggregate_hash"]
     assert with_comment["files"][0]["fingerprint_mode"] == "python_ast"
     assert without_comment["files"][0]["fingerprint_mode"] == "python_ast"
+
+
+def test_compile_surface_fingerprint_tracks_policy_and_graph() -> None:
+    caching, _ = _load_caching_module()
+    source_fingerprint = caching.build_compile_source_fingerprint_from_content(
+        {"module.py": "def forward(x):\n    return x + 1\n"}
+    )
+    first = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x) -> add",
+        placeholder_names=["x"],
+        node_targets=["placeholder:x", "call_function:add", "output:output"],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
+    second = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x) -> sub",
+        placeholder_names=["x"],
+        node_targets=["placeholder:x", "call_function:sub", "output:output"],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
+
+    assert first["source_fingerprint_hash"] == source_fingerprint["aggregate_hash"]
+    assert first["graph_sha256"] != second["graph_sha256"]
+    assert first["aggregate_hash"] != second["aggregate_hash"]
 
 
 def test_mega_serialization_skips_graph_pickler_fallback_payloads() -> None:

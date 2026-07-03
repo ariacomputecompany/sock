@@ -1751,6 +1751,11 @@ def build_graph_artifact_store_manifest(
             if cache_key_factors is not None
             else None
         ),
+        "compile_surface_fingerprint": (
+            _json_ready(cache_key_factors.get("compile_surface_fingerprint"))
+            if cache_key_factors is not None
+            else None
+        ),
         "backend_identity": _json_ready(backend_identity),
         "artifact_count": len(artifacts),
         "present_artifact_count": sum(1 for item in artifacts if item["present"]),
@@ -1909,6 +1914,11 @@ def build_standalone_artifact_proof_manifest(
         },
         "source_fingerprint": (
             _json_ready(cache_key_factors.get("source_fingerprint"))
+            if cache_key_factors is not None
+            else None
+        ),
+        "compile_surface_fingerprint": (
+            _json_ready(cache_key_factors.get("compile_surface_fingerprint"))
             if cache_key_factors is not None
             else None
         ),
@@ -2089,6 +2099,55 @@ def build_compile_source_fingerprint_from_content(
             "\n".join(aggregate_material).encode(), usedforsecurity=False
         ).hexdigest(),
     }
+
+
+def build_compile_surface_fingerprint(
+    *,
+    source_fingerprint: dict[str, object] | None,
+    graph_text: str,
+    placeholder_names: Sequence[str],
+    node_targets: Sequence[str],
+    splitting_ops: Sequence[str] | None,
+    custom_ops: Sequence[str] | None,
+    enabled_passes: Sequence[str],
+    inductor_passes: Sequence[str],
+    dynamic_shapes_type: str,
+    dynamic_shapes_evaluate_guards: bool,
+    use_inductor_graph_partition: bool,
+    enabled_custom_ops: dict[str, int] | None = None,
+    disabled_custom_ops: dict[str, int] | None = None,
+) -> dict[str, object]:
+    manifest = {
+        "schema_version": 1,
+        "source_fingerprint_hash": (
+            source_fingerprint.get("aggregate_hash")
+            if source_fingerprint is not None
+            else None
+        ),
+        "graph_sha256": safe_hash(
+            graph_text.encode(), usedforsecurity=False
+        ).hexdigest(),
+        "placeholder_names": list(placeholder_names),
+        "node_targets": list(node_targets),
+        "splitting_ops": list(splitting_ops or []),
+        "custom_ops": list(custom_ops or []),
+        "enabled_passes": list(enabled_passes),
+        "inductor_passes": list(inductor_passes),
+        "dynamic_shapes_type": dynamic_shapes_type,
+        "dynamic_shapes_evaluate_guards": dynamic_shapes_evaluate_guards,
+        "use_inductor_graph_partition": use_inductor_graph_partition,
+        "enabled_custom_ops": dict(sorted((enabled_custom_ops or {}).items())),
+        "disabled_custom_ops": dict(sorted((disabled_custom_ops or {}).items())),
+    }
+    manifest["aggregate_hash"] = safe_hash(
+        json.dumps(
+            _json_ready(manifest),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(),
+        usedforsecurity=False,
+    ).hexdigest()
+    return manifest
 
 
 def _compute_code_hash_with_content(file_contents: dict[str, str]) -> str:
