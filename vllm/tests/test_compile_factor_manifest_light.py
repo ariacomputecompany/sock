@@ -102,20 +102,33 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["audit"]["category_counts"]["runtime_non_compile"] >= 1
     assert manifest["audit"]["overlap_keys"] == {}
     assert (
-        manifest["normalization"]["declared_factor_normalizers"][
+        manifest["normalization"]["declared_factor_normalization"][
             "VLLM_DISABLED_KERNELS"
-        ]
+        ]["normalizer"]
         == "_normalize_unordered_string_list_compile_factor"
     )
     assert (
-        manifest["normalization"]["ambient_factor_normalizers"][
+        manifest["normalization"]["ambient_factor_normalization"][
             "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
-        ]
+        ]["normalizer"]
         == "_normalize_boolean_toggle_compile_factor"
     )
     assert (
         "VLLM_DISABLED_KERNELS"
-        not in manifest["normalization"]["declared_factor_without_normalizer"]
+        not in manifest["normalization"]["declared_raw_normalization"]
+    )
+    assert (
+        manifest["normalization"]["declared_factor_normalization"][
+            "VLLM_DISABLE_COMPILE_CACHE"
+        ]["strategy"]
+        == "raw"
+    )
+    assert manifest["validation"]["missing_normalization_policy_keys"] == []
+    assert manifest["validation"]["extra_normalization_policy_keys"] == []
+    assert manifest["validation"]["invalid_normalizer_keys"] == []
+    assert (
+        "VLLM_DISABLE_COMPILE_CACHE"
+        in manifest["normalization"]["declared_raw_normalization"]
     )
     assert "VLLM_CONFIGURE_LOGGING" in manifest["audit"]["category_keys"]["debug_only"]
     assert "VLLM_API_KEY" in manifest["audit"]["category_keys"]["runtime_non_compile"]
@@ -165,6 +178,29 @@ def test_compile_factor_policy_detects_unexpected_compile_affecting_set() -> Non
         assert validation["reasons"] == ["compile_affecting_env_var_set_changed"]
     finally:
         envs._EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST = original_digest
+
+
+def test_compile_factor_policy_detects_missing_normalizer_registration() -> None:
+    envs = _load_envs_module()
+    original = envs._compile_factor_normalization_policy
+
+    def bad_policy(factor: str):
+        policy = original(factor)
+        if factor == "VLLM_DISABLED_KERNELS":
+            return {
+                **policy,
+                "normalizer": "_missing_normalizer",
+            }
+        return policy
+
+    envs._compile_factor_normalization_policy = bad_policy
+    try:
+        validation = envs.validate_compile_factor_policy(hard_fail=False)
+        assert validation["ok"] is False
+        assert "compile_factor_normalizer_missing" in validation["reasons"]
+        assert validation["invalid_normalizer_keys"] == ["VLLM_DISABLED_KERNELS"]
+    finally:
+        envs._compile_factor_normalization_policy = original
 
 
 def test_case_insensitive_choice_envs_canonicalize_for_identity() -> None:

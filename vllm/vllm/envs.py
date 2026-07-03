@@ -2319,15 +2319,72 @@ def _normalize_boolean_toggle_compile_factor(raw: object) -> object:
     return raw
 
 
-def _compile_factor_normalizer(factor: str) -> Callable[[object], object] | None:
-    exact_normalizers: dict[str, Callable[[object], object]] = {
-        "VLLM_DISABLED_KERNELS": _normalize_unordered_string_list_compile_factor,
+def _compile_factor_normalizer_functions() -> dict[str, Callable[[object], object]]:
+    return {
+        "_normalize_unordered_string_list_compile_factor": (
+            _normalize_unordered_string_list_compile_factor
+        ),
+        "_normalize_boolean_toggle_compile_factor": (
+            _normalize_boolean_toggle_compile_factor
+        ),
     }
-    if factor in exact_normalizers:
-        return exact_normalizers[factor]
+
+
+def _compile_factor_normalization_policy(factor: str) -> dict[str, str]:
+    exact_policies: dict[str, dict[str, str]] = {
+        "VLLM_DISABLED_KERNELS": {
+            "strategy": "custom",
+            "family": "unordered_string_list",
+            "normalizer": "_normalize_unordered_string_list_compile_factor",
+            "reason": (
+                "Kernel disablement is set-like for compile identity, so duplicate "
+                "entries, whitespace, and ordering must not fragment cache keys."
+            ),
+        },
+    }
+    if factor in exact_policies:
+        return exact_policies[factor]
     if factor in _AMBIENT_BOOLEAN_COMPILE_FACTOR_NAMES:
-        return _normalize_boolean_toggle_compile_factor
-    return None
+        return {
+            "strategy": "custom",
+            "family": "boolean_toggle",
+            "normalizer": "_normalize_boolean_toggle_compile_factor",
+            "reason": (
+                "Ambient Ray accelerator isolation flags are boolean toggles, so "
+                "equivalent truthy/falsey spellings must collapse to one identity."
+            ),
+        }
+    return {
+        "strategy": "raw",
+        "family": "normalize_value_only",
+        "normalizer": "normalize_value",
+        "reason": (
+            "The getter already yields a stable semantic value, so compile identity "
+            "can safely use normalize_value without a factor-specific rewrite."
+        ),
+    }
+
+
+def _compile_factor_normalizer(factor: str) -> Callable[[object], object] | None:
+    policy = _compile_factor_normalization_policy(factor)
+    if policy["strategy"] != "custom":
+        return None
+    normalizer_name = policy["normalizer"]
+    normalizers = _compile_factor_normalizer_functions()
+    if normalizer_name not in normalizers:
+        raise KeyError(
+            f"Unknown compile-factor normalizer '{normalizer_name}' for factor {factor}"
+        )
+    return normalizers[normalizer_name]
+
+
+def _compile_factor_normalization_policy_names() -> list[str]:
+    categories = compile_factor_categories()
+    compile_affecting_names = sorted(
+        factor for factor, category in categories.items() if category == "compile_affecting"
+    )
+    ambient_names = sorted(_ambient_compile_factor_names())
+    return sorted(set(compile_affecting_names + ambient_names))
 
 
 def _normalize_compile_factor_value(factor: str, raw: object) -> object:
@@ -2362,25 +2419,37 @@ def compile_factor_normalization_manifest() -> dict[str, object]:
         factor for factor, category in categories.items() if category == "compile_affecting"
     )
     ambient_names = sorted(_ambient_compile_factor_names())
-    declared_normalizers = {
-        factor: normalizer.__name__
+    declared_normalization_policies = {
+        factor: _compile_factor_normalization_policy(factor)
         for factor in compile_affecting_names
-        if (normalizer := _compile_factor_normalizer(factor)) is not None
     }
-    ambient_normalizers = {
-        factor: normalizer.__name__
+    ambient_normalization_policies = {
+        factor: _compile_factor_normalization_policy(factor)
         for factor in ambient_names
-        if (normalizer := _compile_factor_normalizer(factor)) is not None
     }
     return {
         "schema_version": 1,
-        "declared_factor_normalizers": declared_normalizers,
-        "ambient_factor_normalizers": ambient_normalizers,
-        "declared_factor_without_normalizer": sorted(
-            factor for factor in compile_affecting_names if factor not in declared_normalizers
+        "declared_factor_normalization": declared_normalization_policies,
+        "ambient_factor_normalization": ambient_normalization_policies,
+        "declared_custom_normalizers": {
+            factor: policy["normalizer"]
+            for factor, policy in declared_normalization_policies.items()
+            if policy["strategy"] == "custom"
+        },
+        "ambient_custom_normalizers": {
+            factor: policy["normalizer"]
+            for factor, policy in ambient_normalization_policies.items()
+            if policy["strategy"] == "custom"
+        },
+        "declared_raw_normalization": sorted(
+            factor
+            for factor, policy in declared_normalization_policies.items()
+            if policy["strategy"] == "raw"
         ),
-        "ambient_factor_without_normalizer": sorted(
-            factor for factor in ambient_names if factor not in ambient_normalizers
+        "ambient_raw_normalization": sorted(
+            factor
+            for factor, policy in ambient_normalization_policies.items()
+            if policy["strategy"] == "raw"
         ),
     }
 
@@ -2513,6 +2582,7 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
     policies = compile_factor_policies()
     ambient_policies = ambient_compile_factor_policies()
     audit = compile_factor_audit_manifest()
+    normalization = compile_factor_normalization_manifest()
     compile_affecting_keys = sorted(
         factor for factor, category in categories.items() if category == "compile_affecting"
     )
@@ -2540,6 +2610,32 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
     if overlap_keys:
         reasons.append("compile_factor_category_overlap")
 
+    normalized_factor_names = sorted(
+        set(normalization["declared_factor_normalization"])
+        | set(normalization["ambient_factor_normalization"])
+    )
+    expected_normalized_factor_names = _compile_factor_normalization_policy_names()
+    missing_normalization_policy_keys = sorted(
+        set(expected_normalized_factor_names) - set(normalized_factor_names)
+    )
+    extra_normalization_policy_keys = sorted(
+        set(normalized_factor_names) - set(expected_normalized_factor_names)
+    )
+    if missing_normalization_policy_keys or extra_normalization_policy_keys:
+        reasons.append("compile_factor_normalization_policy_mismatch")
+
+    invalid_normalizer_keys = sorted(
+        factor
+        for factor, policy in (
+            list(normalization["declared_factor_normalization"].items())
+            + list(normalization["ambient_factor_normalization"].items())
+        )
+        if policy["strategy"] == "custom"
+        and policy["normalizer"] not in _compile_factor_normalizer_functions()
+    )
+    if invalid_normalizer_keys:
+        reasons.append("compile_factor_normalizer_missing")
+
     validation = {
         "schema_version": 1,
         "ok": not reasons,
@@ -2551,6 +2647,9 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
         "reasons": reasons,
         "missing_reason_keys": missing_reason_keys,
         "overlap_keys": overlap_keys,
+        "missing_normalization_policy_keys": missing_normalization_policy_keys,
+        "extra_normalization_policy_keys": extra_normalization_policy_keys,
+        "invalid_normalizer_keys": invalid_normalizer_keys,
     }
     if hard_fail and reasons:
         raise ValueError(
