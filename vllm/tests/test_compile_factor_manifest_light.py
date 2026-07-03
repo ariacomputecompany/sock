@@ -191,3 +191,36 @@ def test_case_insensitive_choice_helpers_return_canonical_spelling() -> None:
             "TEST_ENV", [], ["option1", "option2"], case_sensitive=False
         )
         assert env_set_func() == {"option1", "option2"}
+
+
+def test_disabled_kernels_compile_factor_is_set_canonicalized() -> None:
+    envs = _load_envs_module()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_DISABLED_KERNELS": "MarlinLinearKernel, ExllamaLinearKernel,MarlinLinearKernel"},
+        clear=False,
+    ):
+        factors = envs.compile_factors()
+        identity = envs.compile_factor_identity_manifest()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_DISABLED_KERNELS": " ExllamaLinearKernel ,MarlinLinearKernel "},
+        clear=False,
+    ):
+        equivalent_factors = envs.compile_factors()
+        equivalent_identity = envs.compile_factor_identity_manifest()
+
+    assert factors["VLLM_DISABLED_KERNELS"] == (
+        "ExllamaLinearKernel",
+        "MarlinLinearKernel",
+    )
+    assert equivalent_factors["VLLM_DISABLED_KERNELS"] == (
+        "ExllamaLinearKernel",
+        "MarlinLinearKernel",
+    )
+    assert (
+        identity["combined_factor_digest"]
+        == equivalent_identity["combined_factor_digest"]
+    )

@@ -2266,14 +2266,31 @@ def compile_factors() -> dict[str, object]:
             )
             continue
 
-        factors[factor] = normalize_value(raw)
+        factors[factor] = _normalize_compile_factor_value(factor, raw)
 
     ambient_compile_factors = _ambient_compile_factor_names()
 
     for var in ambient_compile_factors:
-        factors[var] = normalize_value(os.getenv(var))
+        factors[var] = _normalize_compile_factor_value(var, os.getenv(var))
 
     return factors
+
+
+def _normalize_compile_factor_value(factor: str, raw: object) -> object:
+    from vllm.config.utils import normalize_value
+
+    if factor == "VLLM_DISABLED_KERNELS" and isinstance(raw, list):
+        raw = tuple(
+            sorted(
+                {
+                    kernel.strip()
+                    for kernel in raw
+                    if isinstance(kernel, str) and kernel.strip()
+                }
+            )
+        )
+
+    return normalize_value(raw)
 
 
 def _ambient_compile_factor_names() -> list[str]:
