@@ -2381,6 +2381,67 @@ def test_compile_source_fingerprint_ignores_python_comments() -> None:
     assert without_comment["files"][0]["fingerprint_mode"] == "python_ast"
 
 
+def test_compile_source_fingerprint_ignores_unreachable_python_helpers() -> None:
+    caching, _ = _load_caching_module()
+
+    first = caching.build_compile_source_fingerprint_from_content(
+        {
+            "module.py": (
+                "CONST = 1\n\n"
+                "def used(x):\n"
+                "    return x + CONST\n\n"
+                "def unused(x):\n"
+                "    return x + 2\n"
+            )
+        },
+        reachable_symbols_by_path={"module.py": ["used"]},
+    )
+    second = caching.build_compile_source_fingerprint_from_content(
+        {
+            "module.py": (
+                "CONST = 1\n\n"
+                "def used(x):\n"
+                "    return x + CONST\n\n"
+                "def unused(x):\n"
+                "    return x + 999\n"
+            )
+        },
+        reachable_symbols_by_path={"module.py": ["used"]},
+    )
+
+    assert first["aggregate_hash"] == second["aggregate_hash"]
+    assert first["files"][0]["fingerprint_mode"] == "python_ast_reachable"
+    assert first["files"][0]["reachable_symbols"] == ["used"]
+
+
+def test_compile_source_fingerprint_tracks_reachable_global_dependencies() -> None:
+    caching, _ = _load_caching_module()
+
+    first = caching.build_compile_source_fingerprint_from_content(
+        {
+            "module.py": (
+                "CONST = 1\n\n"
+                "def used(x):\n"
+                "    return x + CONST\n"
+            )
+        },
+        reachable_symbols_by_path={"module.py": ["used"]},
+    )
+    second = caching.build_compile_source_fingerprint_from_content(
+        {
+            "module.py": (
+                "CONST = 2\n\n"
+                "def used(x):\n"
+                "    return x + CONST\n"
+            )
+        },
+        reachable_symbols_by_path={"module.py": ["used"]},
+    )
+
+    assert first["aggregate_hash"] != second["aggregate_hash"]
+    assert first["files"][0]["fingerprint_mode"] == "python_ast_reachable"
+
+
 def test_compile_source_fingerprint_normalizes_torch_internal_moves() -> None:
     caching, _ = _load_caching_module()
 

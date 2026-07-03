@@ -21,10 +21,6 @@ Working rule:
 
 - [ ] Align this work with the tinygrad-inspired structural interning guidance in `/Users/deepsaint/Desktop/sock/TINYGRADREF.md`.
 
-## 2. Compile-Affecting Input Cleanup
-
-- [ ] Ensure unrelated edits in non-executed code paths do not invalidate the whole compile cache.
-
 ## 3. Compilation Policy Simplification
 
 - [ ] Reduce policy spread across `vllm/vllm/config/compilation.py`, `vllm/vllm/config/kernel.py`, `vllm/vllm/envs.py`, and `vllm/vllm/env_override.py`.

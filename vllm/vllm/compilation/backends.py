@@ -3,6 +3,7 @@
 
 import ast
 import dataclasses
+import inspect
 import json
 import operator
 import os
@@ -1055,9 +1056,6 @@ class VllmBackend:
                 logger.warning("Failed to read file %s", filepath)
                 traced_file_contents[filepath] = ""
                 continue
-        source_fingerprint = build_compile_source_fingerprint_from_content(
-            traced_file_contents
-        )
         enabled_passes = [
             f.name
             for f in dataclasses.fields(self.compilation_config.pass_config)
@@ -1068,11 +1066,27 @@ class VllmBackend:
         ]
         node_targets = []
         placeholder_names = []
+        reachable_symbols_by_path: dict[str, set[str]] = defaultdict(set)
         for node in graph.graph.nodes:
             if node.op == "placeholder":
                 placeholder_names.append(node.name)
             target = node.target
             if callable(target):
+                try:
+                    source_file = (
+                        inspect.getsourcefile(target) or inspect.getfile(target)
+                    )
+                except (OSError, TypeError):
+                    source_file = None
+                qualname = getattr(
+                    target,
+                    "__qualname__",
+                    getattr(target, "__name__", ""),
+                )
+                if source_file and qualname:
+                    root_symbol = qualname.split(".<locals>", 1)[0].split(".", 1)[0]
+                    if root_symbol:
+                        reachable_symbols_by_path[source_file].add(root_symbol)
                 target_str = getattr(
                     target,
                     "__qualname__",
@@ -1081,6 +1095,10 @@ class VllmBackend:
             else:
                 target_str = str(target)
             node_targets.append(f"{node.op}:{target_str}")
+        source_fingerprint = build_compile_source_fingerprint_from_content(
+            traced_file_contents,
+            reachable_symbols_by_path=reachable_symbols_by_path,
+        )
         compile_surface_fingerprint = build_compile_surface_fingerprint(
             source_fingerprint=source_fingerprint,
             graph_text=graph.print_readable(print_output=False),

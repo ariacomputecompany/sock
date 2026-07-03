@@ -2578,20 +2578,41 @@ def render_aot_compile_factor_manifest(vllm_config: VllmConfig) -> str:
     return json.dumps(_json_ready(manifest), sort_keys=True, separators=(",", ":"))
 
 
-def _fingerprint_python_source(source: str) -> tuple[str, str]:
+def _fingerprint_python_source(
+    source: str,
+    reachable_symbols: Sequence[str] | None = None,
+) -> tuple[str, str]:
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return "raw_text_fallback", source
-    return "python_ast", ast.dump(tree, include_attributes=False)
+    if not reachable_symbols:
+        return "python_ast", ast.dump(tree, include_attributes=False)
+
+    reachable_set = {
+        symbol for symbol in reachable_symbols if symbol and "<locals>" not in symbol
+    }
+    if not reachable_set:
+        return "python_ast", ast.dump(tree, include_attributes=False)
+
+    selected_nodes = _select_reachable_module_nodes(tree, reachable_set)
+    selected_dump = [
+        ast.dump(node, include_attributes=False) for node in selected_nodes
+    ]
+    return (
+        "python_ast_reachable",
+        json.dumps(selected_dump, sort_keys=True, separators=(",", ":")),
+    )
 
 
 def build_compile_source_fingerprint_from_content(
     file_contents: dict[str, str],
+    reachable_symbols_by_path: dict[str, Sequence[str]] | None = None,
 ) -> dict[str, object]:
     items = list(sorted(file_contents.items(), key=lambda x: x[0]))
     files = []
     aggregate_material = []
+    reachable_symbols_by_path = reachable_symbols_by_path or {}
 
     for filepath, content in items:
         normalized_path = _normalize_compile_source_path(filepath)
@@ -2600,10 +2621,15 @@ def build_compile_source_fingerprint_from_content(
         ).hexdigest()
         fingerprint_mode = "path_only"
         fingerprint_material = ""
+        reachable_symbols = _reachable_symbols_for_path(
+            filepath, reachable_symbols_by_path
+        )
         if filepath == "<string>" or filepath.startswith("<"):
             fingerprint_mode = "path_only"
         elif filepath.endswith(".py"):
-            fingerprint_mode, fingerprint_material = _fingerprint_python_source(content)
+            fingerprint_mode, fingerprint_material = _fingerprint_python_source(
+                content, reachable_symbols=reachable_symbols
+            )
         else:
             fingerprint_mode = "raw_text"
             fingerprint_material = content
@@ -2619,6 +2645,7 @@ def build_compile_source_fingerprint_from_content(
                 "raw_sha256": raw_sha256,
                 "semantic_sha256": semantic_sha256,
                 "size_bytes": len(content.encode()),
+                "reachable_symbols": list(reachable_symbols),
             }
         )
         aggregate_material.extend((normalized_path, fingerprint_mode, semantic_sha256))
@@ -2708,6 +2735,118 @@ def normalize_node_targets(node_targets: Sequence[str]) -> list[str]:
         else:
             normalized.append(target)
     return normalized
+
+
+def _reachable_symbols_for_path(
+    filepath: str,
+    reachable_symbols_by_path: dict[str, Sequence[str]],
+) -> list[str]:
+    symbols = reachable_symbols_by_path.get(filepath, ())
+    return sorted(
+        {
+            symbol.split(".", 1)[0]
+            for symbol in symbols
+            if symbol and "<locals>" not in symbol
+        }
+    )
+
+
+def _select_reachable_module_nodes(
+    tree: ast.Module,
+    reachable_symbols: set[str],
+) -> list[ast.stmt]:
+    entries = [_module_node_entry(node) for node in tree.body]
+    required_symbols = set(reachable_symbols)
+    selected_indices: set[int] = set()
+
+    changed = True
+    while changed:
+        changed = False
+        for index, entry in enumerate(entries):
+            defined_symbols = entry["defined_symbols"]
+            if not defined_symbols or selected_indices.__contains__(index):
+                continue
+            if defined_symbols.isdisjoint(required_symbols):
+                continue
+            selected_indices.add(index)
+            required_symbols.update(entry["referenced_symbols"])
+            changed = True
+
+    selected_nodes = []
+    for index, entry in enumerate(entries):
+        if (
+            index in selected_indices
+            or entry["always_include"]
+            or not entry["defined_symbols"]
+        ):
+            selected_nodes.append(entry["node"])
+    return selected_nodes
+
+
+def _module_node_entry(node: ast.stmt) -> dict[str, object]:
+    defined_symbols = _defined_module_symbols(node)
+    referenced_symbols = _referenced_module_symbols(node)
+    always_include = isinstance(
+        node,
+        (
+            ast.Import,
+            ast.ImportFrom,
+            ast.If,
+            ast.For,
+            ast.AsyncFor,
+            ast.While,
+            ast.Try,
+            ast.TryStar,
+            ast.With,
+            ast.AsyncWith,
+            ast.Match,
+            ast.Expr,
+        ),
+    )
+    return {
+        "node": node,
+        "defined_symbols": defined_symbols,
+        "referenced_symbols": referenced_symbols - defined_symbols,
+        "always_include": always_include,
+    }
+
+
+def _defined_module_symbols(node: ast.stmt) -> set[str]:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return {node.name}
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        names = set()
+        for alias in node.names:
+            bound_name = alias.asname or alias.name.split(".", 1)[0]
+            names.add(bound_name)
+        return names
+    if isinstance(node, ast.Assign):
+        return _defined_assignment_targets(node.targets)
+    if isinstance(node, ast.AnnAssign):
+        return _defined_assignment_targets([node.target])
+    if isinstance(node, ast.AugAssign):
+        return _defined_assignment_targets([node.target])
+    return set()
+
+
+def _defined_assignment_targets(targets: Sequence[ast.expr]) -> set[str]:
+    names = set()
+    for target in targets:
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for elt in target.elts:
+                if isinstance(elt, ast.Name):
+                    names.add(elt.id)
+    return names
+
+
+def _referenced_module_symbols(node: ast.stmt) -> set[str]:
+    referenced = set()
+    for inner in ast.walk(node):
+        if isinstance(inner, ast.Name) and isinstance(inner.ctx, ast.Load):
+            referenced.add(inner.id)
+    return referenced
 
 
 def _stable_digest(payload: object) -> str:
