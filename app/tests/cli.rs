@@ -52,9 +52,16 @@ fn build_verify_and_replay_bundle_round_trip() {
         "rewrite_trace.json",
         "verification_report.json",
         "vllm_integration.json",
+        "vllm_entrypoints.json",
     ] {
         assert!(dir.path().join(file).exists(), "missing {file}");
     }
+    assert!(
+        dir.path()
+            .join("vllm-entrypoints")
+            .join("invoke_vllm_surface.py")
+            .exists()
+    );
 
     let materialization: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("materialization_report.json"))
@@ -79,6 +86,19 @@ fn build_verify_and_replay_bundle_round_trip() {
             .expect("integration surfaces")
             .iter()
             .any(|surface| surface["id"] == "compile-region:prefill_attention")
+    );
+
+    let entrypoints: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("vllm_entrypoints.json"))
+            .expect("read vllm entrypoints"),
+    )
+    .expect("parse vllm entrypoints");
+    assert!(
+        entrypoints["entrypoints"]
+            .as_array()
+            .expect("entrypoints array")
+            .iter()
+            .any(|entrypoint| entrypoint["scope_name"] == "prefill_attention")
     );
 
     Command::cargo_bin("sock")
@@ -254,6 +274,31 @@ fn scoped_prefill_build_emits_minimal_closure() {
             .iter()
             .any(|surface| surface["id"] == "compile-region:decode_attention")
     );
+
+    let entrypoints: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("vllm_entrypoints.json"))
+            .expect("read vllm entrypoints"),
+    )
+    .expect("parse vllm entrypoints");
+    let build_entrypoints = entrypoints["entrypoints"]
+        .as_array()
+        .expect("entrypoints array");
+    assert!(
+        build_entrypoints
+            .iter()
+            .any(|entrypoint| entrypoint["scope_name"] == "prefill_attention")
+    );
+    assert!(
+        !build_entrypoints
+            .iter()
+            .any(|entrypoint| entrypoint["scope_name"] == "decode_attention")
+    );
+    let wrapper_path = build_entrypoints
+        .iter()
+        .find(|entrypoint| entrypoint["scope_name"] == "prefill_attention")
+        .and_then(|entrypoint| entrypoint["wrapper_path"].as_str())
+        .expect("prefill wrapper path");
+    assert!(dir.path().join(wrapper_path).exists());
 }
 
 #[test]

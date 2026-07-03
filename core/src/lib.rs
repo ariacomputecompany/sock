@@ -3,6 +3,7 @@ pub mod backend;
 pub mod bundle;
 pub mod canonical;
 pub mod diagnostics;
+pub mod entrypoint;
 pub mod governance;
 pub mod identity;
 pub mod integration;
@@ -24,6 +25,7 @@ pub use diagnostics::{
     DiagnosticCategory, DiagnosticConfidence, DiagnosticEvidence, DiagnosticsDocument,
     RewriteTraceDocument, SchemaVersion, StructuredDiagnostic,
 };
+pub use entrypoint::*;
 pub use identity::*;
 pub use integration::*;
 pub use materialization::*;

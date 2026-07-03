@@ -13,7 +13,7 @@ use sock_core::{
 };
 use sock_engine::{
     BuildReadiness, BuildScope, MaterializationExecutor, PlannerHostSnapshot, PlanningOutcome,
-    build_vllm_integration_document,
+    build_vllm_entrypoint_document, build_vllm_integration_document, emit_vllm_entrypoints,
 };
 
 #[derive(Debug, Parser)]
@@ -119,6 +119,8 @@ fn main() -> Result<()> {
                 out.join("vllm_integration.json"),
                 canonical_json(&vllm_integration)?.as_bytes(),
             )?;
+            let vllm_entrypoints = build_vllm_entrypoint_document(&outcome, &vllm_integration)?;
+            emit_vllm_entrypoints(&out, &vllm_entrypoints)?;
             let metadata = bundle.write_to(&out)?;
             emit_build(&out, &bundle, &metadata, &materialization, format)?;
         }
