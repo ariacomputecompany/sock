@@ -2330,6 +2330,77 @@ def _compile_factor_normalizer_functions() -> dict[str, Callable[[object], objec
     }
 
 
+def _compile_factor_normalization_families() -> dict[str, dict[str, str]]:
+    return {
+        "unordered_string_list": {
+            "strategy": "custom",
+            "description": (
+                "Set-like string collections where duplicates, whitespace, and "
+                "ordering must collapse before hashing."
+            ),
+        },
+        "boolean_toggle": {
+            "strategy": "custom",
+            "description": (
+                "Boolean feature toggles whose truthy/falsey spellings must collapse "
+                "before hashing."
+            ),
+        },
+        "getter_semantic_scalar": {
+            "strategy": "raw",
+            "description": (
+                "Getter already returns a stable scalar semantic value, so "
+                "normalize_value is sufficient."
+            ),
+        },
+        "getter_semantic_sequence": {
+            "strategy": "raw",
+            "description": (
+                "Getter already returns an ordered semantic sequence, so "
+                "normalize_value can preserve that meaning directly."
+            ),
+        },
+        "getter_semantic_mapping": {
+            "strategy": "raw",
+            "description": (
+                "Getter already returns a semantic mapping, so normalize_value can "
+                "hash the structure directly."
+            ),
+        },
+        "getter_semantic_optional": {
+            "strategy": "raw",
+            "description": (
+                "Getter already returns an optional semantic value with explicit None "
+                "meaning, so normalize_value is sufficient."
+            ),
+        },
+    }
+
+
+def _infer_raw_compile_factor_family(factor: str) -> str:
+    mapping_factors = {
+        "VLLM_FLASHINFER_ALLREDUCE_FUSION_THRESHOLDS_MB",
+    }
+    sequence_factors = {
+        "VLLM_PLUGINS",
+    }
+    optional_factors = {
+        "VLLM_GPU_SYNC_CHECK",
+        "VLLM_MARLIN_INPUT_DTYPE",
+        "VLLM_KV_CACHE_LAYOUT",
+        "VLLM_SSM_CONV_STATE_LAYOUT",
+        "VLLM_TRITON_ATTN_USE_TD",
+        "VLLM_USE_V2_MODEL_RUNNER",
+    }
+    if factor in mapping_factors:
+        return "getter_semantic_mapping"
+    if factor in sequence_factors:
+        return "getter_semantic_sequence"
+    if factor in optional_factors:
+        return "getter_semantic_optional"
+    return "getter_semantic_scalar"
+
+
 def _compile_factor_normalization_policy(factor: str) -> dict[str, str]:
     exact_policies: dict[str, dict[str, str]] = {
         "VLLM_DISABLED_KERNELS": {
@@ -2354,9 +2425,10 @@ def _compile_factor_normalization_policy(factor: str) -> dict[str, str]:
                 "equivalent truthy/falsey spellings must collapse to one identity."
             ),
         }
+    raw_family = _infer_raw_compile_factor_family(factor)
     return {
         "strategy": "raw",
-        "family": "normalize_value_only",
+        "family": raw_family,
         "normalizer": "normalize_value",
         "reason": (
             "The getter already yields a stable semantic value, so compile identity "
@@ -2419,6 +2491,7 @@ def compile_factor_normalization_manifest() -> dict[str, object]:
         factor for factor, category in categories.items() if category == "compile_affecting"
     )
     ambient_names = sorted(_ambient_compile_factor_names())
+    families = _compile_factor_normalization_families()
     declared_normalization_policies = {
         factor: _compile_factor_normalization_policy(factor)
         for factor in compile_affecting_names
@@ -2429,6 +2502,7 @@ def compile_factor_normalization_manifest() -> dict[str, object]:
     }
     return {
         "schema_version": 1,
+        "families": families,
         "declared_factor_normalization": declared_normalization_policies,
         "ambient_factor_normalization": ambient_normalization_policies,
         "declared_custom_normalizers": {
@@ -2624,6 +2698,19 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
     if missing_normalization_policy_keys or extra_normalization_policy_keys:
         reasons.append("compile_factor_normalization_policy_mismatch")
 
+    known_families = normalization["families"]
+    invalid_family_keys = sorted(
+        factor
+        for factor, policy in (
+            list(normalization["declared_factor_normalization"].items())
+            + list(normalization["ambient_factor_normalization"].items())
+        )
+        if policy["family"] not in known_families
+        or known_families[policy["family"]]["strategy"] != policy["strategy"]
+    )
+    if invalid_family_keys:
+        reasons.append("compile_factor_normalization_family_mismatch")
+
     invalid_normalizer_keys = sorted(
         factor
         for factor, policy in (
@@ -2649,6 +2736,7 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
         "overlap_keys": overlap_keys,
         "missing_normalization_policy_keys": missing_normalization_policy_keys,
         "extra_normalization_policy_keys": extra_normalization_policy_keys,
+        "invalid_family_keys": invalid_family_keys,
         "invalid_normalizer_keys": invalid_normalizer_keys,
     }
     if hard_fail and reasons:
