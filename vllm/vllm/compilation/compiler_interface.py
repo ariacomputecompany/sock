@@ -478,6 +478,39 @@ class InductorAdaptor(CompilerInterface):
         triton_cache = os.path.join(self.base_cache_dir, "triton_cache")
         os.makedirs(triton_cache, exist_ok=True)
         os.environ["TRITON_CACHE_DIR"] = triton_cache
+        try:
+            from .caching import (
+                load_compile_replay_manifest,
+                write_autotune_cache_manifest,
+            )
+
+            compile_replay_manifest = load_compile_replay_manifest(cache_dir)
+            write_autotune_cache_manifest(
+                local_cache_dir=cache_dir,
+                compile_replay_manifest=compile_replay_manifest,
+                backend_name=self.name,
+                base_cache_dir=self.base_cache_dir,
+                cache_directories=[
+                    {
+                        "cache_kind": "inductor_cache",
+                        "path": inductor_cache,
+                    },
+                    {
+                        "cache_kind": "triton_cache",
+                        "path": triton_cache,
+                    },
+                ],
+                environment_overrides={
+                    "TORCHINDUCTOR_CACHE_DIR": inductor_cache,
+                    "TRITON_CACHE_DIR": triton_cache,
+                },
+            )
+        except Exception:
+            logger.warning(
+                "Could not write autotune cache manifest at %s",
+                self.base_cache_dir,
+                exc_info=True,
+            )
 
     def compile(
         self,

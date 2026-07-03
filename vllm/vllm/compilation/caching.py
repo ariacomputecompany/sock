@@ -2080,6 +2080,86 @@ def load_cudagraph_capture_manifest(
         return None
 
 
+def build_autotune_cache_manifest(
+    *,
+    local_cache_dir: str | None,
+    compile_replay_manifest: dict[str, object] | None,
+    backend_name: str,
+    base_cache_dir: str,
+    cache_directories: list[dict[str, object]],
+    environment_overrides: dict[str, object],
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+    root_identity = (
+        _json_ready(compile_replay_manifest.get("root_identity"))
+        if compile_replay_manifest is not None
+        else None
+    )
+    replay_plan = (
+        _json_ready(compile_replay_manifest.get("replay_plan"))
+        if compile_replay_manifest is not None
+        else None
+    )
+    return {
+        "schema_version": 1,
+        "payload_kind": "vllm_autotune_cache_manifest",
+        "backend_name": backend_name,
+        "owning_local_cache_dir": local_cache_dir,
+        "base_cache_dir": base_cache_dir,
+        "root_identity": root_identity,
+        "replay_plan": replay_plan,
+        "cache_directories": _json_ready(cache_directories),
+        "environment_overrides": _json_ready(environment_overrides),
+    }
+
+
+def write_autotune_cache_manifest(
+    *,
+    local_cache_dir: str | None,
+    compile_replay_manifest: dict[str, object] | None,
+    backend_name: str,
+    base_cache_dir: str,
+    cache_directories: list[dict[str, object]],
+    environment_overrides: dict[str, object],
+) -> dict[str, object] | None:
+    manifest = build_autotune_cache_manifest(
+        local_cache_dir=local_cache_dir,
+        compile_replay_manifest=compile_replay_manifest,
+        backend_name=backend_name,
+        base_cache_dir=base_cache_dir,
+        cache_directories=cache_directories,
+        environment_overrides=environment_overrides,
+    )
+    if manifest is None:
+        return None
+    Path(base_cache_dir).mkdir(parents=True, exist_ok=True)
+    meta_path = Path(base_cache_dir) / "autotune_cache_manifest.json"
+    meta_path.write_text(
+        json.dumps(
+            manifest,
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return manifest
+
+
+def load_autotune_cache_manifest(
+    base_cache_dir: str | None,
+) -> dict[str, object] | None:
+    if not base_cache_dir:
+        return None
+    meta_path = Path(base_cache_dir) / "autotune_cache_manifest.json"
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text())
+    except Exception:
+        logger.warning("could not read autotune cache manifest from %s", meta_path)
+        return None
+
+
 def build_shape_envelope_summary(
     standalone_compile_artifacts: StandaloneCompiledArtifacts,
     sym_shape_indices_map: dict[str, list[int]] | None,

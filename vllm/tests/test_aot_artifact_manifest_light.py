@@ -1887,6 +1887,125 @@ def test_cudagraph_capture_manifest_roundtrip() -> None:
     )
 
 
+def test_autotune_cache_manifest_roundtrip() -> None:
+    caching, _ = _load_caching_module()
+    source_fingerprint = caching.build_compile_source_fingerprint_from_content(
+        {
+            "computation_graph.py": "def forward(x):\n    return x + 1\n",
+            "vllm_compile_cache.py": "compiled = True\n",
+        }
+    )
+    compile_surface_fingerprint = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x) -> add",
+        placeholder_names=["x"],
+        node_targets=["placeholder:x", "call_function:add", "output:output"],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
+    canonical_compile_plan = caching.build_canonical_compile_plan(
+        env_factors={"A": "B"},
+        config_hash="cfg-from-file",
+        compiler_hash="compiler-from-file",
+        source_fingerprint=source_fingerprint,
+        compile_surface_fingerprint=compile_surface_fingerprint,
+        backend_identity={
+            "backend_class": "SimpleNamespace",
+            "prefix": "unit-prefix",
+            "is_encoder": False,
+            "compiler_name": "inductor-light",
+        },
+        cache_enabled=True,
+        cache_namespace_prefix="unit-prefix",
+        rank=0,
+        data_parallel_rank=0,
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        graph_artifact_store = caching.build_graph_artifact_store_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+                "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
+            },
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
+        compile_replay_manifest = caching.build_compile_replay_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+                "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
+            },
+            graph_artifact_store=graph_artifact_store,
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
+        base_cache_dir = str(Path(tmpdir) / "rank_0_0")
+        manifest = caching.write_autotune_cache_manifest(
+            local_cache_dir=tmpdir,
+            compile_replay_manifest=compile_replay_manifest,
+            backend_name="inductor",
+            base_cache_dir=base_cache_dir,
+            cache_directories=[
+                {
+                    "cache_kind": "inductor_cache",
+                    "path": str(Path(base_cache_dir) / "inductor_cache"),
+                },
+                {
+                    "cache_kind": "triton_cache",
+                    "path": str(Path(base_cache_dir) / "triton_cache"),
+                },
+            ],
+            environment_overrides={
+                "TORCHINDUCTOR_CACHE_DIR": str(
+                    Path(base_cache_dir) / "inductor_cache"
+                ),
+                "TRITON_CACHE_DIR": str(Path(base_cache_dir) / "triton_cache"),
+            },
+        )
+        reloaded = caching.load_autotune_cache_manifest(base_cache_dir)
+
+    assert reloaded == manifest
+    assert manifest["payload_kind"] == "vllm_autotune_cache_manifest"
+    assert manifest["backend_name"] == "inductor"
+    assert manifest["owning_local_cache_dir"] == tmpdir
+    assert manifest["base_cache_dir"] == base_cache_dir
+    assert (
+        manifest["root_identity"]["root_plan_id"]
+        == canonical_compile_plan["canonical_compile_plan_id"]
+    )
+    assert (
+        manifest["replay_plan"]["replay_plan_id"]
+        == canonical_compile_plan["verification_plan_id"]
+    )
+
+
 def test_canonical_compile_plan_is_structural_and_renderable() -> None:
     caching, _ = _load_caching_module()
     source_fingerprint = caching.build_compile_source_fingerprint_from_content(
