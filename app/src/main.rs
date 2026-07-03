@@ -368,6 +368,7 @@ fn emit_explain(
                     "diagnostics": diagnostics,
                     "rewrite_trace": rewrite_trace,
                     "verification": outcome.verification,
+                    "vllm_integration": build_vllm_integration_document(outcome)?,
                 }))?
             );
         }
@@ -412,6 +413,8 @@ fn emit_build(
                     "plan_identity": bundle.build_plan.structural_identity.plan_identity,
                     "metadata": metadata,
                     "materialization": materialization,
+                    "vllm_integration": bundle.vllm_integration,
+                    "vllm_entrypoints": bundle.vllm_entrypoints,
                 }))?
             );
         }
@@ -496,6 +499,11 @@ fn emit_replay(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
     match format {
         OutputMode::Summary => {
             print!("{}", render_plan_summary(&bundle.build_plan));
+            println!(
+                "vllm replay roots key={} surfaces={}",
+                bundle.vllm_integration.plan_identity,
+                bundle.vllm_integration.replay_roots.len()
+            );
             print!(
                 "{}",
                 render_verification_report(&bundle.verification_report)
@@ -509,6 +517,8 @@ fn emit_replay(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
                     "plan": bundle.build_plan,
                     "verification": bundle.verification_report,
                     "diagnostics": bundle.diagnostics,
+                    "vllm_integration": bundle.vllm_integration,
+                    "vllm_entrypoints": bundle.vllm_entrypoints,
                 }))?
             );
         }
@@ -701,6 +711,28 @@ fn render_vllm_native_contract(outcome: &PlanningOutcome) -> Result<String> {
     out.push_str(&format!(
         "  - preserved abstractions: {}\n",
         list_or_all(preserved_abstractions.iter().map(String::as_str))
+    ));
+    out.push_str(&format!(
+        "  - replay root key: {}\n",
+        integration.plan_identity
+    ));
+    out.push_str(&format!(
+        "  - rooted vllm replay surfaces: {}\n",
+        integration
+            .replay_roots
+            .iter()
+            .map(|root| {
+                format!(
+                    "{}@{}:{}",
+                    root.scope_name,
+                    root.cache_namespace
+                        .as_deref()
+                        .unwrap_or("no-cache-namespace"),
+                    root.manifest_paths.join("|")
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
     ));
     Ok(out)
 }

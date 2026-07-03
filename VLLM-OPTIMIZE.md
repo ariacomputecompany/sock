@@ -576,7 +576,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 - [ ] Promote cache ownership surfaces into concrete artifact namespaces.
 - [ ] Promote residual JIT surfaces into concrete runtime closure checks.
 - [ ] Use SOC planning to choose which artifacts to build eagerly versus lazily.
-- [ ] Ensure SOC explain output maps directly to vLLM artifact and warmup behavior.
 
 ## 27. Tinygrad-Inspired Compiler Discipline
 

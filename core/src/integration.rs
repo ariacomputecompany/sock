@@ -51,6 +51,26 @@ pub struct VllmIntegrationSurface {
     pub auxiliary: Vec<VllmCallableTarget>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VllmReplayRootKind {
+    CompileRegion,
+    CacheSurface,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VllmReplayRoot {
+    pub id: String,
+    pub root_kind: VllmReplayRootKind,
+    pub surface_id: String,
+    pub scope_name: String,
+    pub root_key: CanonicalHash,
+    pub cache_namespace: Option<String>,
+    pub warmup_scope: Option<String>,
+    pub replay_boundary: String,
+    pub manifest_paths: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VllmIntegrationDocument {
     pub schema_version: SchemaVersion,
@@ -58,4 +78,5 @@ pub struct VllmIntegrationDocument {
     pub engine_root: String,
     pub engine_revision: String,
     pub surfaces: Vec<VllmIntegrationSurface>,
+    pub replay_roots: Vec<VllmReplayRoot>,
 }

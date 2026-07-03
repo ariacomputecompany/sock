@@ -5,7 +5,10 @@ use sock_core::{
     RequestedEnvironment, RewriteTraceDocument, ShapePoint, ShapePolicy, ShapeRange, TargetEngine,
     WarmupPolicy,
 };
-use sock_engine::{BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome, vllm};
+use sock_engine::{
+    BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome,
+    build_vllm_entrypoint_document, build_vllm_integration_document, vllm,
+};
 
 #[must_use]
 pub fn default_host_snapshot() -> PlannerHostSnapshot {
@@ -151,11 +154,17 @@ pub fn rewrite_trace_for(outcome: &PlanningOutcome) -> RewriteTraceDocument {
 
 #[must_use]
 pub fn replay_bundle(outcome: &PlanningOutcome) -> ReplayBundle {
+    let vllm_integration =
+        build_vllm_integration_document(outcome).expect("vllm integration document");
+    let vllm_entrypoints = build_vllm_entrypoint_document(outcome, &vllm_integration)
+        .expect("vllm entrypoint document");
     ReplayBundle {
         build_plan: outcome.plan.clone(),
         artifact_closure: outcome.closure.clone(),
         verification_report: outcome.verification.clone(),
         diagnostics: diagnostics_for(outcome),
         rewrite_trace: rewrite_trace_for(outcome),
+        vllm_integration,
+        vllm_entrypoints,
     }
 }

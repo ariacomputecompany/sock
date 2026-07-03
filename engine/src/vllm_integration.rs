@@ -2,13 +2,13 @@ use std::collections::BTreeSet;
 
 use sock_core::{
     AdapterError, AdapterSurvey, ArtifactRequirement, CacheOwnershipSurface, CompileRegion,
-    EngineAdapter, IntegrationScopeKind, SourceAnchor, SourceEvidence, VllmCallableTarget,
+    IntegrationScopeKind, SourceAnchor, SourceEvidence, VllmCallableTarget,
     VllmIntegrationDocument, VllmIntegrationSurface, VllmIsolationContract,
-    VllmIsolationDisposition,
+    VllmIsolationDisposition, VllmReplayRoot, VllmReplayRootKind,
 };
 use thiserror::Error;
 
-use crate::{BuildScope, PlanningOutcome, vllm, vllm_adapter::VllmAdapter};
+use crate::{BuildScope, PlanningOutcome, vllm};
 
 #[derive(Debug, Error)]
 pub enum VllmIntegrationError {
@@ -29,25 +29,30 @@ pub enum VllmIntegrationError {
 pub fn build_vllm_integration_document(
     outcome: &PlanningOutcome,
 ) -> Result<VllmIntegrationDocument, VllmIntegrationError> {
-    let survey = VllmAdapter::default().survey()?;
+    let survey = &outcome.adapter_survey;
     let mut surface_ids = BTreeSet::new();
     let mut surfaces = Vec::new();
 
     for region in &outcome.plan.compile_regions {
-        let surface = integration_surface_for_region(region, &survey)?;
+        let surface = integration_surface_for_region(region, survey)?;
         if surface_ids.insert(surface.id.clone()) {
             surfaces.push(surface);
         }
     }
 
     for cache_surface in relevant_cache_surfaces(&outcome.plan.artifact_requirements, &survey) {
-        let surface = integration_surface_for_cache(cache_surface, &survey)?;
+        let surface = integration_surface_for_cache(cache_surface, survey)?;
         if surface_ids.insert(surface.id.clone()) {
             surfaces.push(surface);
         }
     }
 
     surfaces.sort_by(|left, right| left.id.cmp(&right.id));
+    let mut replay_roots = surfaces
+        .iter()
+        .map(|surface| replay_root_for_surface(outcome, surface))
+        .collect::<Vec<_>>();
+    replay_roots.sort_by(|left, right| left.id.cmp(&right.id));
 
     Ok(VllmIntegrationDocument {
         schema_version: sock_core::SchemaVersion::current(),
@@ -55,6 +60,7 @@ pub fn build_vllm_integration_document(
         engine_root: vllm::root().display().to_string(),
         engine_revision: vllm::revision().to_owned(),
         surfaces,
+        replay_roots,
     })
 }
 
@@ -134,10 +140,10 @@ fn integration_surface_for_region(
                 )?,
                 callable(
                     "vllm.compilation.caching",
-                    "aot_compile_hash_factors",
-                    "Shape compile-cache identity with vLLM's own hash factors.",
+                    "build_aot_compile_plan",
+                    "Shape compile-cache identity with vLLM's own normalized AOT compile plan.",
                     "vllm/vllm/compilation/caching.py",
-                    &["def aot_compile_hash_factors(vllm_config: VllmConfig) -> list[str]:"],
+                    &["def build_aot_compile_plan(", "\"canonical_aot_plan_id\""],
                 )?,
             ],
         },
@@ -337,7 +343,10 @@ fn integration_surface_for_region(
                 "_VllmFallbackAllowList.__contains__",
                 "Preserve vendored namespace membership checks for vLLM custom-op fallbacks.",
                 "vllm/vllm/env_override.py",
-                &["def __contains__(self, item):", "item.startswith(_VLLM_FALLBACK_NAMESPACE_PREFIXES)"],
+                &[
+                    "def __contains__(self, item):",
+                    "for prefix in _VLLM_FALLBACK_NAMESPACE_PREFIXES:",
+                ],
             )?],
         },
         other => {
@@ -380,14 +389,14 @@ fn integration_surface_for_cache(
                 &[],
                 "Compile-cache ownership is subset-build valid, but write paths still run through vLLM's compilation backend context.",
                 "vllm/vllm/compilation/caching.py",
-                &["def aot_compile_hash_factors(vllm_config: VllmConfig) -> list[str]:"],
+                &["def build_aot_compile_plan(", "\"canonical_aot_plan_id\""],
             )?,
             primary: callable(
                 "vllm.compilation.caching",
-                "aot_compile_hash_factors",
-                "Compile-cache identity must follow vLLM's own AoT hash factors.",
+                "build_aot_compile_plan",
+                "Compile-cache identity must follow vLLM's own normalized AOT compile plan.",
                 "vllm/vllm/compilation/caching.py",
-                &["def aot_compile_hash_factors(vllm_config: VllmConfig) -> list[str]:"],
+                &["def build_aot_compile_plan(", "\"canonical_aot_plan_id\""],
             )?,
             auxiliary: vec![
                 callable(
@@ -512,6 +521,56 @@ fn integration_surface_for_cache(
     };
 
     Ok(apply_survey_context(integrated, survey))
+}
+
+fn replay_root_for_surface(
+    outcome: &PlanningOutcome,
+    surface: &VllmIntegrationSurface,
+) -> VllmReplayRoot {
+    let manifest_paths = manifest_paths_for_surface(surface);
+    let replay_boundary = if surface.scope_kind == IntegrationScopeKind::CompileRegion {
+        format!("compile-region:{}", surface.scope_name)
+    } else {
+        format!("cache-surface:{}", surface.scope_name)
+    };
+    VllmReplayRoot {
+        id: format!("replay-root:{}", surface.id),
+        root_kind: if surface.scope_kind == IntegrationScopeKind::CompileRegion {
+            VllmReplayRootKind::CompileRegion
+        } else {
+            VllmReplayRootKind::CacheSurface
+        },
+        surface_id: surface.id.clone(),
+        scope_name: surface.scope_name.clone(),
+        root_key: outcome.plan.structural_identity.plan_identity.clone(),
+        cache_namespace: surface.cache_namespace.clone(),
+        warmup_scope: surface.warmup_scope.clone(),
+        replay_boundary,
+        manifest_paths,
+    }
+}
+
+fn manifest_paths_for_surface(surface: &VllmIntegrationSurface) -> Vec<String> {
+    let mut manifest_paths = Vec::new();
+    if surface.cache_namespace.is_some() {
+        manifest_paths.push("graph_artifact_store.json".to_owned());
+        manifest_paths.push("compile_replay_manifest.json".to_owned());
+    }
+    if surface.warmup_scope.is_some() {
+        manifest_paths.push("warmup_materialization_manifest.json".to_owned());
+    }
+    if matches!(surface.cache_namespace.as_deref(), Some("cuda-graph-cache")) {
+        manifest_paths.push("cudagraph_capture_manifest.json".to_owned());
+    }
+    if surface.id == "cache-surface:flashinfer-autotune-cache"
+        || surface.scope_name.contains("flashinfer")
+        || surface.id == "compile-region:kv_cache_update"
+    {
+        manifest_paths.push("autotune_cache_manifest.json".to_owned());
+    }
+    manifest_paths.sort();
+    manifest_paths.dedup();
+    manifest_paths
 }
 
 fn relevant_cache_surfaces<'a>(
@@ -774,6 +833,16 @@ mod tests {
                 .iter()
                 .any(|surface| surface.id == "cache-surface:flashinfer-autotune-cache")
         );
+        assert!(
+            doc.replay_roots
+                .iter()
+                .any(|root| root.surface_id == "compile-region:prefill_attention")
+        );
+        assert!(
+            doc.replay_roots
+                .iter()
+                .all(|root| root.root_key == doc.plan_identity)
+        );
 
         for surface in &doc.surfaces {
             assert!(!surface.primary.evidence.anchors.is_empty());
@@ -833,6 +902,24 @@ mod tests {
                 .required_context
                 .iter()
                 .any(|context| context == "Worker context")
+        );
+        let prefill_root = doc
+            .replay_roots
+            .iter()
+            .find(|root| root.surface_id == "compile-region:prefill_attention")
+            .expect("prefill replay root");
+        assert_eq!(prefill_root.root_kind, VllmReplayRootKind::CompileRegion);
+        assert!(
+            prefill_root
+                .manifest_paths
+                .iter()
+                .any(|path| path == "compile_replay_manifest.json")
+        );
+        assert!(
+            prefill_root
+                .manifest_paths
+                .iter()
+                .any(|path| path == "warmup_materialization_manifest.json")
         );
     }
 }

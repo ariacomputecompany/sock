@@ -28,6 +28,8 @@ fn explain_includes_trace_and_diagnostics() {
         .stdout(predicate::str::contains("expanded closure:"))
         .stdout(predicate::str::contains("estimated work:"))
         .stdout(predicate::str::contains("vllm native contract:"))
+        .stdout(predicate::str::contains("replay root key:"))
+        .stdout(predicate::str::contains("rooted vllm replay surfaces:"))
         .stdout(predicate::str::contains("rewrite trace:"))
         .stdout(predicate::str::contains("diagnostics:"))
         .stdout(predicate::str::contains("verified_bundle"));
@@ -154,6 +156,13 @@ fn build_verify_and_replay_bundle_round_trip() {
             .iter()
             .any(|surface| surface["id"] == "compile-region:prefill_attention")
     );
+    assert!(
+        integration["replay_roots"]
+            .as_array()
+            .expect("integration replay roots")
+            .iter()
+            .any(|root| root["surface_id"] == "compile-region:prefill_attention")
+    );
 
     let entrypoints: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("vllm_entrypoints.json"))
@@ -187,6 +196,7 @@ fn build_verify_and_replay_bundle_round_trip() {
         .assert()
         .success()
         .stdout(predicate::str::contains("plan "))
+        .stdout(predicate::str::contains("vllm replay roots key="))
         .stdout(predicate::str::contains("verification Passed"))
         .stdout(predicate::str::contains("runtime-jit evidence:"))
         .stdout(predicate::str::contains(
