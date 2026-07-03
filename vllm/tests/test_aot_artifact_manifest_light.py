@@ -1666,6 +1666,31 @@ def test_canonical_compile_plan_is_structural_and_renderable() -> None:
     assert json.loads(rendered) == plan
 
 
+def test_aot_compile_plan_is_structural_and_renderable() -> None:
+    caching, _ = _load_caching_module()
+
+    class _DummyConfig:
+        def compute_hash(self) -> str:
+            return "cfg-hash"
+
+    plan = caching.build_aot_compile_plan(
+        vllm_config=_DummyConfig(),
+        model_key="forward-key",
+        cache_enabled=True,
+        rank=2,
+        data_parallel_rank=1,
+    )
+
+    assert plan["schema_version"] == 1
+    assert plan["canonical_aot_plan_id"] == plan["resolved_aot_plan_id"]
+    assert plan["requested_policy"]["model_key"] == "forward-key"
+    assert plan["normalized_policy"]["vllm_config_hash"] == "cfg-hash"
+    assert plan["materialization_plan"]["rank"] == 2
+    assert plan["materialization_plan"]["data_parallel_rank"] == 1
+    rendered = caching.render_aot_compile_plan(plan)
+    assert json.loads(rendered) == plan
+
+
 def test_compile_source_fingerprint_ignores_python_comments() -> None:
     caching, _ = _load_caching_module()
 

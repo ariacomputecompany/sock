@@ -1604,23 +1604,57 @@ def reconstruct_serializable_fn_from_mega_artifact(
     return fn
 
 
-def aot_compile_hash_factors(vllm_config: VllmConfig) -> list[str]:
-    factors = []
-    # 0. factors come from the env, for example, The values of
-    # VLLM_PP_LAYER_PARTITION will affect the computation graph.
-    env_hash = hash_factors(envs.compile_factors())
-    factors.append(env_hash)
+def build_aot_compile_plan(
+    *,
+    vllm_config: VllmConfig,
+    model_key: str,
+    cache_enabled: bool,
+    rank: int,
+    data_parallel_rank: int,
+) -> dict[str, object]:
+    env_factors = envs.compile_factors()
+    inductor_factors = (
+        list(get_inductor_factors()) if envs.VLLM_USE_MEGA_AOT_ARTIFACT else []
+    )
+    requested_policy = {
+        "env_factors": env_factors,
+        "model_key": model_key,
+        "mega_aot_enabled": envs.VLLM_USE_MEGA_AOT_ARTIFACT,
+    }
+    normalized_policy = {
+        "env_policy_hash": hash_factors(env_factors),
+        "vllm_config_hash": vllm_config.compute_hash(),
+        "model_key": model_key,
+        "inductor_factors": inductor_factors,
+        "mega_aot_enabled": envs.VLLM_USE_MEGA_AOT_ARTIFACT,
+    }
+    resolved_aot_plan = {
+        "normalized_policy_hash": _stable_digest(normalized_policy),
+        "artifact_kind": "torch_aot_compile",
+    }
+    materialization_plan = {
+        "cache_enabled": cache_enabled,
+        "rank": rank,
+        "data_parallel_rank": data_parallel_rank,
+    }
 
-    # 1. factors come from the vllm_config (it mainly summarizes how the
-    #    model is created)
-    config_hash = vllm_config.compute_hash()
-    factors.append(config_hash)
+    plan = {
+        "schema_version": 1,
+        "requested_policy": requested_policy,
+        "requested_policy_id": _stable_digest(requested_policy),
+        "normalized_policy": normalized_policy,
+        "normalized_policy_id": _stable_digest(normalized_policy),
+        "resolved_aot_plan": resolved_aot_plan,
+        "resolved_aot_plan_id": _stable_digest(resolved_aot_plan),
+        "materialization_plan": materialization_plan,
+        "materialization_plan_id": _stable_digest(materialization_plan),
+    }
+    plan["canonical_aot_plan_id"] = plan["resolved_aot_plan_id"]
+    return plan
 
-    # 2. inductor factors if applicable
-    if envs.VLLM_USE_MEGA_AOT_ARTIFACT:
-        factors.extend(get_inductor_factors())
 
-    return factors
+def render_aot_compile_plan(plan: dict[str, object]) -> str:
+    return json.dumps(_json_ready(plan), sort_keys=True, separators=(",", ":"))
 
 
 def artifact_entry_key(submod_name: str, shape: str) -> str:
@@ -2056,13 +2090,24 @@ def summarize_startup_closure(
 
 
 def render_aot_compile_factor_manifest(vllm_config: VllmConfig) -> str:
+    plan = build_aot_compile_plan(
+        vllm_config=vllm_config,
+        model_key="<manifest_only>",
+        cache_enabled=not envs.VLLM_DISABLE_COMPILE_CACHE,
+        rank=0,
+        data_parallel_rank=0,
+    )
     manifest = {
         "schema_version": 1,
         "env": envs.compile_factor_manifest(),
         "vllm_config_hash": vllm_config.compute_hash(),
-        "inductor_factors": get_inductor_factors() if envs.VLLM_USE_MEGA_AOT_ARTIFACT else [],
+        "inductor_factors": (
+            get_inductor_factors() if envs.VLLM_USE_MEGA_AOT_ARTIFACT else []
+        ),
+        "aot_compile_plan": plan,
+        "aot_compile_plan_id": plan["canonical_aot_plan_id"],
     }
-    return json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+    return json.dumps(_json_ready(manifest), sort_keys=True, separators=(",", ":"))
 
 
 def _fingerprint_python_source(source: str) -> tuple[str, str]:

@@ -4,6 +4,7 @@
 import contextlib
 import hashlib
 import inspect
+import json
 import os
 import sys
 from collections.abc import Callable, Generator
@@ -328,6 +329,14 @@ def _try_load_aot_compiled_fn(
         return None
 
 
+def _write_aot_compile_plan_metadata(cache_root: str, plan: dict[str, object]) -> None:
+    meta_path = os.path.join(cache_root, "aot_compile_plan.json")
+    if os.path.exists(meta_path):
+        return
+    with open(meta_path, "w") as f:
+        json.dump(plan, f, indent=2, sort_keys=True)
+
+
 def _support_torch_compile(
     cls: type[_T],
     dynamic_arg_dims: dict[str, int | list[int] | dict[int, str]],
@@ -534,32 +543,36 @@ def _support_torch_compile(
             serialized backend artifacts), then we need to generate a new AOT
             compile artifact from scratch.
             """
-            from .caching import aot_compile_hash_factors
+            from .caching import build_aot_compile_plan
 
-            factors: list[str] = aot_compile_hash_factors(self.vllm_config)
-
-            factors.append(_model_hash_key(self.forward))
-            hash_key = hashlib.sha256(str(factors).encode()).hexdigest()
-            cache_dir = os.path.join(
+            rank = self.vllm_config.parallel_config.rank
+            dp_rank = self.vllm_config.parallel_config.data_parallel_index
+            aot_compile_plan = build_aot_compile_plan(
+                vllm_config=self.vllm_config,
+                model_key=_model_hash_key(self.forward),
+                cache_enabled=not envs.VLLM_DISABLE_COMPILE_CACHE,
+                rank=rank,
+                data_parallel_rank=dp_rank,
+            )
+            cache_root = os.path.join(
                 envs.VLLM_CACHE_ROOT,
                 "torch_compile_cache",
                 "torch_aot_compile",
-                hash_key,
+                str(aot_compile_plan["canonical_aot_plan_id"]),
             )
 
             # Hash-level dir; shared across ranks on the same node.
-            self.compilation_config.local_cache_dir = cache_dir
-            inductor_cache = os.path.join(cache_dir, "inductor_cache")
+            self.compilation_config.local_cache_dir = cache_root
+            inductor_cache = os.path.join(cache_root, "inductor_cache")
             os.makedirs(inductor_cache, exist_ok=True)
+            _write_aot_compile_plan_metadata(cache_root, aot_compile_plan)
             # Process-wide: post-load execution, CUDA-graph capture, and later
             # autotune/recompile all need to write under {hash}/inductor_cache/.
             # Unconditional because torch's cache_dir() may have pre-filled the
             # /tmp default during import, making setdefault a no-op.
             os.environ["TORCHINDUCTOR_CACHE_DIR"] = inductor_cache
 
-            rank = self.vllm_config.parallel_config.rank
-            dp_rank = self.vllm_config.parallel_config.data_parallel_index
-            cache_dir = os.path.join(cache_dir, f"rank_{rank}_{dp_rank}")
+            cache_dir = os.path.join(cache_root, f"rank_{rank}_{dp_rank}")
             aot_compilation_path = os.path.join(cache_dir, "model")
             if not envs.VLLM_DISABLE_COMPILE_CACHE:
                 loaded_fn = _try_load_aot_compiled_fn(self, aot_compilation_path)
