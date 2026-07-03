@@ -17,18 +17,6 @@ Working rule:
 - remove completed items instead of annotating them
 - treat any runtime-adjacent drift as an escalation out of Lane A
 
-## 3. Compilation Policy Simplification
-
-- [ ] Reduce policy spread across `vllm/vllm/config/compilation.py`, `vllm/vllm/config/kernel.py`, `vllm/vllm/envs.py`, and `vllm/vllm/env_override.py`.
-- [ ] Centralize compile mode selection in one resolved policy object.
-- [ ] Centralize cudagraph mode selection in one resolved policy object.
-- [ ] Centralize backend selection in one resolved policy object.
-- [ ] Centralize custom-op compile behavior in one resolved policy object.
-- [ ] Centralize warmup obligations in one resolved policy object.
-- [ ] Make every fallback or policy override explicit and explainable.
-- [ ] Remove policy hidden in side effects and one-off warnings where possible.
-- [ ] Reduce mutually interacting knobs that create hard-to-predict behavior.
-
 ## 4. Named Compile Regions
 
 - [ ] Promote compile regions already identified in `engine/src/vllm_adapter.rs` into first-class implementation concepts.

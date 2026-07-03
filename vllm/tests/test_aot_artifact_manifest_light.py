@@ -106,6 +106,7 @@ def _load_caching_module():
 
     envs_mod = types.ModuleType("vllm.envs")
     envs_mod.VLLM_USE_MEGA_AOT_ARTIFACT = False
+    envs_mod.VLLM_DISABLE_COMPILE_CACHE = False
     envs_mod.compile_factors = lambda: []
     envs_mod.compile_factor_manifest = lambda: {"schema_version": 1}
     envs_mod.compile_factor_identity_manifest = lambda: {
@@ -2364,6 +2365,30 @@ def test_aot_compile_plan_is_structural_and_renderable() -> None:
     assert plan["materialization_plan"]["data_parallel_rank"] == 1
     rendered = caching.render_aot_compile_plan(plan)
     assert json.loads(rendered) == plan
+
+
+def test_render_aot_compile_factor_manifest_includes_resolved_policy() -> None:
+    caching, _ = _load_caching_module()
+
+    class _DummyConfig:
+        def compute_hash(self) -> str:
+            return "cfg-hash"
+
+        def resolved_compilation_policy_manifest(self) -> dict[str, object]:
+            return {
+                "schema_version": 1,
+                "compile_mode": {"mode": "VLLM_COMPILE"},
+            }
+
+    manifest = json.loads(caching.render_aot_compile_factor_manifest(_DummyConfig()))
+
+    assert manifest["schema_version"] == 1
+    assert manifest["vllm_config_hash"] == "cfg-hash"
+    assert manifest["resolved_compilation_policy"]["schema_version"] == 1
+    assert (
+        manifest["resolved_compilation_policy"]["compile_mode"]["mode"]
+        == "VLLM_COMPILE"
+    )
 
 
 def test_compile_source_fingerprint_ignores_python_comments() -> None:

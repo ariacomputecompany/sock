@@ -1405,6 +1405,53 @@ def test_fusion_pass_op_priority():
     assert cfg4.compilation_config.pass_config.fuse_norm_quant
 
 
+def test_resolved_compilation_policy_manifest_records_compile_disable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TORCH_COMPILE_DISABLE", "1")
+    monkeypatch.delenv("VLLM_USE_BREAKABLE_CUDAGRAPH", raising=False)
+
+    cfg = VllmConfig(
+        compilation_config=CompilationConfig(mode=CompilationMode.VLLM_COMPILE)
+    )
+
+    manifest = cfg.resolved_compilation_policy_manifest()
+
+    assert manifest["compile_mode"]["mode"] == "NONE"
+    assert manifest["ambient_inputs"]["torch_compile_disable"] == "1"
+    assert any(
+        decision.get("phase") == "torch_compile_disable"
+        and decision.get("field") == "compilation.mode"
+        and decision.get("after") == "NONE"
+        for decision in manifest["decisions"]
+    )
+
+
+def test_resolved_compilation_policy_manifest_records_default_custom_op_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("TORCH_COMPILE_DISABLE", raising=False)
+    monkeypatch.delenv("VLLM_USE_BREAKABLE_CUDAGRAPH", raising=False)
+
+    cfg = VllmConfig(optimization_level=OptimizationLevel.O2)
+    manifest = cfg.resolved_compilation_policy_manifest()
+
+    expected_policy = (
+        "none"
+        if cfg.compilation_config.backend == "inductor"
+        and cfg.compilation_config.mode != CompilationMode.NONE
+        else "all"
+    )
+    assert manifest["custom_ops"]["policy_mode"] == expected_policy
+    assert expected_policy in manifest["custom_ops"]["specifiers"]
+    assert manifest["warmup_obligations"]["flashinfer_autotune"] is True
+    assert any(
+        decision.get("phase") == "custom_op_policy_default"
+        and decision.get("field") == "compilation.custom_ops"
+        for decision in manifest["decisions"]
+    )
+
+
 def test_scheduler_config_init():
     with pytest.raises(ValidationError):
         # Positional InitVars missing

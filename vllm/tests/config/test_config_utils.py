@@ -246,6 +246,7 @@ def test_render_aot_compile_factor_manifest_exposes_env_and_config_hashes() -> N
     assert manifest["vllm_config_hash"] == "dummy-config-hash"
     assert "env" in manifest
     assert "included_keys" in manifest["env"]
+    assert manifest["resolved_compilation_policy"]["status"] == "unavailable"
     assert manifest["aot_compile_plan"]["schema_version"] == 1
     assert (
         manifest["aot_compile_plan_id"]

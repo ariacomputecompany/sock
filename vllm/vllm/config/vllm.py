@@ -768,6 +768,192 @@ class VllmConfig:
 
         apply_recursive(self, defaults)
 
+    @staticmethod
+    def _policy_json_ready(value: Any) -> Any:
+        if isinstance(value, IntEnum):
+            return value.name
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, list):
+            return [VllmConfig._policy_json_ready(item) for item in value]
+        if isinstance(value, tuple):
+            return [VllmConfig._policy_json_ready(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                str(key): VllmConfig._policy_json_ready(item)
+                for key, item in value.items()
+            }
+        return value
+
+    def _tracked_compilation_policy_fields(self) -> dict[str, Any]:
+        compilation_config = self.compilation_config
+        pass_config = compilation_config.pass_config
+        kernel_config = self.kernel_config
+        return {
+            "compilation.mode": compilation_config.mode,
+            "compilation.backend": compilation_config.backend,
+            "compilation.ir_enable_torch_wrap": (
+                compilation_config.ir_enable_torch_wrap
+            ),
+            "compilation.compile_sizes": list(compilation_config.compile_sizes)
+            if compilation_config.compile_sizes is not None
+            else None,
+            "compilation.compile_ranges_endpoints": (
+                list(compilation_config.compile_ranges_endpoints)
+                if compilation_config.compile_ranges_endpoints is not None
+                else None
+            ),
+            "compilation.cudagraph_mode": compilation_config.cudagraph_mode,
+            "compilation.custom_ops": list(compilation_config.custom_ops),
+            "compilation.splitting_ops": (
+                None
+                if compilation_config.splitting_ops is None
+                else list(compilation_config.splitting_ops)
+            ),
+            "compilation.use_inductor_graph_partition": (
+                compilation_config.use_inductor_graph_partition
+            ),
+            "compilation.max_cudagraph_capture_size": (
+                compilation_config.max_cudagraph_capture_size
+            ),
+            "compilation.cudagraph_capture_sizes": list(
+                compilation_config.cudagraph_capture_sizes
+            ),
+            "compilation.cudagraph_num_of_warmups": (
+                compilation_config.cudagraph_num_of_warmups
+            ),
+            "pass.enable_sp": pass_config.enable_sp,
+            "pass.fuse_gemm_comms": pass_config.fuse_gemm_comms,
+            "kernel.enable_flashinfer_autotune": (
+                kernel_config.enable_flashinfer_autotune
+            ),
+            "kernel.enable_cutedsl_warmup": kernel_config.enable_cutedsl_warmup,
+        }
+
+    def _begin_resolved_compilation_policy(self) -> None:
+        initial_fields = {
+            field: self._policy_json_ready(value)
+            for field, value in self._tracked_compilation_policy_fields().items()
+        }
+        self._resolved_compilation_policy = {
+            "schema_version": 1,
+            "initial_fields": initial_fields,
+            "decisions": [],
+        }
+
+    def _record_compilation_policy_event(
+        self,
+        *,
+        phase: str,
+        reason: str,
+        source: str,
+        field: str | None = None,
+        before: Any = None,
+        after: Any = None,
+    ) -> None:
+        policy = getattr(self, "_resolved_compilation_policy", None)
+        if policy is None:
+            return
+        decision = {
+            "phase": phase,
+            "reason": reason,
+            "source": source,
+        }
+        if field is not None:
+            decision["field"] = field
+            decision["before"] = self._policy_json_ready(before)
+            decision["after"] = self._policy_json_ready(after)
+        policy["decisions"].append(decision)
+
+    def _record_compilation_policy_phase(
+        self,
+        *,
+        phase: str,
+        before: dict[str, Any],
+        reason: str,
+        source: str,
+    ) -> None:
+        after = self._tracked_compilation_policy_fields()
+        for field, before_value in before.items():
+            after_value = after[field]
+            if after_value != before_value:
+                self._record_compilation_policy_event(
+                    phase=phase,
+                    reason=reason,
+                    source=source,
+                    field=field,
+                    before=before_value,
+                    after=after_value,
+                )
+
+    def resolved_compilation_policy_manifest(self) -> dict[str, Any]:
+        import vllm.env_override as env_override
+
+        compilation_config = self.compilation_config
+        custom_ops = list(compilation_config.custom_ops)
+        policy_mode = "all" if "all" in custom_ops else "none"
+        decisions = list(
+            getattr(self, "_resolved_compilation_policy", {}).get("decisions", [])
+        )
+        return {
+            "schema_version": 1,
+            "initial_fields": getattr(self, "_resolved_compilation_policy", {}).get(
+                "initial_fields", {}
+            ),
+            "compile_mode": {
+                "mode": self._policy_json_ready(compilation_config.mode),
+                "backend": compilation_config.backend,
+                "ir_enable_torch_wrap": compilation_config.ir_enable_torch_wrap,
+                "use_inductor_graph_partition": (
+                    compilation_config.use_inductor_graph_partition
+                ),
+                "compile_sizes": self._policy_json_ready(
+                    compilation_config.compile_sizes
+                ),
+                "compile_ranges_endpoints": self._policy_json_ready(
+                    compilation_config.compile_ranges_endpoints
+                ),
+            },
+            "cudagraph": {
+                "mode": self._policy_json_ready(compilation_config.cudagraph_mode),
+                "capture_sizes": list(compilation_config.cudagraph_capture_sizes),
+                "max_capture_size": compilation_config.max_cudagraph_capture_size,
+                "copy_inputs": compilation_config.cudagraph_copy_inputs,
+                "num_warmups": compilation_config.cudagraph_num_of_warmups,
+                "splitting_ops": self._policy_json_ready(
+                    compilation_config.splitting_ops
+                ),
+            },
+            "custom_ops": {
+                "policy_mode": policy_mode,
+                "specifiers": custom_ops,
+                "forced_enablements": sorted(
+                    op[1:] for op in custom_ops if op.startswith("+")
+                ),
+                "forced_disablements": sorted(
+                    op[1:] for op in custom_ops if op.startswith("-")
+                ),
+            },
+            "warmup_obligations": {
+                "cudagraph_num_of_warmups": (
+                    compilation_config.cudagraph_num_of_warmups
+                ),
+                "flashinfer_autotune": self.kernel_config.enable_flashinfer_autotune,
+                "cutedsl_warmup": self.kernel_config.enable_cutedsl_warmup,
+                "deep_gemm_warmup": envs.VLLM_DEEP_GEMM_WARMUP,
+            },
+            "ambient_inputs": {
+                "torch_compile_disable": os.environ.get("TORCH_COMPILE_DISABLE"),
+                "vllm_use_breakable_cudagraph": (
+                    os.environ.get("VLLM_USE_BREAKABLE_CUDAGRAPH")
+                ),
+                "compile_factor_manifest": envs.compile_factor_manifest(),
+                "patch_profile_manifest": env_override.patch_profile_manifest(),
+            },
+            "decision_count": len(decisions),
+            "decisions": decisions,
+        }
+
     def _maybe_override_dynamic_sd_cudagraph_mode(self) -> None:
         speculative_config = self.speculative_config
         if (
@@ -869,6 +1055,7 @@ class VllmConfig:
 
         # To give each torch profile run a unique instance name.
         self.instance_id = f"{time.time_ns()}"
+        self._begin_resolved_compilation_policy()
 
         if self.performance_mode != "balanced":
             logger.info_once("Performance mode set to '%s'.", self.performance_mode)
@@ -1095,15 +1282,29 @@ class VllmConfig:
                 "Enforce eager set, disabling torch.compile and CUDAGraphs. "
                 "This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none"
             )
+            before = self._tracked_compilation_policy_fields()
             self.compilation_config.mode = CompilationMode.NONE
             self.compilation_config.cudagraph_mode = CUDAGraphMode.NONE
+            self._record_compilation_policy_phase(
+                phase="enforce_eager",
+                before=before,
+                reason="enforce_eager disables torch.compile and cudagraphs",
+                source="model_config.enforce_eager",
+            )
 
         if os.environ.get("TORCH_COMPILE_DISABLE") == "1":
             logger.warning(
                 "TORCH_COMPILE_DISABLE is set, disabling torch.compile. "
                 "This is equivalent to setting -cc.mode=none"
             )
+            before = self._tracked_compilation_policy_fields()
             self.compilation_config.mode = CompilationMode.NONE
+            self._record_compilation_policy_phase(
+                phase="torch_compile_disable",
+                before=before,
+                reason="ambient TORCH_COMPILE_DISABLE disables torch.compile",
+                source="env:TORCH_COMPILE_DISABLE",
+            )
 
         # For model classes don't carry @support_torch_compile —
         # the breakable cudagraph is the supported PIECEWISE path. Auto-enable
@@ -1127,13 +1328,28 @@ class VllmConfig:
                 "Auto-enabling VLLM_USE_BREAKABLE_CUDAGRAPH=1. "
                 "Set VLLM_USE_BREAKABLE_CUDAGRAPH=0 to opt out."
             )
+            self._record_compilation_policy_event(
+                phase="breakable_cudagraph_auto_enable",
+                reason="model architecture defaults to breakable cudagraph support",
+                source="architectures",
+                field="env.VLLM_USE_BREAKABLE_CUDAGRAPH",
+                before=None,
+                after="1",
+            )
 
         if envs.VLLM_USE_BREAKABLE_CUDAGRAPH:
             logger.warning_once(
                 "VLLM_USE_BREAKABLE_CUDAGRAPH is set, disabling vLLM's "
                 "torch.compile pipeline. Equivalent to -cc.mode=none."
             )
+            before = self._tracked_compilation_policy_fields()
             self.compilation_config.mode = CompilationMode.NONE
+            self._record_compilation_policy_phase(
+                phase="breakable_cudagraph",
+                before=before,
+                reason="breakable cudagraph path bypasses vLLM compile pipeline",
+                source="env:VLLM_USE_BREAKABLE_CUDAGRAPH",
+            )
 
         if self.compilation_config.backend == "eager" or (
             self.compilation_config.mode is not None
@@ -1158,26 +1374,55 @@ class VllmConfig:
         # native implementation
         # https://github.com/vllm-project/vllm/issues/25094
         if has_blocked_weights():
+            before = self._tracked_compilation_policy_fields()
             custom_ops = self.compilation_config.custom_ops
             if "-quant_fp8" not in custom_ops:
                 custom_ops.append("+quant_fp8")
+            self._record_compilation_policy_phase(
+                phase="blocked_weight_custom_ops",
+                before=before,
+                reason="blocked-weight quantization enables quant_fp8 custom ops",
+                source="quant_config",
+            )
 
+        before = self._tracked_compilation_policy_fields()
         current_platform.apply_config_platform_defaults(self)
+        self._record_compilation_policy_phase(
+            phase="platform_defaults",
+            before=before,
+            reason="platform defaults may choose compilation backend and related policy",
+            source="current_platform.apply_config_platform_defaults",
+        )
 
         if self.compilation_config.mode is None:
+            before = self._tracked_compilation_policy_fields()
             if self.optimization_level > OptimizationLevel.O0:
                 self.compilation_config.mode = CompilationMode.VLLM_COMPILE
             else:
                 self.compilation_config.mode = CompilationMode.NONE
+            self._record_compilation_policy_phase(
+                phase="mode_default",
+                before=before,
+                reason="optimization level selects default compile mode when unset",
+                source="optimization_level",
+            )
 
         # By default, enable torch wrapping only when using custom Inductor lowering
         if self.compilation_config.ir_enable_torch_wrap is None:
+            before = self._tracked_compilation_policy_fields()
             self.compilation_config.ir_enable_torch_wrap = (
                 self.compilation_config.mode == CompilationMode.VLLM_COMPILE
                 and self.compilation_config.backend == "inductor"
             )
+            self._record_compilation_policy_phase(
+                phase="torch_wrap_default",
+                before=before,
+                reason="torch wrap defaults to active only for vLLM inductor compilation",
+                source="compilation mode/backend defaulting",
+            )
 
         if all(s not in self.compilation_config.custom_ops for s in ("all", "none")):
+            before = self._tracked_compilation_policy_fields()
             if (
                 self.compilation_config.backend == "inductor"
                 and self.compilation_config.mode != CompilationMode.NONE
@@ -1185,6 +1430,12 @@ class VllmConfig:
                 self.compilation_config.custom_ops.append("none")
             else:
                 self.compilation_config.custom_ops.append("all")
+            self._record_compilation_policy_phase(
+                phase="custom_op_policy_default",
+                before=before,
+                reason="default custom-op policy follows active compilation backend",
+                source="compilation mode/backend defaulting",
+            )
 
         # This populates IR op priorities,
         # must happen after compilation mode and backend are decided,
@@ -1192,14 +1443,28 @@ class VllmConfig:
         self.kernel_config.set_platform_defaults(self)
 
         default_config = OPTIMIZATION_LEVEL_TO_CONFIG[self.optimization_level]
+        before = self._tracked_compilation_policy_fields()
         self._apply_optimization_level_defaults(default_config)
+        self._record_compilation_policy_phase(
+            phase="optimization_level_defaults",
+            before=before,
+            reason="optimization level fills unresolved compile, cudagraph, and warmup policy",
+            source=f"optimization_level:{self.optimization_level.name}",
+        )
         if self.kernel_config.enable_flashinfer_autotune is None:
             raise ValueError(
                 "KernelConfig.enable_flashinfer_autotune must be set after applying "
                 "optimization level defaults."
             )
 
+        before = self._tracked_compilation_policy_fields()
         self._maybe_override_dynamic_sd_cudagraph_mode()
+        self._record_compilation_policy_phase(
+            phase="dynamic_spec_decode_cudagraph_override",
+            before=before,
+            reason="dynamic speculative decoding downgrades full cudagraphs for reliability",
+            source="speculative_config",
+        )
 
         if (
             self.compilation_config.cudagraph_mode.requires_piecewise_compilation()
@@ -1212,10 +1477,18 @@ class VllmConfig:
                 self.compilation_config.cudagraph_mode,
                 self.compilation_config.mode,
             )
+            before = self._tracked_compilation_policy_fields()
             self.compilation_config.cudagraph_mode = CUDAGraphMode.NONE
+            self._record_compilation_policy_phase(
+                phase="piecewise_compile_requirement",
+                before=before,
+                reason="piecewise cudagraphs require vLLM compilation when breakable cudagraph is off",
+                source="compile/cudagraph compatibility check",
+            )
 
         # async tp is built on top of sequence parallelism and requires it.
         pass_config = self.compilation_config.pass_config
+        before = self._tracked_compilation_policy_fields()
         if pass_config.fuse_gemm_comms:
             pass_config.enable_sp = True
         if pass_config.enable_sp:
@@ -1245,6 +1518,12 @@ class VllmConfig:
                     )
                     pass_config.enable_sp = False
                     pass_config.fuse_gemm_comms = False
+        self._record_compilation_policy_phase(
+            phase="sequence_parallelism_policy",
+            before=before,
+            reason="sequence parallelism and async TP constraints normalize pass policy",
+            source="parallel_config/pass_config compatibility",
+        )
 
         from vllm.utils.torch_utils import HAS_OPAQUE_TYPE
 
@@ -1264,6 +1543,7 @@ class VllmConfig:
 
         if current_platform.support_static_graph_mode():
             # if cudagraph_mode has full cudagraphs, we need to check support
+            before = self._tracked_compilation_policy_fields()
             if model_config := self.model_config:
                 if (
                     self.compilation_config.cudagraph_mode.has_full_cudagraphs()
@@ -1326,9 +1606,22 @@ class VllmConfig:
                 self.compilation_config.cudagraph_num_of_warmups = 1
 
             self._set_cudagraph_sizes()
+            self._record_compilation_policy_phase(
+                phase="static_graph_policy",
+                before=before,
+                reason="static-graph support normalizes cudagraph mode, warmups, and capture sizes",
+                source="current_platform.support_static_graph_mode",
+            )
 
         else:
+            before = self._tracked_compilation_policy_fields()
             self.compilation_config.cudagraph_mode = CUDAGraphMode.NONE
+            self._record_compilation_policy_phase(
+                phase="static_graph_unavailable",
+                before=before,
+                reason="platform lacks static graph support, so cudagraphs are disabled",
+                source="current_platform.support_static_graph_mode",
+            )
 
         if self.cache_config.kv_sharing_fast_prefill:
             if (
@@ -1379,14 +1672,28 @@ class VllmConfig:
                 "Modify KVEventsConfig.enable_kv_cache_events "
                 "to True to enable."
             )
+        before = self._tracked_compilation_policy_fields()
         current_platform.check_and_update_config(self)
+        self._record_compilation_policy_phase(
+            phase="platform_post_checks",
+            before=before,
+            reason="platform post-checks may normalize compilation policy after validation",
+            source="current_platform.check_and_update_config",
+        )
 
         if self.use_v2_model_runner:
             self._validate_v2_model_runner()
 
         # Re-compute compile ranges after platform-specific config updates
         # (e.g., XPU may lower max_num_batched_tokens when MLA is enabled)
+        before = self._tracked_compilation_policy_fields()
         self._set_compile_ranges()
+        self._record_compilation_policy_phase(
+            phase="compile_ranges_resolution",
+            before=before,
+            reason="compile size and range endpoints are recomputed after platform updates",
+            source="VllmConfig._set_compile_ranges",
+        )
 
         # Do this after all the updates to compilation_config.mode
         effective_dp_size = (
@@ -1394,9 +1701,16 @@ class VllmConfig:
             if self.model_config is None or self.model_config.is_moe
             else 1
         )
+        before = self._tracked_compilation_policy_fields()
         self.compilation_config.set_splitting_ops_for_v1(
             all2all_backend=self.parallel_config.all2all_backend,
             data_parallel_size=effective_dp_size,
+        )
+        self._record_compilation_policy_phase(
+            phase="splitting_ops_resolution",
+            before=before,
+            reason="final compile-region boundaries are normalized after all top-level policy updates",
+            source="CompilationConfig.set_splitting_ops_for_v1",
         )
 
         if self.compilation_config.pass_config.enable_sp:
@@ -1413,6 +1727,7 @@ class VllmConfig:
                 )
 
             if self.parallel_config.pipeline_parallel_size > 1:
+                before = self._tracked_compilation_policy_fields()
                 if "-rms_norm" not in self.compilation_config.custom_ops:
                     self.compilation_config.custom_ops.append("+rms_norm")
                 else:
@@ -1422,6 +1737,12 @@ class VllmConfig:
                         "this will likely lead to an error.",
                         "pipeline parallelism",
                     )
+                self._record_compilation_policy_phase(
+                    phase="pipeline_parallel_sp_custom_ops",
+                    before=before,
+                    reason="pipeline parallel sequence parallelism requires rms_norm custom op",
+                    source="parallel_config/pass_config compatibility",
+                )
 
         # final check of cudagraph mode after all possible updates
         if current_platform.is_cuda_alike():

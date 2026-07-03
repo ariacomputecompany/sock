@@ -2569,6 +2569,17 @@ def render_aot_compile_factor_manifest(vllm_config: VllmConfig) -> str:
         "schema_version": 1,
         "env": envs.compile_factor_manifest(),
         "vllm_config_hash": vllm_config.compute_hash(),
+        "resolved_compilation_policy": (
+            vllm_config.resolved_compilation_policy_manifest()
+            if hasattr(vllm_config, "resolved_compilation_policy_manifest")
+            else {
+                "schema_version": 1,
+                "status": "unavailable",
+                "reason": (
+                    "config_does_not_expose_resolved_compilation_policy_manifest"
+                ),
+            }
+        ),
         "inductor_factors": (
             get_inductor_factors() if envs.VLLM_USE_MEGA_AOT_ARTIFACT else []
         ),
