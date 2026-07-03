@@ -5,7 +5,7 @@ use sock_core::{
     RequestedEnvironment, RewriteTraceDocument, ShapePoint, ShapePolicy, ShapeRange, TargetEngine,
     WarmupPolicy,
 };
-use sock_engine::{PlanError, Planner, PlannerHostSnapshot, PlanningOutcome, vllm};
+use sock_engine::{BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome, vllm};
 
 #[must_use]
 pub fn default_host_snapshot() -> PlannerHostSnapshot {
@@ -129,6 +129,10 @@ pub fn default_request() -> RawRequest {
 
 pub fn plan_outcome() -> Result<PlanningOutcome, PlanError> {
     Planner::new(default_host_snapshot()).resolve(default_request())
+}
+
+pub fn plan_outcome_scoped(scope: &BuildScope) -> Result<PlanningOutcome, PlanError> {
+    Planner::new(default_host_snapshot()).resolve_scoped(default_request(), scope)
 }
 
 #[must_use]

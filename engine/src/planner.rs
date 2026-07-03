@@ -19,7 +19,7 @@ use sock_core::{
 };
 use thiserror::Error;
 
-use crate::vllm_adapter::VllmAdapter;
+use crate::{BuildReadiness, BuildScope, vllm_adapter::VllmAdapter};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannerHostSnapshot {
@@ -62,14 +62,31 @@ impl Planner {
     }
 
     pub fn resolve(&self, raw: RawRequest) -> Result<PlanningOutcome, PlanError> {
+        self.resolve_scoped(raw, &BuildScope::default())
+    }
+
+    pub fn resolve_scoped(
+        &self,
+        raw: RawRequest,
+        scope: &BuildScope,
+    ) -> Result<PlanningOutcome, PlanError> {
         let normalized = raw.normalize()?;
         let adapter_survey = VllmAdapter::default().survey()?;
         let capability_witnesses = self.capability_witnesses(&normalized, &adapter_survey);
         let backend_registry = self.backend_registry(&normalized);
         let selected_backends =
             self.select_backends(&normalized, &capability_witnesses, &backend_registry)?;
-        let compile_regions = self.compile_regions(&selected_backends, &adapter_survey);
-        let shape_envelope = self.shape_envelope(&normalized, &selected_backends);
+        let compile_regions = self.compile_regions(&selected_backends, &adapter_survey, scope);
+        if compile_regions.is_empty() {
+            return Err(PlanError::Validation(
+                "scoped build request resolved to an empty compile-region closure".to_owned(),
+            ));
+        }
+        let shape_envelope = scoped_shape_envelope(
+            self.shape_envelope(&normalized, &selected_backends),
+            &compile_regions,
+            scope,
+        );
         let artifact_requirements = self.artifact_requirements(
             &normalized,
             &capability_witnesses,
@@ -77,14 +94,17 @@ impl Planner {
             &selected_backends,
             &compile_regions,
             &adapter_survey,
+            scope,
         )?;
         let warmup_obligations =
-            self.warmup_obligations(&normalized, &shape_envelope, &compile_regions);
+            self.warmup_obligations(&normalized, &shape_envelope, &compile_regions, scope);
         let residual_risks = self.residual_risks(
             &normalized,
             &shape_envelope,
             &selected_backends,
             &adapter_survey,
+            &compile_regions,
+            scope,
         );
         let materialization_graph = self.materialization_graph(
             &normalized.topology,
@@ -379,11 +399,13 @@ impl Planner {
         &self,
         selected_backends: &BackendSelection,
         adapter_survey: &AdapterSurvey,
+        scope: &BuildScope,
     ) -> Vec<CompileRegion> {
         let mut regions = adapter_survey
             .compile_regions
             .iter()
             .filter(|region| region.regional_compile_candidate)
+            .filter(|region| scope.allows_region(&region.canonical_name))
             .map(|region| CompileRegion {
                 name: region.canonical_name.clone(),
                 kind: region.kind,
@@ -592,6 +614,7 @@ impl Planner {
         selected_backends: &BackendSelection,
         compile_regions: &[CompileRegion],
         adapter_survey: &AdapterSurvey,
+        scope: &BuildScope,
     ) -> Result<Vec<ArtifactRequirement>, PlanError> {
         let abi_identity = canonical_hash(&AbiFingerprint {
             operating_system: normalized.environment.operating_system,
@@ -606,6 +629,7 @@ impl Planner {
         let shape_envelope_identity = canonical_hash(shape_envelope)?;
         let mut requirements = compile_regions
             .iter()
+            .filter(|region| scope.allows_artifact_scope(&region.name))
             .flat_map(|region| {
                 let (graph_portability, graph_rank_disposition, graph_cache_namespace) =
                     cache_traits(&region.name, adapter_survey);
@@ -686,32 +710,38 @@ impl Planner {
                 ]
             })
             .collect::<Vec<_>>();
-        requirements.push(ArtifactRequirement {
-            class: ArtifactClass::CudaGraphCapture,
-            backend: BackendFamily::CudaGraphs,
-            acquisition: ArtifactAcquisition::LocalAotBuild,
-            scope: "decode_attention".to_owned(),
-            portability: ArtifactPortability::TopologyScoped,
-            rank_disposition: RankDisposition::RankLocal,
-            expected_bytes: Some(2_000_000),
-            expected_compile_ms: Some(300),
-            expected_transfer_ms: Some(25),
-            admissibility: self.artifact_admissibility(
-                normalized,
-                witnesses,
-                BackendFamily::CudaGraphs,
-                ArtifactAcquisition::LocalAotBuild,
-                ArtifactClass::CudaGraphCapture,
-                "decode_attention".to_owned(),
-                ArtifactPortability::TopologyScoped,
-                &abi_identity,
-                &shape_envelope_identity,
-                vec![
-                    "CUDA graph captures are only legal on the planned topology".to_owned(),
-                    "capture reuse is bounded to the exact graph envelope".to_owned(),
-                ],
-            ),
-        });
+        if compile_regions
+            .iter()
+            .any(|region| region.name == "decode_attention")
+            && scope.allows_artifact_scope("decode_attention")
+        {
+            requirements.push(ArtifactRequirement {
+                class: ArtifactClass::CudaGraphCapture,
+                backend: BackendFamily::CudaGraphs,
+                acquisition: ArtifactAcquisition::LocalAotBuild,
+                scope: "decode_attention".to_owned(),
+                portability: ArtifactPortability::TopologyScoped,
+                rank_disposition: RankDisposition::RankLocal,
+                expected_bytes: Some(2_000_000),
+                expected_compile_ms: Some(300),
+                expected_transfer_ms: Some(25),
+                admissibility: self.artifact_admissibility(
+                    normalized,
+                    witnesses,
+                    BackendFamily::CudaGraphs,
+                    ArtifactAcquisition::LocalAotBuild,
+                    ArtifactClass::CudaGraphCapture,
+                    "decode_attention".to_owned(),
+                    ArtifactPortability::TopologyScoped,
+                    &abi_identity,
+                    &shape_envelope_identity,
+                    vec![
+                        "CUDA graph captures are only legal on the planned topology".to_owned(),
+                        "capture reuse is bounded to the exact graph envelope".to_owned(),
+                    ],
+                ),
+            });
+        }
         requirements.sort();
         Ok(requirements)
     }
@@ -721,6 +751,7 @@ impl Planner {
         normalized: &NormalizedRequest,
         shape_envelope: &ShapeEnvelope,
         compile_regions: &[CompileRegion],
+        scope: &BuildScope,
     ) -> Vec<WarmupObligation> {
         let all_ranks = total_ranks(&normalized.topology);
         let mut obligations = Vec::new();
@@ -753,6 +784,12 @@ impl Planner {
                 }
             }
         }
+        if let Some(readiness) = scope.readiness {
+            obligations.retain(|obligation| match readiness {
+                BuildReadiness::Correctness => obligation.blocking,
+                BuildReadiness::Performance => true,
+            });
+        }
         obligations.sort();
         obligations
     }
@@ -763,11 +800,21 @@ impl Planner {
         shape_envelope: &ShapeEnvelope,
         selected_backends: &BackendSelection,
         adapter_survey: &AdapterSurvey,
+        compile_regions: &[CompileRegion],
+        scope: &BuildScope,
     ) -> Vec<ResidualRuntimeRisk> {
         let mut risks = adapter_survey
             .residual_jit_surfaces
             .iter()
             .filter(|surface| surface_applies(surface.backend_family.as_str(), selected_backends))
+            .filter(|surface| {
+                scope.is_unscoped()
+                    || surface.affected_regions.iter().any(|region| {
+                        compile_regions
+                            .iter()
+                            .any(|candidate| &candidate.name == region)
+                    })
+            })
             .map(|surface| ResidualRuntimeRisk {
                 class: HazardClass::ResidualLazyCompile,
                 summary: format!("{}: {}", surface.name, surface.warmup_gap),
@@ -812,29 +859,61 @@ impl Planner {
             .residual_jit_surfaces
             .iter()
             .filter(|surface| surface_applies(surface.backend_family.as_str(), selected_backends))
-            .map(|surface| RuntimeJitEvidence {
-                surface_name: surface.name.clone(),
-                backend_family: surface.backend_family.clone(),
-                trigger_shape_or_config: surface.trigger_shape_or_config.clone(),
-                trigger_inputs: surface.trigger_inputs.clone(),
-                affected_regions: surface.affected_regions.clone(),
-                required_artifacts: surface.required_artifacts.clone(),
-                required_warmup_proofs: surface
+            .filter(|surface| {
+                compile_regions.iter().any(|region| {
+                    surface
+                        .affected_regions
+                        .iter()
+                        .any(|name| name == &region.name)
+                }) || surface.backend_family == "torch.compile"
+            })
+            .map(|surface| {
+                let affected_regions = surface
+                    .affected_regions
+                    .iter()
+                    .filter(|region| {
+                        compile_regions
+                            .iter()
+                            .any(|candidate| &candidate.name == *region)
+                    })
+                    .cloned()
+                    .collect();
+                let required_artifacts = surface
+                    .required_artifacts
+                    .iter()
+                    .filter(|scope| {
+                        artifact_requirements
+                            .iter()
+                            .any(|candidate| &candidate.scope == *scope)
+                    })
+                    .cloned()
+                    .collect();
+                let required_warmup_proofs = surface
                     .required_warmup_scopes
                     .iter()
                     .flat_map(|scope| warmup_proof_ids_for_scope(scope, warmup_obligations))
-                    .collect(),
-                topology_context: surface.topology_context.clone(),
-                bounded_by: bounded_by(
-                    normalized,
-                    selected_backends,
-                    compile_regions,
-                    warmup_obligations,
-                    artifact_requirements,
-                    surface,
-                ),
-                mitigation: surface.mitigation.clone(),
-                contradiction_reasons: contradiction_reasons(normalized, surface),
+                    .collect();
+
+                RuntimeJitEvidence {
+                    surface_name: surface.name.clone(),
+                    backend_family: surface.backend_family.clone(),
+                    trigger_shape_or_config: surface.trigger_shape_or_config.clone(),
+                    trigger_inputs: surface.trigger_inputs.clone(),
+                    affected_regions,
+                    required_artifacts,
+                    required_warmup_proofs,
+                    topology_context: surface.topology_context.clone(),
+                    bounded_by: bounded_by(
+                        normalized,
+                        selected_backends,
+                        compile_regions,
+                        warmup_obligations,
+                        artifact_requirements,
+                        surface,
+                    ),
+                    mitigation: surface.mitigation.clone(),
+                    contradiction_reasons: contradiction_reasons(normalized, surface),
+                }
             })
             .collect()
     }
@@ -1364,6 +1443,28 @@ fn hot_shape_node(prefix: &str, shape: &ShapePoint, backend: BackendFamily) -> S
         exact_shape: Some(shape.clone()),
         required_backends: vec![backend],
     }
+}
+
+fn scoped_shape_envelope(
+    shape_envelope: ShapeEnvelope,
+    compile_regions: &[CompileRegion],
+    scope: &BuildScope,
+) -> ShapeEnvelope {
+    let mut nodes = shape_envelope
+        .nodes
+        .into_iter()
+        .filter(|node| {
+            compile_regions
+                .iter()
+                .any(|region| region.shape_planes.contains(&node.plane))
+        })
+        .filter(|node| match scope.readiness {
+            Some(BuildReadiness::Correctness) => node.plane == CoveragePlane::Correctness,
+            Some(BuildReadiness::Performance) | None => true,
+        })
+        .collect::<Vec<_>>();
+    nodes.sort();
+    ShapeEnvelope { nodes }
 }
 
 fn resolve_backend_binding(

@@ -3,13 +3,14 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use sock_app::{
-    default_host_snapshot, diagnostics_for, plan_outcome, replay_bundle, rewrite_trace_for,
+    default_host_snapshot, diagnostics_for, plan_outcome, plan_outcome_scoped, replay_bundle,
+    rewrite_trace_for,
 };
 use sock_core::{
     DiagnosticsDocument, ReplayBundle, ReplayBundleMetadata, RewriteTraceDocument, canonical_json,
     render_diagnostics, render_explain, render_plan_summary, render_verification_report,
 };
-use sock_engine::{PlannerHostSnapshot, PlanningOutcome};
+use sock_engine::{BuildReadiness, BuildScope, PlannerHostSnapshot, PlanningOutcome};
 
 #[derive(Debug, Parser)]
 #[command(name = "sock")]
@@ -21,16 +22,22 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     Plan {
+        #[command(flatten)]
+        scope: ScopeArgs,
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
         format: OutputMode,
     },
     Explain {
+        #[command(flatten)]
+        scope: ScopeArgs,
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
         format: OutputMode,
     },
     Build {
         #[arg(long)]
         out: PathBuf,
+        #[command(flatten)]
+        scope: ScopeArgs,
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
         format: OutputMode,
     },
@@ -58,19 +65,35 @@ enum OutputMode {
     Json,
 }
 
+#[derive(Debug, Clone, Parser, Default)]
+struct ScopeArgs {
+    #[arg(long = "region")]
+    regions: Vec<String>,
+    #[arg(long = "artifact-scope")]
+    artifact_scopes: Vec<String>,
+    #[arg(long, value_enum)]
+    readiness: Option<ReadinessArg>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ReadinessArg {
+    Correctness,
+    Performance,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Plan { format } => emit_plan(&plan()?, format)?,
-        Command::Explain { format } => {
-            let outcome = plan_outcome()?;
+        Command::Plan { scope, format } => emit_plan(&plan(&scope.into_scope())?, format)?,
+        Command::Explain { scope, format } => {
+            let outcome = plan_with_scope(&scope.into_scope())?;
             let diagnostics = diagnostics_for(&outcome);
             let rewrite_trace = rewrite_trace_for(&outcome);
             emit_explain(&outcome, &diagnostics, &rewrite_trace, format)?;
         }
-        Command::Build { out, format } => {
-            let outcome = plan_outcome()?;
+        Command::Build { out, scope, format } => {
+            let outcome = plan_with_scope(&scope.into_scope())?;
             let bundle = replay_bundle(&outcome);
             let metadata = bundle.write_to(&out)?;
             emit_build(&out, &bundle, &metadata, format)?;
@@ -87,8 +110,29 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn plan() -> Result<PlanningOutcome> {
-    Ok(plan_outcome()?)
+impl ScopeArgs {
+    fn into_scope(self) -> BuildScope {
+        BuildScope {
+            region_names: self.regions.into_iter().collect(),
+            artifact_scopes: self.artifact_scopes.into_iter().collect(),
+            readiness: self.readiness.map(|readiness| match readiness {
+                ReadinessArg::Correctness => BuildReadiness::Correctness,
+                ReadinessArg::Performance => BuildReadiness::Performance,
+            }),
+        }
+    }
+}
+
+fn plan(scope: &BuildScope) -> Result<PlanningOutcome> {
+    Ok(if scope.is_unscoped() {
+        plan_outcome()?
+    } else {
+        plan_outcome_scoped(scope)?
+    })
+}
+
+fn plan_with_scope(scope: &BuildScope) -> Result<PlanningOutcome> {
+    plan(scope)
 }
 
 fn emit_plan(outcome: &PlanningOutcome, format: OutputMode) -> Result<()> {

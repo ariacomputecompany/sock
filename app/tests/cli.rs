@@ -1,5 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
+use serde_json::Value;
 use tempfile::tempdir;
 
 #[test]
@@ -100,4 +101,61 @@ fn tampered_bundle_is_rejected() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("digest mismatch"));
+}
+
+#[test]
+fn scoped_prefill_build_emits_minimal_closure() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "build",
+            "--out",
+            dir.path().to_str().expect("utf8 path"),
+            "--region",
+            "prefill_attention",
+            "--readiness",
+            "correctness",
+        ])
+        .assert()
+        .success();
+
+    let plan: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("buildplan.json")).expect("read buildplan"),
+    )
+    .expect("parse buildplan");
+    let compile_regions = plan["compile_regions"]
+        .as_array()
+        .expect("compile regions array");
+    assert_eq!(compile_regions.len(), 1);
+    assert_eq!(compile_regions[0]["name"], "prefill_attention");
+
+    let artifact_manifest: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("artifact_manifest.json"))
+            .expect("read artifact manifest"),
+    )
+    .expect("parse artifact manifest");
+    let artifacts = artifact_manifest["artifacts"]
+        .as_array()
+        .expect("artifacts array");
+    assert!(
+        artifacts
+            .iter()
+            .all(|artifact| artifact["scope"] == "prefill_attention")
+    );
+
+    let warmup_obligations = plan["warmup_obligations"]
+        .as_array()
+        .expect("warmup obligations array");
+    assert!(
+        warmup_obligations
+            .iter()
+            .all(|obligation| obligation["region_name"] == "prefill_attention")
+    );
+    assert!(
+        warmup_obligations
+            .iter()
+            .all(|obligation| obligation["blocking"] == true)
+    );
 }
