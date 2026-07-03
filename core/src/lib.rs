@@ -36,8 +36,9 @@ pub use materialization::*;
 pub use measurement::*;
 pub use model::*;
 pub use operator::{
-    render_diagnostics, render_explain, render_optimization_explain, render_plan_summary,
-    render_replay_bundle_explain, render_soc_explain, render_verification_report,
+    render_backend_decision, render_diagnostics, render_explain, render_optimization_explain,
+    render_plan_summary, render_replay_bundle_explain, render_soc_explain,
+    render_verification_report,
 };
 pub use optimization::*;
 pub use replay::*;

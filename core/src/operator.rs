@@ -1,7 +1,7 @@
 use crate::{
-    DiagnosticsDocument, HazardClass, MaterializationExecutionReport, OptimizationExplainDocument,
-    ReplayProofDocument, ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument,
-    VerificationReport,
+    BackendDecisionDocument, DiagnosticsDocument, HazardClass, MaterializationExecutionReport,
+    OptimizationExplainDocument, ReplayProofDocument, ResolvedBuildPlan, RewriteTraceDocument,
+    SocPlanDocument, VerificationReport,
 };
 
 #[must_use]
@@ -132,6 +132,79 @@ pub fn render_replay_bundle_explain(
     out.push_str(&render_verification_report(verification_report));
     out.push_str("diagnostics:\n");
     out.push_str(&render_diagnostics(diagnostics));
+    out
+}
+
+#[must_use]
+pub fn render_backend_decision(document: &BackendDecisionDocument) -> String {
+    let mut out = String::new();
+    out.push_str("backend decision:\n");
+    for entry in &document.entries {
+        out.push_str(&format!(
+            "  - family={} technically_available={} selected={} model_reachable={} plan_reachable={} runtime_reachable={} build_possible={} acquisition={}\n",
+            entry.family.as_str(),
+            entry.technically_available,
+            entry.selected_for_deployment,
+            entry.reachable_from_model_family,
+            entry.reachable_from_materialization_plan,
+            entry.runtime_reachable,
+            entry.build_technically_possible,
+            entry
+                .chosen_acquisition
+                .map(|value| format!("{value:?}"))
+                .unwrap_or_else(|| "none".to_owned())
+        ));
+        out.push_str(&format!(
+            "    compile_regions={} artifact_scopes={} warmup_scopes={} upstream_pass_through={}\n",
+            if entry.reachable_compile_regions.is_empty() {
+                "none".to_owned()
+            } else {
+                entry.reachable_compile_regions.join("|")
+            },
+            if entry.reachable_artifact_scopes.is_empty() {
+                "none".to_owned()
+            } else {
+                entry.reachable_artifact_scopes.join("|")
+            },
+            if entry.reachable_warmup_scopes.is_empty() {
+                "none".to_owned()
+            } else {
+                entry.reachable_warmup_scopes.join("|")
+            },
+            if entry.pass_through_optimizations.is_empty() {
+                "none".to_owned()
+            } else {
+                entry.pass_through_optimizations.join("|")
+            }
+        ));
+    }
+    out.push_str("backend extension manifests:\n");
+    for manifest in &document.extension_manifests {
+        out.push_str(&format!(
+            "  - {} binary={} backend={} build_possible={} runtime_reachable={} models={} regions={} scopes={} classes={}\n",
+            manifest.extension_key,
+            manifest.binary_name,
+            manifest.backend_family.as_str(),
+            manifest.build_technically_possible,
+            manifest.runtime_reachable,
+            manifest.model_repositories.join("|"),
+            if manifest.reachable_compile_regions.is_empty() {
+                "none".to_owned()
+            } else {
+                manifest.reachable_compile_regions.join("|")
+            },
+            if manifest.reachable_artifact_scopes.is_empty() {
+                "none".to_owned()
+            } else {
+                manifest.reachable_artifact_scopes.join("|")
+            },
+            if manifest.artifact_classes.is_empty() {
+                "none".to_owned()
+            } else {
+                manifest.artifact_classes.join("|")
+            }
+        ));
+    }
     out
 }
 

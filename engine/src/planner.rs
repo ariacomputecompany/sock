@@ -4,9 +4,10 @@ use sock_core::{
     AbiFingerprint, AdapterBackendBinding, AdapterError, AdapterSurvey, AdmissibilityVerdict,
     ArtifactAcquisition, ArtifactAdmissibilityProof, ArtifactClass, ArtifactClosure,
     ArtifactManifestEntry, ArtifactPortability, ArtifactRequirement, BackendAdmissibilityProof,
-    BackendCandidate, BackendCapability, BackendCapabilityRegistry, BackendExtensionFingerprint,
-    BackendFamily, BackendSelection, CanonicalError, CapabilityProvenance, CapabilityWitness,
-    CompileRegion, CoveragePlane, CoverageState, CoverageWitness, EngineAdapter, ExecutionTopology,
+    BackendCandidate, BackendCapability, BackendCapabilityRegistry, BackendDecisionEntry,
+    BackendDecisionPlan, BackendExtensionFingerprint, BackendExtensionManifest, BackendFamily,
+    BackendSelection, CanonicalError, CapabilityProvenance, CapabilityWitness, CompileRegion,
+    CoveragePlane, CoverageState, CoverageWitness, EngineAdapter, ExecutionTopology,
     FanoutStrategy, GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel,
     HazardClass, LeaderAssignment, MaterializationGraph, MaterializationNode,
     MaterializationNodeKind, MaterializationWave, NodeExecutionContract, NormalizedRequest,
@@ -164,6 +165,16 @@ impl Planner {
             coverage_witnesses,
             runtime_jit_evidence,
         };
+        let backend_decision = self.backend_decision(
+            &normalized,
+            &backend_registry,
+            &capability_witnesses,
+            &selected_backends,
+            &compile_regions,
+            &artifact_requirements,
+            &warmup_obligations,
+            &adapter_survey,
+        );
         let rewrite_trace = self.rewrite_trace(
             &normalized,
             &selected_backends,
@@ -177,6 +188,7 @@ impl Planner {
         )?;
         let structural_identity = self.structural_identity(
             &normalized,
+            &backend_decision,
             &backend_registry,
             &capability_witnesses,
             &compile_regions,
@@ -195,6 +207,7 @@ impl Planner {
                 BuildReadiness::Performance => "performance".to_owned(),
             }),
             optimization_envelope,
+            backend_decision,
             backend_registry,
             selected_backends,
             compile_regions,
@@ -585,6 +598,134 @@ impl Planner {
                 }
             })
             .collect()
+    }
+
+    fn backend_decision(
+        &self,
+        normalized: &NormalizedRequest,
+        registry: &BackendCapabilityRegistry,
+        witnesses: &[CapabilityWitness],
+        selected_backends: &BackendSelection,
+        compile_regions: &[CompileRegion],
+        artifact_requirements: &[ArtifactRequirement],
+        warmup_obligations: &[WarmupObligation],
+        adapter_survey: &AdapterSurvey,
+    ) -> BackendDecisionPlan {
+        let entries = registry
+            .entries
+            .iter()
+            .map(|capability| {
+                let proofs = self.backend_proofs(normalized, witnesses, capability);
+                let technically_available = proofs
+                    .iter()
+                    .any(|proof| proof.verdict == AdmissibilityVerdict::Admissible);
+                let selected_candidate = std::iter::once(&selected_backends.primary)
+                    .chain(selected_backends.secondary.iter())
+                    .find(|candidate| candidate.family == capability.family);
+                let selected_for_deployment = selected_candidate.is_some();
+                let reachable_compile_regions = compile_regions
+                    .iter()
+                    .filter(|region| region.family == capability.family)
+                    .map(|region| region.name.clone())
+                    .collect::<Vec<_>>();
+                let reachable_artifact_scopes = artifact_requirements
+                    .iter()
+                    .filter(|artifact| artifact.backend == capability.family)
+                    .map(|artifact| artifact.scope.clone())
+                    .collect::<Vec<_>>();
+                let reachable_warmup_scopes = warmup_obligations
+                    .iter()
+                    .filter(|obligation| {
+                        compile_regions.iter().any(|region| {
+                            region.name == obligation.region_name
+                                && region.family == capability.family
+                        })
+                    })
+                    .map(|obligation| obligation.region_name.clone())
+                    .collect::<Vec<_>>();
+                let reachable_from_model_family =
+                    adapter_survey.compile_regions.iter().any(|region| {
+                        resolve_backend_binding(region.backend_binding, selected_backends)
+                            == capability.family
+                    }) || adapter_survey
+                        .residual_jit_surfaces
+                        .iter()
+                        .any(|surface| surface.backend_family == capability.family.as_str());
+                let reachable_from_materialization_plan = !reachable_compile_regions.is_empty()
+                    || !reachable_artifact_scopes.is_empty()
+                    || !reachable_warmup_scopes.is_empty();
+                let accepted_reasons = selected_candidate
+                    .map(|candidate| vec![candidate.reason.clone()])
+                    .unwrap_or_default();
+                let rejected_reasons = proofs
+                    .iter()
+                    .filter(|proof| proof.verdict == AdmissibilityVerdict::Rejected)
+                    .flat_map(|proof| proof.rejected_reasons.iter().cloned())
+                    .collect::<Vec<_>>();
+                let chosen_acquisition = selected_candidate.map(|candidate| candidate.acquisition);
+                let satisfied_witnesses = selected_candidate
+                    .map(|candidate| candidate.admissibility.satisfied_witnesses.clone())
+                    .unwrap_or_else(|| {
+                        proofs
+                            .iter()
+                            .find(|proof| proof.verdict == AdmissibilityVerdict::Admissible)
+                            .map(|proof| proof.satisfied_witnesses.clone())
+                            .unwrap_or_default()
+                    });
+
+                BackendDecisionEntry {
+                    family: capability.family,
+                    technically_available,
+                    selected_for_deployment,
+                    reachable_from_model_family,
+                    reachable_from_materialization_plan,
+                    runtime_reachable: reachable_from_materialization_plan,
+                    build_technically_possible: technically_available,
+                    chosen_acquisition,
+                    required_witnesses: capability.required_witnesses.clone(),
+                    satisfied_witnesses,
+                    accepted_reasons,
+                    rejected_reasons,
+                    reachable_compile_regions,
+                    reachable_artifact_scopes,
+                    reachable_warmup_scopes,
+                    pass_through_optimizations: pass_through_optimizations(capability.family),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let extension_manifests = registry
+            .entries
+            .iter()
+            .map(|capability| {
+                let entry = entries
+                    .iter()
+                    .find(|entry| entry.family == capability.family)
+                    .expect("backend decision entry");
+                BackendExtensionManifest {
+                    extension_key: format!("{}-extension", capability.family.as_str()),
+                    binary_name: extension_binary_name(capability.family).to_owned(),
+                    backend_family: capability.family,
+                    model_repositories: vec![normalized.model.repository.clone()],
+                    build_technically_possible: entry.build_technically_possible,
+                    runtime_reachable: entry.runtime_reachable,
+                    reachable_compile_regions: entry.reachable_compile_regions.clone(),
+                    reachable_artifact_scopes: entry.reachable_artifact_scopes.clone(),
+                    artifact_classes: artifact_requirements
+                        .iter()
+                        .filter(|artifact| artifact.backend == capability.family)
+                        .map(|artifact| artifact.class.as_str().to_owned())
+                        .collect(),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        BackendDecisionPlan {
+            build_profile_identity: canonical_hash(&normalized.optimization_policy)
+                .expect("build profile identity"),
+            entries,
+            extension_manifests,
+        }
     }
 
     fn artifact_admissibility(
@@ -1445,6 +1586,7 @@ impl Planner {
     fn structural_identity(
         &self,
         normalized: &NormalizedRequest,
+        backend_decision: &BackendDecisionPlan,
         backend_registry: &BackendCapabilityRegistry,
         capability_witnesses: &[CapabilityWitness],
         compile_regions: &[CompileRegion],
@@ -1457,6 +1599,7 @@ impl Planner {
     ) -> Result<StructuralIdentity, CanonicalError> {
         let request_identity = normalized.identity.clone();
         let optimization_identity = canonical_hash(&normalized.optimization_policy)?;
+        let backend_decision_identity = canonical_hash(backend_decision)?;
         let shape_envelope_identity = canonical_hash(shape_envelope)?;
         let compile_region_identity = canonical_hash(compile_regions)?;
         let capability_identity = canonical_hash(capability_witnesses)?;
@@ -1485,6 +1628,7 @@ impl Planner {
         let evidence_identity = canonical_hash(guarantee_evidence)?;
         let plan_identity = canonical_hash(&(
             &optimization_identity,
+            &backend_decision_identity,
             selected_backends,
             compile_regions,
             shape_envelope,
@@ -1501,6 +1645,7 @@ impl Planner {
         Ok(StructuralIdentity {
             request_identity,
             optimization_identity,
+            backend_decision_identity,
             backend_registry_identity,
             shape_envelope_identity,
             compile_region_identity,
@@ -1542,6 +1687,36 @@ fn backend_reason(proof: &BackendAdmissibilityProof) -> String {
             proof.satisfied_witnesses.join(",")
         }
     )
+}
+
+fn pass_through_optimizations(family: BackendFamily) -> Vec<String> {
+    match family {
+        BackendFamily::FlashInfer => vec![
+            "native FlashInfer autotune cache reuse".to_owned(),
+            "vendored sparse-MLA warmup flow".to_owned(),
+        ],
+        BackendFamily::Triton => vec![
+            "piecewise compile cache".to_owned(),
+            "vendored Triton warmup path".to_owned(),
+        ],
+        BackendFamily::AotInductor => vec![
+            "AOT graph partitioning".to_owned(),
+            "normalized compile surface fingerprinting".to_owned(),
+        ],
+        BackendFamily::CudaGraphs => vec![
+            "native CUDA graph capture sizing".to_owned(),
+            "topology-scoped capture reuse".to_owned(),
+        ],
+    }
+}
+
+fn extension_binary_name(family: BackendFamily) -> &'static str {
+    match family {
+        BackendFamily::FlashInfer => "flashinfer_extension.so",
+        BackendFamily::Triton => "triton_kernel_pack.so",
+        BackendFamily::AotInductor => "aot_inductor_graph_pack.so",
+        BackendFamily::CudaGraphs => "cuda_graph_capture_pack.bin",
+    }
 }
 
 fn hot_shape_node(prefix: &str, shape: &ShapePoint, backend: BackendFamily) -> ShapeEnvelopeNode {

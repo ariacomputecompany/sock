@@ -47,6 +47,7 @@ pub struct PortabilityFingerprint {
 pub struct StructuralIdentity {
     pub request_identity: CanonicalHash,
     pub optimization_identity: CanonicalHash,
+    pub backend_decision_identity: CanonicalHash,
     pub backend_registry_identity: CanonicalHash,
     pub shape_envelope_identity: CanonicalHash,
     pub compile_region_identity: CanonicalHash,

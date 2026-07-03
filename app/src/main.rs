@@ -14,7 +14,8 @@ use sock_core::{
     MaterializationExecutionReport, MeasurementCaseReport, MeasurementComparisonReport,
     MeasurementPhaseTimings, OptimizationExplainDocument, OptimizationLevel, ReplayBundle,
     ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
-    render_explain, render_plan_summary, render_soc_explain, render_verification_report,
+    render_backend_decision, render_explain, render_plan_summary, render_soc_explain,
+    render_verification_report,
 };
 use sock_engine::{
     BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, Planner,
@@ -199,6 +200,7 @@ fn main() -> Result<()> {
             let diagnostics = diagnostics_for(&outcome);
             let rewrite_trace = rewrite_trace_for(&outcome);
             let optimization_explain = OptimizationExplainDocument::from_plan(&outcome.plan);
+            let backend_decision = sock_core::BackendDecisionDocument::from_plan(&outcome.plan);
             emit_explain(
                 &scope,
                 request_label_for_scope(&scope),
@@ -206,6 +208,7 @@ fn main() -> Result<()> {
                 &diagnostics,
                 &rewrite_trace,
                 &optimization_explain,
+                &backend_decision,
                 format,
             )?;
         }
@@ -394,6 +397,7 @@ fn emit_explain(
     diagnostics: &DiagnosticsDocument,
     rewrite_trace: &RewriteTraceDocument,
     optimization_explain: &OptimizationExplainDocument,
+    backend_decision: &sock_core::BackendDecisionDocument,
     format: OutputMode,
 ) -> Result<()> {
     match format {
@@ -405,6 +409,7 @@ fn emit_explain(
             );
             print!("{}", render_vllm_native_contract(outcome)?);
             print!("{}", render_soc_contract(scope, outcome)?);
+            print!("{}", render_backend_decision(backend_decision));
             print!(
                 "{}",
                 render_explain(
@@ -425,6 +430,7 @@ fn emit_explain(
                     "diagnostics": diagnostics,
                     "rewrite_trace": rewrite_trace,
                     "optimization_explain": optimization_explain,
+                    "backend_decision": backend_decision,
                     "verification": outcome.verification,
                     "vllm_integration": build_vllm_integration_document(outcome)?,
                     "soc_plan": build_soc_plan_document(
@@ -478,6 +484,7 @@ fn emit_build(
                     "plan_identity": bundle.build_plan.structural_identity.plan_identity,
                     "metadata": metadata,
                     "materialization": materialization,
+                    "backend_decision": bundle.backend_decision,
                     "replay_proof": bundle.replay_proof,
                     "vllm_integration": bundle.vllm_integration,
                     "soc_plan": bundle.soc_plan,
@@ -632,6 +639,7 @@ fn emit_replay(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
                     &bundle.replay_proof,
                 )
             );
+            print!("{}", render_backend_decision(&bundle.backend_decision));
             println!(
                 "vllm replay roots key={} surfaces={}",
                 bundle.vllm_integration.plan_identity,
@@ -651,6 +659,7 @@ fn emit_replay(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
                     "materialization": bundle.materialization_report,
                     "replay_proof": bundle.replay_proof,
                     "optimization_explain": bundle.optimization_explain,
+                    "backend_decision": bundle.backend_decision,
                     "verification": bundle.verification_report,
                     "diagnostics": bundle.diagnostics,
                     "vllm_integration": bundle.vllm_integration,

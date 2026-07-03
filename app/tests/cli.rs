@@ -116,6 +116,7 @@ fn build_verify_and_replay_bundle_round_trip() {
 
     for file in [
         "artifact_manifest.json",
+        "backend_decision.json",
         "buildplan.json",
         "bundle_metadata.json",
         "diagnostics.json",
@@ -236,6 +237,29 @@ fn build_verify_and_replay_bundle_round_trip() {
         std::fs::read_to_string(dir.path().join("explain.txt")).expect("read explain text");
     assert!(explain_text.contains("replay proof:"));
     assert!(explain_text.contains("realization_mode="));
+    assert!(explain_text.contains("backend decision:"));
+
+    let backend_decision: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("backend_decision.json"))
+            .expect("read backend decision"),
+    )
+    .expect("parse backend decision");
+    assert!(
+        backend_decision["entries"]
+            .as_array()
+            .expect("backend decision entries")
+            .iter()
+            .any(
+                |entry| entry["family"] == "FlashInfer" && entry["selected_for_deployment"] == true
+            )
+    );
+    assert!(
+        backend_decision["extension_manifests"]
+            .as_array()
+            .expect("extension manifests")
+            .iter()
+            .any(|manifest| manifest["binary_name"] == "flashinfer_extension.so")
+    );
 
     Command::cargo_bin("sock")
         .expect("sock binary")
@@ -257,6 +281,7 @@ fn build_verify_and_replay_bundle_round_trip() {
         .success()
         .stdout(predicate::str::contains("plan "))
         .stdout(predicate::str::contains("replay proof:"))
+        .stdout(predicate::str::contains("backend decision:"))
         .stdout(predicate::str::contains("realization_mode="))
         .stdout(predicate::str::contains("vllm replay roots key="))
         .stdout(predicate::str::contains("soc plan key="))

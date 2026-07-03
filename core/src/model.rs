@@ -7,6 +7,7 @@ use crate::CanonicalHash;
 use crate::adapter::{CompileRegionKind, SourceEvidence};
 use crate::backend::{
     ArtifactAdmissibilityProof, BackendAdmissibilityProof, BackendCapabilityRegistry,
+    BackendDecisionPlan,
 };
 use crate::identity::StructuralIdentity;
 use crate::request::{GuaranteeTarget, NormalizedRequest};
@@ -401,6 +402,7 @@ pub struct ResolvedBuildPlan {
     pub normalized_request: NormalizedRequest,
     pub requested_readiness: Option<String>,
     pub optimization_envelope: OptimizationEnvelope,
+    pub backend_decision: BackendDecisionPlan,
     pub backend_registry: BackendCapabilityRegistry,
     pub selected_backends: BackendSelection,
     pub compile_regions: Vec<CompileRegion>,
@@ -445,6 +447,15 @@ impl ResolvedBuildPlan {
         sorted_expected_artifact_manifest.sort();
         actual_artifact_manifest.sort();
         let operator_gates = operator_gates();
+        let selected_backend_names =
+            std::iter::once(self.selected_backends.primary.family.as_str())
+                .chain(
+                    self.selected_backends
+                        .secondary
+                        .iter()
+                        .map(|candidate| candidate.family.as_str()),
+                )
+                .collect::<BTreeSet<_>>();
 
         let widened_compile_regions = self
             .compile_regions
@@ -944,6 +955,33 @@ impl ResolvedBuildPlan {
                     severity: ValidationSeverity::Error,
                     code: "rewrite_pass_contract_violation".to_owned(),
                     message,
+                });
+            }
+        }
+
+        for entry in &self.backend_decision.entries {
+            let selected = selected_backend_names.contains(entry.family.as_str());
+            if entry.selected_for_deployment != selected {
+                issues.push(ValidationIssue {
+                    severity: ValidationSeverity::Error,
+                    code: "backend_decision_selection_mismatch".to_owned(),
+                    message: format!(
+                        "Backend decision entry {} disagrees with selected backend set.",
+                        entry.family.as_str()
+                    ),
+                });
+            }
+            if entry.reachable_from_materialization_plan
+                && entry.reachable_compile_regions.is_empty()
+                && entry.reachable_artifact_scopes.is_empty()
+            {
+                issues.push(ValidationIssue {
+                    severity: ValidationSeverity::Error,
+                    code: "backend_decision_plan_reachability_unbacked".to_owned(),
+                    message: format!(
+                        "Backend decision entry {} claims plan reachability without compile regions or artifact scopes.",
+                        entry.family.as_str()
+                    ),
                 });
             }
         }

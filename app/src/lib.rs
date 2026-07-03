@@ -173,6 +173,7 @@ pub fn replay_bundle(
         build_vllm_integration_document(outcome).expect("vllm integration document");
     let soc_plan = build_soc_plan_document(outcome, scope, &vllm_integration);
     let optimization_explain = OptimizationExplainDocument::from_plan(&outcome.plan);
+    let backend_decision = sock_core::BackendDecisionDocument::from_plan(&outcome.plan);
     let replay_proof =
         ReplayProofDocument::from_plan_and_materialization(&outcome.plan, &materialization_report)
             .expect("replay proof");
@@ -185,6 +186,7 @@ pub fn replay_bundle(
         diagnostics: diagnostics_for(outcome),
         rewrite_trace: rewrite_trace_for(outcome),
         optimization_explain,
+        backend_decision,
         materialization_report,
         replay_proof,
         vllm_integration,

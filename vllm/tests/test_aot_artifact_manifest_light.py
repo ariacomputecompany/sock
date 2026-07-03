@@ -2381,6 +2381,29 @@ def test_compile_source_fingerprint_ignores_python_comments() -> None:
     assert without_comment["files"][0]["fingerprint_mode"] == "python_ast"
 
 
+def test_compile_source_fingerprint_normalizes_torch_internal_moves() -> None:
+    caching, _ = _load_caching_module()
+
+    first = caching.build_compile_source_fingerprint_from_content(
+        {
+            "/site-packages/torch/_inductor/codecache.py": (
+                "def cache_key(graph):\n    return graph + 1\n"
+            )
+        }
+    )
+    second = caching.build_compile_source_fingerprint_from_content(
+        {
+            "/site-packages/torch/_inductor/runtime/codecache.py": (
+                "def cache_key(graph):\n    return graph + 1\n"
+            )
+        }
+    )
+
+    assert first["aggregate_hash"] == second["aggregate_hash"]
+    assert first["files"][0]["normalized_path"] == "codecache.py"
+    assert second["files"][0]["normalized_path"] == "codecache.py"
+
+
 def test_compile_surface_fingerprint_tracks_policy_and_graph() -> None:
     caching, _ = _load_caching_module()
     source_fingerprint = caching.build_compile_source_fingerprint_from_content(
@@ -2420,6 +2443,57 @@ def test_compile_surface_fingerprint_tracks_policy_and_graph() -> None:
     assert first["source_fingerprint_hash"] == source_fingerprint["aggregate_hash"]
     assert first["graph_sha256"] != second["graph_sha256"]
     assert first["aggregate_hash"] != second["aggregate_hash"]
+
+
+def test_compile_surface_fingerprint_ignores_transient_placeholder_names() -> None:
+    caching, _ = _load_caching_module()
+    source_fingerprint = caching.build_compile_source_fingerprint_from_content(
+        {"module.py": "def forward(x, y):\n    return x + y\n"}
+    )
+    first = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x, y) -> add",
+        placeholder_names=["x", "tmp_17"],
+        node_targets=[
+            "placeholder:x",
+            "placeholder:tmp_17",
+            "call_function:add",
+            "output:output",
+        ],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
+    second = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x, y) -> add",
+        placeholder_names=["user_tokens", "tmp_99"],
+        node_targets=[
+            "placeholder:user_tokens",
+            "placeholder:tmp_99",
+            "call_function:add",
+            "output:output",
+        ],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
+
+    assert first["aggregate_hash"] == second["aggregate_hash"]
+    assert first["placeholder_names"] == ["arg0", "arg1"]
+    assert second["placeholder_names"] == ["arg0", "arg1"]
 
 
 def test_mega_serialization_skips_graph_pickler_fallback_payloads() -> None:

@@ -2594,6 +2594,7 @@ def build_compile_source_fingerprint_from_content(
     aggregate_material = []
 
     for filepath, content in items:
+        normalized_path = _normalize_compile_source_path(filepath)
         raw_sha256 = safe_hash(
             content.encode(), usedforsecurity=False
         ).hexdigest()
@@ -2613,13 +2614,14 @@ def build_compile_source_fingerprint_from_content(
         files.append(
             {
                 "path": filepath,
+                "normalized_path": normalized_path,
                 "fingerprint_mode": fingerprint_mode,
                 "raw_sha256": raw_sha256,
                 "semantic_sha256": semantic_sha256,
                 "size_bytes": len(content.encode()),
             }
         )
-        aggregate_material.extend((filepath, fingerprint_mode, semantic_sha256))
+        aggregate_material.extend((normalized_path, fingerprint_mode, semantic_sha256))
 
     return {
         "schema_version": 1,
@@ -2657,8 +2659,8 @@ def build_compile_surface_fingerprint(
         "graph_sha256": safe_hash(
             graph_text.encode(), usedforsecurity=False
         ).hexdigest(),
-        "placeholder_names": list(placeholder_names),
-        "node_targets": list(node_targets),
+        "placeholder_names": normalize_placeholder_names(placeholder_names),
+        "node_targets": normalize_node_targets(node_targets),
         "splitting_ops": list(splitting_ops or []),
         "custom_ops": list(custom_ops or []),
         "enabled_passes": list(enabled_passes),
@@ -2678,6 +2680,34 @@ def build_compile_surface_fingerprint(
         usedforsecurity=False,
     ).hexdigest()
     return manifest
+
+
+def _normalize_compile_source_path(filepath: str) -> str:
+    normalized = filepath.replace("\\", "/")
+    for marker in ("/torch/_inductor/", "/torch/_dynamo/"):
+        if marker in normalized:
+            return normalized.rsplit("/", 1)[-1]
+    return normalized
+
+
+def normalize_placeholder_names(placeholder_names: Sequence[str]) -> list[str]:
+    return [f"arg{index}" for index, _ in enumerate(placeholder_names)]
+
+
+def normalize_node_targets(node_targets: Sequence[str]) -> list[str]:
+    placeholder_map = {}
+    normalized = []
+    next_index = 0
+    for target in node_targets:
+        if target.startswith("placeholder:"):
+            _, name = target.split(":", 1)
+            if name not in placeholder_map:
+                placeholder_map[name] = f"arg{next_index}"
+                next_index += 1
+            normalized.append(f"placeholder:{placeholder_map[name]}")
+        else:
+            normalized.append(target)
+    return normalized
 
 
 def _stable_digest(payload: object) -> str:

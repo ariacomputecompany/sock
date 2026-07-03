@@ -8,10 +8,11 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    ArtifactClosure, ArtifactManifestEntry, CanonicalError, CanonicalHash, DiagnosticsDocument,
-    MaterializationExecutionReport, OptimizationExplainDocument, ReplayProofDocument,
-    ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument, VerificationReport,
-    VllmEntrypointDocument, VllmIntegrationDocument, canonical_json, render_replay_bundle_explain,
+    ArtifactClosure, ArtifactManifestEntry, BackendDecisionDocument, CanonicalError, CanonicalHash,
+    DiagnosticsDocument, MaterializationExecutionReport, OptimizationExplainDocument,
+    ReplayProofDocument, ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument,
+    VerificationReport, VllmEntrypointDocument, VllmIntegrationDocument, canonical_json,
+    render_backend_decision, render_replay_bundle_explain,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +38,7 @@ pub struct ReplayBundle {
     pub diagnostics: DiagnosticsDocument,
     pub rewrite_trace: RewriteTraceDocument,
     pub optimization_explain: OptimizationExplainDocument,
+    pub backend_decision: BackendDecisionDocument,
     pub materialization_report: MaterializationExecutionReport,
     pub replay_proof: ReplayProofDocument,
     pub vllm_integration: VllmIntegrationDocument,
@@ -58,6 +60,8 @@ pub enum ReplayBundleError {
     IdentityMismatch { document: String },
     #[error("verification report does not match the loaded build plan")]
     VerificationMismatch,
+    #[error("backend decision does not match the loaded build plan")]
+    BackendDecisionMismatch,
     #[error("replay proof does not match the loaded build plan and materialization report")]
     ReplayProofMismatch,
 }
@@ -101,6 +105,10 @@ impl ReplayBundle {
                 canonical_json(&self.optimization_explain)?,
             ),
             (
+                "backend_decision.json",
+                canonical_json(&self.backend_decision)?,
+            ),
+            (
                 "materialization_report.json",
                 canonical_json(&self.materialization_report)?,
             ),
@@ -127,6 +135,10 @@ impl ReplayBundle {
             &self.diagnostics,
             &self.materialization_report,
             &self.replay_proof,
+        );
+        let explain_text = format!(
+            "{explain_text}{}",
+            render_backend_decision(&self.backend_decision)
         );
         fs::write(dir.join("explain.txt"), explain_text.as_bytes())?;
         file_digests.insert("explain.txt".to_owned(), digest(explain_text.as_bytes()));
@@ -175,6 +187,8 @@ impl ReplayBundle {
             serde_json::from_str(&fs::read_to_string(dir.join("rewrite_trace.json"))?)?;
         let optimization_explain: OptimizationExplainDocument =
             serde_json::from_str(&fs::read_to_string(dir.join("optimization_explain.json"))?)?;
+        let backend_decision: BackendDecisionDocument =
+            serde_json::from_str(&fs::read_to_string(dir.join("backend_decision.json"))?)?;
         let materialization_report: MaterializationExecutionReport = serde_json::from_str(
             &fs::read_to_string(dir.join("materialization_report.json"))?,
         )?;
@@ -213,6 +227,11 @@ impl ReplayBundle {
                 document: "optimization_explain.json".to_owned(),
             });
         }
+        if backend_decision.plan_identity != plan_identity {
+            return Err(ReplayBundleError::IdentityMismatch {
+                document: "backend_decision.json".to_owned(),
+            });
+        }
         if materialization_report.plan_identity != plan_identity {
             return Err(ReplayBundleError::IdentityMismatch {
                 document: "materialization_report.json".to_owned(),
@@ -241,6 +260,9 @@ impl ReplayBundle {
         if build_plan.validate() != verification_report {
             return Err(ReplayBundleError::VerificationMismatch);
         }
+        if BackendDecisionDocument::from_plan(&build_plan) != backend_decision {
+            return Err(ReplayBundleError::BackendDecisionMismatch);
+        }
         if ReplayProofDocument::from_plan_and_materialization(&build_plan, &materialization_report)?
             != replay_proof
         {
@@ -261,6 +283,7 @@ impl ReplayBundle {
             diagnostics,
             rewrite_trace,
             optimization_explain,
+            backend_decision,
             materialization_report,
             replay_proof,
             vllm_integration,
@@ -756,10 +779,99 @@ mod tests {
             &artifact_requirements,
         ))
         .expect("portability identity");
+        let backend_decision = crate::BackendDecisionPlan {
+            build_profile_identity: canonical_hash(&normalized_request.optimization_policy)
+                .expect("build profile identity"),
+            entries: vec![
+                crate::BackendDecisionEntry {
+                    family: BackendFamily::FlashInfer,
+                    technically_available: true,
+                    selected_for_deployment: true,
+                    reachable_from_model_family: true,
+                    reachable_from_materialization_plan: true,
+                    runtime_reachable: true,
+                    build_technically_possible: true,
+                    chosen_acquisition: Some(ArtifactAcquisition::VendorPrebuilt),
+                    required_witnesses: vec!["flashinfer.prebuilt".to_owned()],
+                    satisfied_witnesses: vec!["flashinfer.prebuilt".to_owned()],
+                    accepted_reasons: vec![
+                        "admissible backend proof available".to_owned(),
+                        "selected by deployment profile".to_owned(),
+                    ],
+                    rejected_reasons: Vec::new(),
+                    reachable_compile_regions: vec![
+                        "prefill_attention".to_owned(),
+                        "decode_attention".to_owned(),
+                    ],
+                    reachable_artifact_scopes: vec!["prefill_attention".to_owned()],
+                    reachable_warmup_scopes: vec![
+                        "warmup:correctness-range:prefill_attention".to_owned(),
+                        "warmup:performance-range:decode_attention".to_owned(),
+                    ],
+                    pass_through_optimizations: vec![
+                        "native autotune cache reuse".to_owned(),
+                        "vendored sparse-MLA warmup".to_owned(),
+                    ],
+                },
+                crate::BackendDecisionEntry {
+                    family: BackendFamily::Triton,
+                    technically_available: false,
+                    selected_for_deployment: true,
+                    reachable_from_model_family: false,
+                    reachable_from_materialization_plan: false,
+                    runtime_reachable: false,
+                    build_technically_possible: false,
+                    chosen_acquisition: Some(ArtifactAcquisition::LocalAotBuild),
+                    required_witnesses: Vec::new(),
+                    satisfied_witnesses: Vec::new(),
+                    accepted_reasons: vec!["selected as secondary backend".to_owned()],
+                    rejected_reasons: vec![
+                        "backend registry has no technical capability entry".to_owned(),
+                    ],
+                    reachable_compile_regions: Vec::new(),
+                    reachable_artifact_scopes: Vec::new(),
+                    reachable_warmup_scopes: Vec::new(),
+                    pass_through_optimizations: vec![
+                        "piecewise compile cache".to_owned(),
+                        "vendored Triton warmup".to_owned(),
+                    ],
+                },
+            ],
+            extension_manifests: vec![
+                crate::BackendExtensionManifest {
+                    extension_key: "flashinfer".to_owned(),
+                    binary_name: "flashinfer_extension.so".to_owned(),
+                    backend_family: BackendFamily::FlashInfer,
+                    model_repositories: vec!["meta-llama/Llama-3.1-8B-Instruct".to_owned()],
+                    build_technically_possible: true,
+                    runtime_reachable: true,
+                    reachable_compile_regions: vec![
+                        "prefill_attention".to_owned(),
+                        "decode_attention".to_owned(),
+                    ],
+                    reachable_artifact_scopes: vec!["prefill_attention".to_owned()],
+                    artifact_classes: vec!["compiled-graph".to_owned()],
+                },
+                crate::BackendExtensionManifest {
+                    extension_key: "triton".to_owned(),
+                    binary_name: "triton_kernel_pack.so".to_owned(),
+                    backend_family: BackendFamily::Triton,
+                    model_repositories: vec!["meta-llama/Llama-3.1-8B-Instruct".to_owned()],
+                    build_technically_possible: false,
+                    runtime_reachable: false,
+                    reachable_compile_regions: Vec::new(),
+                    reachable_artifact_scopes: Vec::new(),
+                    artifact_classes: Vec::new(),
+                },
+            ],
+        };
+        let backend_decision_identity =
+            canonical_hash(&backend_decision).expect("backend decision identity");
         let structural_identity = StructuralIdentity {
             request_identity: normalized_request.identity.clone(),
             optimization_identity: canonical_hash(&normalized_request.optimization_policy)
                 .expect("optimization identity"),
+            backend_decision_identity: backend_decision_identity.clone(),
             backend_registry_identity,
             shape_envelope_identity: shape_envelope_identity,
             compile_region_identity: canonical_hash(&compile_regions).expect("region identity"),
@@ -771,6 +883,7 @@ mod tests {
             evidence_identity: canonical_hash(&guarantee_evidence).expect("evidence identity"),
             plan_identity: canonical_hash(&(
                 &selected_backends,
+                &backend_decision_identity,
                 &compile_regions,
                 &shape_envelope,
                 &artifact_requirements,
@@ -798,6 +911,7 @@ mod tests {
             guarantee_envelope,
             guarantee_evidence,
             rewrite_trace: rewrite_trace.clone(),
+            backend_decision,
             structural_identity,
         };
         let verification_report = plan.validate();
@@ -1067,6 +1181,7 @@ mod tests {
             diagnostics,
             rewrite_trace,
             optimization_explain,
+            backend_decision: crate::BackendDecisionDocument::from_plan(&plan),
             materialization_report,
             replay_proof,
             vllm_integration,
@@ -1086,6 +1201,7 @@ mod tests {
         assert_eq!(loaded.verification_report, bundle.verification_report);
         assert_eq!(loaded.diagnostics, bundle.diagnostics);
         assert_eq!(loaded.rewrite_trace, bundle.rewrite_trace);
+        assert_eq!(loaded.backend_decision, bundle.backend_decision);
         assert_eq!(loaded.materialization_report, bundle.materialization_report);
         assert_eq!(loaded.replay_proof, bundle.replay_proof);
         assert_eq!(loaded.vllm_integration, bundle.vllm_integration);
@@ -1224,6 +1340,48 @@ mod tests {
 
         let err = ReplayBundle::load_from(dir.path()).expect_err("backend widening should fail");
         assert!(matches!(err, ReplayBundleError::VerificationMismatch));
+    }
+
+    #[test]
+    fn replay_bundle_rejects_backend_decision_drift_after_digest_refresh() {
+        let dir = tempdir().expect("tempdir");
+        let bundle = sample_bundle();
+        let metadata = bundle.write_to(dir.path()).expect("write bundle");
+        let mut backend_decision: crate::BackendDecisionDocument = serde_json::from_str(
+            &fs::read_to_string(dir.path().join("backend_decision.json"))
+                .expect("read backend decision"),
+        )
+        .expect("parse backend decision");
+        backend_decision.entries[0].runtime_reachable = false;
+        fs::write(
+            dir.path().join("backend_decision.json"),
+            serde_json::to_string_pretty(&backend_decision).expect("serialize backend decision"),
+        )
+        .expect("write backend decision");
+
+        let mut digests = metadata.file_digests.clone();
+        digests.insert(
+            "backend_decision.json".to_owned(),
+            digest(
+                fs::read(dir.path().join("backend_decision.json"))
+                    .expect("read backend decision for digest")
+                    .as_slice(),
+            ),
+        );
+        let metadata = ReplayBundleMetadata {
+            schema_version: metadata.schema_version,
+            plan_identity: metadata.plan_identity,
+            file_digests: digests,
+            replay_entrypoint: metadata.replay_entrypoint,
+        };
+        fs::write(
+            dir.path().join("bundle_metadata.json"),
+            crate::canonical_json(&metadata).expect("serialize metadata"),
+        )
+        .expect("write metadata");
+
+        let err = ReplayBundle::load_from(dir.path()).expect_err("backend drift should fail");
+        assert!(matches!(err, ReplayBundleError::BackendDecisionMismatch));
     }
 
     #[test]
