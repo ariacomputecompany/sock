@@ -146,6 +146,27 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_USE_RUST_FRONTEND"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_GC_DEBUG"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_PATTERN_MATCH_DEBUG"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_DP_RANK"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_DP_RANK_LOCAL"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_DP_SIZE"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_RAY_PER_WORKER_GPUS"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_RAY_BUNDLE_INDICES"] == "runtime_non_compile"
+    assert (
+        manifest["categories"]["VLLM_RAY_DP_PACK_STRATEGY"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_RAY_DP_PLACEMENT_NODE_IPS"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_RAY_EXTRA_ENV_VARS_TO_COPY"]
+        == "runtime_non_compile"
+    )
     assert (
         manifest["categories"]["VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE"]
         == "runtime_non_compile"
@@ -236,6 +257,15 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_USE_RUST_FRONTEND" in manifest["ignored_keys"]
     assert "VLLM_GC_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_PATTERN_MATCH_DEBUG" in manifest["ignored_keys"]
+    assert "VLLM_DP_RANK" in manifest["ignored_keys"]
+    assert "VLLM_DP_RANK_LOCAL" in manifest["ignored_keys"]
+    assert "VLLM_DP_SIZE" in manifest["ignored_keys"]
+    assert "VLLM_RAY_PER_WORKER_GPUS" in manifest["ignored_keys"]
+    assert "VLLM_RAY_BUNDLE_INDICES" in manifest["ignored_keys"]
+    assert "VLLM_RAY_DP_PACK_STRATEGY" in manifest["ignored_keys"]
+    assert "VLLM_RAY_DP_PLACEMENT_NODE_IPS" in manifest["ignored_keys"]
+    assert "VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY" in manifest["ignored_keys"]
+    assert "VLLM_RAY_EXTRA_ENV_VARS_TO_COPY" in manifest["ignored_keys"]
     assert "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE" in manifest["ignored_keys"]
     assert "VLLM_ENABLE_CUDAGRAPH_GC" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_SHARED_EXPERTS_STREAM" in manifest["ignored_keys"]
@@ -725,33 +755,6 @@ def test_pipeline_partition_compile_factor_is_ordered_int_csv_canonicalized() ->
 
     assert factors["VLLM_PP_LAYER_PARTITION"] == (1, 2, 3)
     assert equivalent_factors["VLLM_PP_LAYER_PARTITION"] == (1, 2, 3)
-    assert (
-        identity["combined_factor_digest"]
-        == equivalent_identity["combined_factor_digest"]
-    )
-
-
-def test_ray_bundle_indices_compile_factor_is_ordered_int_csv_canonicalized() -> None:
-    envs = _load_envs_module()
-
-    with patch.dict(
-        os.environ,
-        {"VLLM_RAY_BUNDLE_INDICES": "0, 01,2"},
-        clear=False,
-    ):
-        factors = envs.compile_factors()
-        identity = envs.compile_factor_identity_manifest()
-
-    with patch.dict(
-        os.environ,
-        {"VLLM_RAY_BUNDLE_INDICES": "0,1,02"},
-        clear=False,
-    ):
-        equivalent_factors = envs.compile_factors()
-        equivalent_identity = envs.compile_factor_identity_manifest()
-
-    assert factors["VLLM_RAY_BUNDLE_INDICES"] == (0, 1, 2)
-    assert equivalent_factors["VLLM_RAY_BUNDLE_INDICES"] == (0, 1, 2)
     assert (
         identity["combined_factor_digest"]
         == equivalent_identity["combined_factor_digest"]

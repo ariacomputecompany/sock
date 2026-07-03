@@ -628,6 +628,9 @@ _NON_COMPILE_RUNTIME_ENV_VARS: set[str] = {
     "VLLM_ALLREDUCE_USE_FLASHINFER",
     "VLLM_USE_MODELSCOPE",
     "VLLM_RANDOMIZE_DP_DUMMY_INPUTS",
+    "VLLM_DP_RANK",
+    "VLLM_DP_RANK_LOCAL",
+    "VLLM_DP_SIZE",
     "VLLM_MAX_N_SEQUENCES",
     "VLLM_LORA_RESOLVER_CACHE_DIR",
     "VLLM_LORA_RESOLVER_HF_REPO_LIST",
@@ -680,6 +683,12 @@ _NON_COMPILE_RUNTIME_ENV_VARS: set[str] = {
     "VLLM_USE_RUST_FRONTEND",
     "VLLM_GC_DEBUG",
     "VLLM_PATTERN_MATCH_DEBUG",
+    "VLLM_RAY_PER_WORKER_GPUS",
+    "VLLM_RAY_BUNDLE_INDICES",
+    "VLLM_RAY_DP_PACK_STRATEGY",
+    "VLLM_RAY_DP_PLACEMENT_NODE_IPS",
+    "VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY",
+    "VLLM_RAY_EXTRA_ENV_VARS_TO_COPY",
     "VLLM_SKIP_MODEL_NAME_VALIDATION",
 }
 
@@ -2226,7 +2235,7 @@ _AMBIENT_BOOLEAN_COMPILE_FACTOR_NAMES: frozenset[str] = frozenset(
 )
 
 _EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST = (
-    "649275cbd2ba1e5ec304652e2f2ecef771a79a1da7459eca6883c45b015066f5"
+    "935598d8597eeb87dd7aaa76f65ff4bb89c2b65fb0734aa6e472d185a33eec1c"
 )
 
 
@@ -2613,15 +2622,6 @@ def _compile_factor_normalization_policy(factor: str) -> dict[str, str]:
             "normalizer": "_normalize_ordered_int_csv_compile_factor",
             "reason": (
                 "Pipeline partition strings are parsed as ordered integers, so "
-                "whitespace and integer spelling must not fragment identity."
-            ),
-        },
-        "VLLM_RAY_BUNDLE_INDICES": {
-            "strategy": "custom",
-            "family": "ordered_int_csv",
-            "normalizer": "_normalize_ordered_int_csv_compile_factor",
-            "reason": (
-                "Explicit Ray bundle placements are parsed as ordered integers, so "
                 "whitespace and integer spelling must not fragment identity."
             ),
         },
