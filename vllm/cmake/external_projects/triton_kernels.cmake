@@ -4,11 +4,18 @@ set(DEFAULT_TRITON_KERNELS_TAG "v3.5.1")
 
 # Set TRITON_KERNELS_SRC_DIR for use with local development with vLLM. We expect TRITON_KERNELS_SRC_DIR to
 # be directly set to the triton_kernels python directory.
-if (DEFINED ENV{TRITON_KERNELS_SRC_DIR})
+if (NOT TRITON_KERNELS_SRC_DIR AND DEFINED ENV{TRITON_KERNELS_SRC_DIR})
+  set(TRITON_KERNELS_SRC_DIR $ENV{TRITON_KERNELS_SRC_DIR})
+endif()
+
+if(TRITON_KERNELS_SRC_DIR)
+  cmake_path(ABSOLUTE_PATH TRITON_KERNELS_SRC_DIR
+    BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    NORMALIZE)
   message(STATUS "[triton_kernels] Fetch from $ENV{TRITON_KERNELS_SRC_DIR}")
   FetchContent_Declare(
           triton_kernels
-          SOURCE_DIR $ENV{TRITON_KERNELS_SRC_DIR}
+          SOURCE_DIR ${TRITON_KERNELS_SRC_DIR}
   )
 
 else()
@@ -21,6 +28,9 @@ else()
           GIT_TAG ${DEFAULT_TRITON_KERNELS_TAG}
           GIT_PROGRESS TRUE
           SOURCE_SUBDIR python/triton_kernels/triton_kernels
+          SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/triton_kernels-src"
+          BINARY_DIR "${FETCHCONTENT_BASE_DIR}/triton_kernels-build"
+          SUBBUILD_DIR "${FETCHCONTENT_BASE_DIR}/triton_kernels-subbuild"
   )
 endif()
 
@@ -31,7 +41,7 @@ if (NOT triton_kernels_SOURCE_DIR)
   message (FATAL_ERROR "[triton_kernels] Cannot resolve triton_kernels_SOURCE_DIR")
 endif()
 
-if (DEFINED ENV{TRITON_KERNELS_SRC_DIR})
+if (TRITON_KERNELS_SRC_DIR)
   set(TRITON_KERNELS_PYTHON_DIR "${triton_kernels_SOURCE_DIR}/")
 else()
   set(TRITON_KERNELS_PYTHON_DIR "${triton_kernels_SOURCE_DIR}/python/triton_kernels/triton_kernels/")

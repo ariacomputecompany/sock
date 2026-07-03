@@ -49,6 +49,9 @@ rust_build = load_module_from_path(
 build_profiles = load_module_from_path(
     "build_profiles", os.path.join(ROOT_DIR, "vllm", "build_profiles.py")
 )
+external_build = load_module_from_path(
+    "external_build", os.path.join(ROOT_DIR, "vllm", "external_build.py")
+)
 
 VLLM_TARGET_DEVICE = envs.VLLM_TARGET_DEVICE
 USE_PRECOMPILED_EXTENSIONS = envs.VLLM_USE_PRECOMPILED
@@ -242,6 +245,10 @@ def select_profile_cuda_arches() -> tuple[str, ...]:
     return ()
 
 
+def build_external_dependency_manifest_path(fetchcontent_base_dir: str) -> Path:
+    return Path(fetchcontent_base_dir) / "vllm-external-dependencies.json"
+
+
 def write_ninja_build_metrics(
     build_temp: str, targets: list[str], build_duration_ms: int
 ) -> None:
@@ -427,7 +434,31 @@ class cmake_build_ext(build_ext):
         # To override this, set the FETCHCONTENT_BASE_DIR environment variable.
         fc_base_dir = os.path.join(ROOT_DIR, ".deps")
         fc_base_dir = os.environ.get("FETCHCONTENT_BASE_DIR", fc_base_dir)
+        external_dependency_resolutions = (
+            external_build.resolve_external_dependency_sources(fc_base_dir)
+        )
+        external_dependency_manifest_path = build_external_dependency_manifest_path(
+            fc_base_dir
+        )
+        external_build.write_external_dependency_manifest(
+            external_dependency_manifest_path,
+            fc_base_dir,
+            external_dependency_resolutions,
+        )
         cmake_args += ["-DFETCHCONTENT_BASE_DIR={}".format(fc_base_dir)]
+        cmake_args += [
+            f"-DVLLM_EXTERNAL_DEPENDENCY_MANIFEST={external_dependency_manifest_path}"
+        ]
+        cmake_args += list(
+            external_build.resolved_cmake_args(external_dependency_resolutions)
+        )
+        logger.info(
+            "Resolved external dependencies: %s",
+            ",".join(
+                f"{resolution.name}={resolution.origin}"
+                for resolution in external_dependency_resolutions
+            ),
+        )
 
         #
         # Setup parallelism and build tool
@@ -540,63 +571,54 @@ class cmake_build_ext(build_ext):
         if should_bundle_tcmalloc():
             bundle_tcmalloc(self.build_lib)
 
-        # copy vllm/vllm_flash_attn/**/*.py from self.build_lib to current
-        # directory so that they can be included in the editable build
-        import glob
-
+        editable_sync_specs: list[external_build.EditableSyncSpec] = []
         if profile_syncs("vllm/vllm_flash_attn"):
-            files = glob.glob(
-                os.path.join(self.build_lib, "vllm", "vllm_flash_attn", "**", "*.py"),
-                recursive=True,
-            )
-            for file in files:
-                dst_file = os.path.join(
-                    "vllm/vllm_flash_attn", file.split("vllm/vllm_flash_attn/")[-1]
+            editable_sync_specs.append(
+                external_build.EditableSyncSpec(
+                    source_root=os.path.join(self.build_lib, "vllm", "vllm_flash_attn"),
+                    destination_root=os.path.join("vllm", "vllm_flash_attn"),
+                    patterns=("**/*.py",),
                 )
-                print(f"Copying {file} to {dst_file}")
-                os.makedirs(os.path.dirname(dst_file), exist_ok=True)
-                self.copy_file(file, dst_file)
+            )
 
         if (_is_cuda() or _is_hip()) and profile_syncs("vllm/third_party/triton_kernels"):
-            # copy vllm/third_party/triton_kernels/**/*.py from self.build_lib
-            # to current directory so that they can be included in the editable
-            # build
-            triton_build = f"{self.build_lib}/vllm/third_party/triton_kernels"
-            if os.path.exists(triton_build):
-                print(f"Copying {triton_build} to vllm/third_party/triton_kernels")
-                shutil.copytree(
-                    triton_build,
-                    "vllm/third_party/triton_kernels",
-                    dirs_exist_ok=True,
+            editable_sync_specs.append(
+                external_build.EditableSyncSpec(
+                    source_root=os.path.join(
+                        self.build_lib, "vllm", "third_party", "triton_kernels"
+                    ),
+                    destination_root=os.path.join(
+                        "vllm", "third_party", "triton_kernels"
+                    ),
+                    patterns=("**/*.py",),
                 )
+            )
 
         if _is_cuda() and profile_syncs("vllm/third_party/deep_gemm"):
-            # copy vendored deep_gemm package from build_lib to source tree
-            # for editable installs
-            deep_gemm_build = os.path.join(
-                self.build_lib, "vllm", "third_party", "deep_gemm"
-            )
-            if os.path.exists(deep_gemm_build):
-                print(f"Copying {deep_gemm_build} to vllm/third_party/deep_gemm")
-                shutil.copytree(
-                    deep_gemm_build,
-                    "vllm/third_party/deep_gemm",
-                    dirs_exist_ok=True,
+            editable_sync_specs.append(
+                external_build.EditableSyncSpec(
+                    source_root=os.path.join(
+                        self.build_lib, "vllm", "third_party", "deep_gemm"
+                    ),
+                    destination_root=os.path.join("vllm", "third_party", "deep_gemm"),
                 )
+            )
 
         if _is_cuda() and profile_syncs("vllm/third_party/fmha_sm100"):
-            # copy vendored fmha_sm100 package from build_lib to source tree
-            # for editable installs
-            fmha_sm100_build = os.path.join(
-                self.build_lib, "vllm", "third_party", "fmha_sm100"
-            )
-            if os.path.exists(fmha_sm100_build):
-                print(f"Copying {fmha_sm100_build} to vllm/third_party/fmha_sm100")
-                shutil.copytree(
-                    fmha_sm100_build,
-                    "vllm/third_party/fmha_sm100",
-                    dirs_exist_ok=True,
+            editable_sync_specs.append(
+                external_build.EditableSyncSpec(
+                    source_root=os.path.join(
+                        self.build_lib, "vllm", "third_party", "fmha_sm100"
+                    ),
+                    destination_root=os.path.join("vllm", "third_party", "fmha_sm100"),
                 )
+            )
+
+        if editable_sync_specs:
+            external_build.sync_editable_install_roots(
+                ROOT_DIR / ".deps" / "vllm-editable-install-manifest.json",
+                tuple(editable_sync_specs),
+            )
 
 
 class precompiled_build_ext(build_ext):

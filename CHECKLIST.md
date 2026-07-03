@@ -17,16 +17,6 @@ Working rule:
 - remove completed items instead of annotating them
 - treat any runtime-adjacent drift as an escalation out of Lane A
 
-## 16. External Dependency and FetchContent Optimization
-
-- [ ] Audit every external project and fetched dependency in the vendored `vllm` build.
-- [ ] Eliminate redundant fetch, unpack, and configure work across repeated local builds.
-- [ ] Prefer vendored-resolved source manifests or local mirrors over incidental network fetch during normal iteration.
-- [ ] Gate heavyweight external dependency preparation behind the selected backend/build profile.
-- [ ] Cache external dependency resolution results in a way that survives normal local rebuilds.
-- [ ] Keep third-party acquisition manifests explicit so local iteration can reuse already-resolved payloads without refetch or broad reconfigure.
-- [ ] Prefer a manifest- or symlink-based editable-build strategy over repeated tree copy-back for `vllm_flash_attn`, `triton_kernels`, `deep_gemm`, and `fmha_sm100`.
-
 ## 17. Toolchain and Build Parallelism Tuning
 
 - [ ] Audit current compiler, linker, and Python build orchestration for serialized bottlenecks.

@@ -25,15 +25,19 @@ endif()
 # This is to enable local development of vllm-flash-attn within vLLM.
 # It can be set as an environment variable or passed as a cmake argument.
 # The environment variable takes precedence.
-if (DEFINED ENV{VLLM_FLASH_ATTN_SRC_DIR})
+if (NOT VLLM_FLASH_ATTN_SRC_DIR AND DEFINED ENV{VLLM_FLASH_ATTN_SRC_DIR})
   set(VLLM_FLASH_ATTN_SRC_DIR $ENV{VLLM_FLASH_ATTN_SRC_DIR})
 endif()
 
 if(VLLM_FLASH_ATTN_SRC_DIR)
+  cmake_path(ABSOLUTE_PATH VLLM_FLASH_ATTN_SRC_DIR
+    BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    NORMALIZE)
   FetchContent_Declare(
           vllm-flash-attn SOURCE_DIR
           ${VLLM_FLASH_ATTN_SRC_DIR}
-          BINARY_DIR ${CMAKE_BINARY_DIR}/vllm-flash-attn
+          BINARY_DIR ${FETCHCONTENT_BASE_DIR}/vllm-flash-attn-build
+          SUBBUILD_DIR ${FETCHCONTENT_BASE_DIR}/vllm-flash-attn-subbuild
   )
 else()
   FetchContent_Declare(
@@ -42,7 +46,9 @@ else()
           GIT_TAG 2c839c33742309ec41e620bf837495ec9926c56e
           GIT_PROGRESS TRUE
           # Don't share the vllm-flash-attn build between build types
-          BINARY_DIR ${CMAKE_BINARY_DIR}/vllm-flash-attn
+          SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/vllm-flash-attn-src
+          BINARY_DIR ${FETCHCONTENT_BASE_DIR}/vllm-flash-attn-build
+          SUBBUILD_DIR ${FETCHCONTENT_BASE_DIR}/vllm-flash-attn-subbuild
   )
 endif()
 

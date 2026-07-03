@@ -4,14 +4,19 @@ include(FetchContent)
 # instead of downloading.
 # It can be set as an environment variable or passed as a cmake argument.
 # The environment variable takes precedence.
-if (DEFINED ENV{FLASH_MLA_SRC_DIR})
+if (NOT FLASH_MLA_SRC_DIR AND DEFINED ENV{FLASH_MLA_SRC_DIR})
   set(FLASH_MLA_SRC_DIR $ENV{FLASH_MLA_SRC_DIR})
 endif()
 
 if(FLASH_MLA_SRC_DIR)
+  cmake_path(ABSOLUTE_PATH FLASH_MLA_SRC_DIR
+    BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    NORMALIZE)
   FetchContent_Declare(
         flashmla 
         SOURCE_DIR ${FLASH_MLA_SRC_DIR}
+        BINARY_DIR "${FETCHCONTENT_BASE_DIR}/flashmla-build"
+        SUBBUILD_DIR "${FETCHCONTENT_BASE_DIR}/flashmla-subbuild"
         CONFIGURE_COMMAND ""
         BUILD_COMMAND ""
   )
@@ -21,6 +26,9 @@ else()
         GIT_REPOSITORY https://github.com/vllm-project/FlashMLA
         GIT_TAG a6ec2ba7bd0a7dff98b3f4d3e6b52b159c48d78b
         GIT_PROGRESS TRUE
+        SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/flashmla-src"
+        BINARY_DIR "${FETCHCONTENT_BASE_DIR}/flashmla-build"
+        SUBBUILD_DIR "${FETCHCONTENT_BASE_DIR}/flashmla-subbuild"
         CONFIGURE_COMMAND ""
         BUILD_COMMAND ""
   )
@@ -183,4 +191,3 @@ else()
     add_custom_target(_flashmla_C)
     add_custom_target(_flashmla_extension_C)
 endif()
-

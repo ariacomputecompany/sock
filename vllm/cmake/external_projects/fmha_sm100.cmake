@@ -2,11 +2,14 @@ include(FetchContent)
 
 # If FMHA_SM100_SRC_DIR is set, fmha_sm100 is installed from that directory
 # instead of downloading. This is useful for local MSA development.
-if(DEFINED ENV{FMHA_SM100_SRC_DIR})
+if(NOT FMHA_SM100_SRC_DIR AND DEFINED ENV{FMHA_SM100_SRC_DIR})
   set(FMHA_SM100_SRC_DIR $ENV{FMHA_SM100_SRC_DIR})
 endif()
 
 if(FMHA_SM100_SRC_DIR)
+  cmake_path(ABSOLUTE_PATH FMHA_SM100_SRC_DIR
+    BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    NORMALIZE)
   FetchContent_Declare(
     fmha_sm100
     SOURCE_DIR ${FMHA_SM100_SRC_DIR}
@@ -19,6 +22,9 @@ else()
     GIT_REPOSITORY https://github.com/vllm-project/MSA.git
     GIT_TAG fee783153f3efe57e3e933c5cb7e267a7cebcfb5
     GIT_PROGRESS TRUE
+    SOURCE_DIR "${FETCHCONTENT_BASE_DIR}/fmha_sm100-src"
+    BINARY_DIR "${FETCHCONTENT_BASE_DIR}/fmha_sm100-build"
+    SUBBUILD_DIR "${FETCHCONTENT_BASE_DIR}/fmha_sm100-subbuild"
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
   )
