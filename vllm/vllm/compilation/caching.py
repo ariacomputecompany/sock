@@ -1612,17 +1612,19 @@ def build_aot_compile_plan(
     rank: int,
     data_parallel_rank: int,
 ) -> dict[str, object]:
+    env_identity = envs.compile_factor_identity_manifest()
     env_factors = envs.compile_factors()
     inductor_factors = (
         list(get_inductor_factors()) if envs.VLLM_USE_MEGA_AOT_ARTIFACT else []
     )
     requested_policy = {
-        "env_factors": env_factors,
+        "env_identity": env_identity,
         "model_key": model_key,
         "mega_aot_enabled": envs.VLLM_USE_MEGA_AOT_ARTIFACT,
     }
     normalized_policy = {
         "env_policy_hash": hash_factors(env_factors),
+        "env_factor_digest": env_identity["combined_factor_digest"],
         "vllm_config_hash": vllm_config.compute_hash(),
         "model_key": model_key,
         "inductor_factors": inductor_factors,
@@ -1863,6 +1865,11 @@ def build_graph_artifact_store_manifest(
             if cache_key_factors is not None
             else None
         ),
+        "env_identity": (
+            _json_ready(cache_key_factors.get("env_identity"))
+            if cache_key_factors is not None
+            else None
+        ),
         "compile_surface_fingerprint": (
             _json_ready(cache_key_factors.get("compile_surface_fingerprint"))
             if cache_key_factors is not None
@@ -1949,6 +1956,11 @@ def build_compile_replay_manifest(
             backend_identity=backend_identity,
         ),
         "replay_plan": build_compile_replay_plan(cache_key_factors),
+        "env_identity": (
+            _json_ready(cache_key_factors.get("env_identity"))
+            if cache_key_factors is not None
+            else None
+        ),
         "canonical_compile_plan": (
             _json_ready(cache_key_factors.get("canonical_compile_plan"))
             if cache_key_factors is not None
@@ -2287,6 +2299,11 @@ def build_standalone_artifact_proof_manifest(
             if cache_key_factors is not None
             else None
         ),
+        "env_identity": (
+            _json_ready(cache_key_factors.get("env_identity"))
+            if cache_key_factors is not None
+            else None
+        ),
         "compile_surface_fingerprint": (
             _json_ready(cache_key_factors.get("compile_surface_fingerprint"))
             if cache_key_factors is not None
@@ -2561,6 +2578,7 @@ def _stable_digest(payload: object) -> str:
 def build_canonical_compile_plan(
     *,
     env_factors: dict[str, object],
+    env_identity: dict[str, object],
     config_hash: str,
     compiler_hash: str,
     source_fingerprint: dict[str, object],
@@ -2572,12 +2590,13 @@ def build_canonical_compile_plan(
     data_parallel_rank: int,
 ) -> dict[str, object]:
     requested_policy = {
-        "env_factors": env_factors,
+        "env_identity": env_identity,
         "backend_identity": backend_identity,
         "cache_namespace_prefix": cache_namespace_prefix,
     }
     normalized_policy = {
         "env_policy_hash": hash_factors(env_factors),
+        "env_factor_digest": env_identity["combined_factor_digest"],
         "config_hash": config_hash,
         "compiler_hash": compiler_hash,
         "backend_identity": backend_identity,

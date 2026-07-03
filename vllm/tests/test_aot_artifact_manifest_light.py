@@ -108,6 +108,16 @@ def _load_caching_module():
     envs_mod.VLLM_USE_MEGA_AOT_ARTIFACT = False
     envs_mod.compile_factors = lambda: []
     envs_mod.compile_factor_manifest = lambda: {"schema_version": 1}
+    envs_mod.compile_factor_identity_manifest = lambda: {
+        "schema_version": 1,
+        "declared_compile_factors": {},
+        "ambient_compile_factors": {},
+        "declared_factor_count": 0,
+        "ambient_factor_count": 0,
+        "declared_factor_digest": "declared-digest",
+        "ambient_factor_digest": "ambient-digest",
+        "combined_factor_digest": "combined-digest",
+    }
 
     env_override_mod = types.ModuleType("vllm.env_override")
     env_override_mod.patch_profile_manifest = lambda: {
@@ -535,6 +545,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                 "torch_version": "2.9.0-light",
             },
             "source_fingerprint": None,
+            "env_identity": None,
             "compile_surface_fingerprint": None,
             "canonical_compile_plan": None,
             "root_identity": expected_compile_replay_manifest["root_identity"],
@@ -754,6 +765,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             "torch_version": "2.9.0-light",
         },
         "source_fingerprint": None,
+        "env_identity": None,
         "compile_surface_fingerprint": None,
         "canonical_compile_plan": None,
         "root_identity": expected_compile_replay_manifest["root_identity"],
@@ -1054,8 +1066,21 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
         enabled_custom_ops={"rotary_embedding": 1},
         disabled_custom_ops={"foo": 2},
     )
+    env_identity = {
+        "schema_version": 1,
+        "declared_compile_factors": {"A": "B"},
+        "ambient_compile_factors": {
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": None,
+        },
+        "declared_factor_count": 1,
+        "ambient_factor_count": 1,
+        "declared_factor_digest": "declared-digest",
+        "ambient_factor_digest": "ambient-digest",
+        "combined_factor_digest": "combined-digest",
+    }
     canonical_compile_plan = caching.build_canonical_compile_plan(
         env_factors={"A": "B"},
+        env_identity=env_identity,
         config_hash="cfg-from-file",
         compiler_hash="compiler-from-file",
         source_fingerprint=source_fingerprint,
@@ -1081,6 +1106,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                     "config_hash": "cfg-from-file",
                     "code_hash": "code-from-file",
                     "compiler_hash": "compiler-from-file",
+                    "env_identity": env_identity,
                     "source_fingerprint": source_fingerprint,
                     "compile_surface_fingerprint": compile_surface_fingerprint,
                     "canonical_compile_plan": canonical_compile_plan,
@@ -1096,6 +1122,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
                 "canonical_compile_plan": canonical_compile_plan,
@@ -1119,6 +1146,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
                 "canonical_compile_plan": canonical_compile_plan,
@@ -1173,6 +1201,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
             "torch_version": "2.9.0-light",
         },
         "source_fingerprint": source_fingerprint,
+        "env_identity": env_identity,
         "compile_surface_fingerprint": compile_surface_fingerprint,
         "canonical_compile_plan": canonical_compile_plan,
         "root_identity": expected_compile_replay_manifest["root_identity"],
@@ -1566,8 +1595,21 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
         enabled_custom_ops={"rotary_embedding": 1},
         disabled_custom_ops={"foo": 2},
     )
+    env_identity = {
+        "schema_version": 1,
+        "declared_compile_factors": {"A": "B"},
+        "ambient_compile_factors": {
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": None,
+        },
+        "declared_factor_count": 1,
+        "ambient_factor_count": 1,
+        "declared_factor_digest": "declared-digest",
+        "ambient_factor_digest": "ambient-digest",
+        "combined_factor_digest": "combined-digest",
+    }
     canonical_compile_plan = caching.build_canonical_compile_plan(
         env_factors={"A": "B"},
+        env_identity=env_identity,
         config_hash="cfg-from-file",
         compiler_hash="compiler-from-file",
         source_fingerprint=source_fingerprint,
@@ -1592,6 +1634,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
                     "config_hash": "cfg-from-file",
                     "code_hash": "code-from-file",
                     "compiler_hash": "compiler-from-file",
+                    "env_identity": env_identity,
                     "source_fingerprint": source_fingerprint,
                     "compile_surface_fingerprint": compile_surface_fingerprint,
                     "canonical_compile_plan": canonical_compile_plan,
@@ -1608,6 +1651,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
                 "canonical_compile_plan": canonical_compile_plan,
@@ -1637,6 +1681,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
         "compiler_hash": "compiler-from-file",
     }
     assert manifest["source_fingerprint"] == source_fingerprint
+    assert manifest["env_identity"] == env_identity
     assert manifest["compile_surface_fingerprint"] == compile_surface_fingerprint
     assert manifest["canonical_compile_plan"] == canonical_compile_plan
     assert (
@@ -1674,8 +1719,21 @@ def test_compile_replay_manifest_roundtrip() -> None:
         enabled_custom_ops={"rotary_embedding": 1},
         disabled_custom_ops={"foo": 2},
     )
+    env_identity = {
+        "schema_version": 1,
+        "declared_compile_factors": {"A": "B"},
+        "ambient_compile_factors": {
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": None,
+        },
+        "declared_factor_count": 1,
+        "ambient_factor_count": 1,
+        "declared_factor_digest": "declared-digest",
+        "ambient_factor_digest": "ambient-digest",
+        "combined_factor_digest": "combined-digest",
+    }
     canonical_compile_plan = caching.build_canonical_compile_plan(
         env_factors={"A": "B"},
+        env_identity=env_identity,
         config_hash="cfg-from-file",
         compiler_hash="compiler-from-file",
         source_fingerprint=source_fingerprint,
@@ -1700,6 +1758,7 @@ def test_compile_replay_manifest_roundtrip() -> None:
                     "config_hash": "cfg-from-file",
                     "code_hash": "code-from-file",
                     "compiler_hash": "compiler-from-file",
+                    "env_identity": env_identity,
                     "source_fingerprint": source_fingerprint,
                     "compile_surface_fingerprint": compile_surface_fingerprint,
                     "canonical_compile_plan": canonical_compile_plan,
@@ -1715,6 +1774,7 @@ def test_compile_replay_manifest_roundtrip() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
                 "canonical_compile_plan": canonical_compile_plan,
@@ -1738,6 +1798,7 @@ def test_compile_replay_manifest_roundtrip() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
                 "canonical_compile_plan": canonical_compile_plan,
@@ -1764,6 +1825,7 @@ def test_compile_replay_manifest_roundtrip() -> None:
         == canonical_compile_plan["verification_plan_id"]
     )
     assert manifest["canonical_compile_plan"] == canonical_compile_plan
+    assert manifest["env_identity"] == env_identity
     assert manifest["graph_artifact_store"] == graph_artifact_store
 
 
@@ -1790,8 +1852,21 @@ def test_cudagraph_capture_manifest_roundtrip() -> None:
         enabled_custom_ops={"rotary_embedding": 1},
         disabled_custom_ops={"foo": 2},
     )
+    env_identity = {
+        "schema_version": 1,
+        "declared_compile_factors": {"A": "B"},
+        "ambient_compile_factors": {
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": None,
+        },
+        "declared_factor_count": 1,
+        "ambient_factor_count": 1,
+        "declared_factor_digest": "declared-digest",
+        "ambient_factor_digest": "ambient-digest",
+        "combined_factor_digest": "combined-digest",
+    }
     canonical_compile_plan = caching.build_canonical_compile_plan(
         env_factors={"A": "B"},
+        env_identity=env_identity,
         config_hash="cfg-from-file",
         compiler_hash="compiler-from-file",
         source_fingerprint=source_fingerprint,
@@ -1816,6 +1891,7 @@ def test_cudagraph_capture_manifest_roundtrip() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
                 "canonical_compile_plan": canonical_compile_plan,
@@ -1834,6 +1910,7 @@ def test_cudagraph_capture_manifest_roundtrip() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
                 "canonical_compile_plan": canonical_compile_plan,
@@ -1910,8 +1987,21 @@ def test_autotune_cache_manifest_roundtrip() -> None:
         enabled_custom_ops={"rotary_embedding": 1},
         disabled_custom_ops={"foo": 2},
     )
+    env_identity = {
+        "schema_version": 1,
+        "declared_compile_factors": {"A": "B"},
+        "ambient_compile_factors": {
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": None,
+        },
+        "declared_factor_count": 1,
+        "ambient_factor_count": 1,
+        "declared_factor_digest": "declared-digest",
+        "ambient_factor_digest": "ambient-digest",
+        "combined_factor_digest": "combined-digest",
+    }
     canonical_compile_plan = caching.build_canonical_compile_plan(
         env_factors={"A": "B"},
+        env_identity=env_identity,
         config_hash="cfg-from-file",
         compiler_hash="compiler-from-file",
         source_fingerprint=source_fingerprint,
@@ -1936,6 +2026,7 @@ def test_autotune_cache_manifest_roundtrip() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
                 "canonical_compile_plan": canonical_compile_plan,
@@ -1954,6 +2045,7 @@ def test_autotune_cache_manifest_roundtrip() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
                 "canonical_compile_plan": canonical_compile_plan,
@@ -2026,9 +2118,22 @@ def test_canonical_compile_plan_is_structural_and_renderable() -> None:
         enabled_custom_ops={"rotary_embedding": 1},
         disabled_custom_ops={"foo": 2},
     )
+    env_identity = {
+        "schema_version": 1,
+        "declared_compile_factors": {"B": "A"},
+        "ambient_compile_factors": {
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": None,
+        },
+        "declared_factor_count": 1,
+        "ambient_factor_count": 1,
+        "declared_factor_digest": "declared-digest",
+        "ambient_factor_digest": "ambient-digest",
+        "combined_factor_digest": "combined-digest",
+    }
 
     plan = caching.build_canonical_compile_plan(
         env_factors={"B": "A"},
+        env_identity=env_identity,
         config_hash="cfg-hash",
         compiler_hash="compiler-hash",
         source_fingerprint=source_fingerprint,
@@ -2047,6 +2152,8 @@ def test_canonical_compile_plan_is_structural_and_renderable() -> None:
 
     assert plan["schema_version"] == 1
     assert plan["canonical_compile_plan_id"] == plan["resolved_compile_plan_id"]
+    assert plan["requested_policy"]["env_identity"] == env_identity
+    assert plan["normalized_policy"]["env_factor_digest"] == "combined-digest"
     assert plan["requested_policy_id"] != plan["normalized_policy_id"]
     assert plan["materialization_plan_id"] != plan["verification_plan_id"]
     assert plan["resolved_compile_plan"]["source_fingerprint_hash"] == source_fingerprint[

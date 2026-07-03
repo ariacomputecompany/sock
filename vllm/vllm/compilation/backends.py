@@ -1030,6 +1030,7 @@ class VllmBackend:
         # Minimal hashing here with existing utilities, reused below.
 
         env_factors = envs.compile_factors()
+        env_identity = envs.compile_factor_identity_manifest()
         env_hash = hash_factors(env_factors)
         # Compute config/compiler/code hashes once and reuse
         config_hash = vllm_config.compute_hash()
@@ -1127,6 +1128,7 @@ class VllmBackend:
             logger.info_once("vLLM's torch.compile cache is disabled.")
         canonical_compile_plan = build_canonical_compile_plan(
             env_factors=env_factors,
+            env_identity=env_identity,
             config_hash=config_hash,
             compiler_hash=compiler_hash,
             source_fingerprint=source_fingerprint,
@@ -1181,6 +1183,7 @@ class VllmBackend:
         # Persist and log only hash-relevant factors together.
         cache_key_factors_payload = {
             "env": env_factors,
+            "env_identity": env_identity,
             "config_hash": config_hash,
             "code_hash": code_hash,
             "compiler_hash": compiler_hash,
@@ -1190,8 +1193,9 @@ class VllmBackend:
         }
         try:
             logger.debug(
-                "Compile env factors (raw):\n%s\nVllm config hash: %s",
+                "Compile env factors (raw):\n%s\nCompile env identity: %s\nVllm config hash: %s",
                 lazy(partial(pprint.pformat, env_factors, width=120)),
+                lazy(partial(pprint.pformat, env_identity, width=120)),
                 config_hash,
             )
             meta_path = os.path.join(local_cache_dir, "cache_key_factors.json")

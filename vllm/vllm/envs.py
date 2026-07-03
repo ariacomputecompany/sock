@@ -2241,7 +2241,16 @@ def compile_factors() -> dict[str, object]:
 
         factors[factor] = normalize_value(raw)
 
-    ambient_compile_factors = [
+    ambient_compile_factors = _ambient_compile_factor_names()
+
+    for var in ambient_compile_factors:
+        factors[var] = normalize_value(os.getenv(var))
+
+    return factors
+
+
+def _ambient_compile_factor_names() -> list[str]:
+    return [
         # Refer to
         # https://github.com/ray-project/ray/blob/c584b1ea97b00793d1def71eaf81537d70efba42/python/ray/_private/accelerators/nvidia_gpu.py#L11
         # https://github.com/ray-project/ray/blob/c584b1ea97b00793d1def71eaf81537d70efba42/python/ray/_private/accelerators/amd_gpu.py#L11
@@ -2263,10 +2272,42 @@ def compile_factors() -> dict[str, object]:
         "RAY_EXPERIMENTAL_NOSET_RBLN_RT_VISIBLE_DEVICES",
     ]
 
-    for var in ambient_compile_factors:
-        factors[var] = normalize_value(os.getenv(var))
 
-    return factors
+def compile_factor_identity_manifest() -> dict[str, object]:
+    factors = compile_factors()
+    ambient_names = set(_ambient_compile_factor_names())
+    declared_factors = {
+        key: factors[key] for key in sorted(factors) if key not in ambient_names
+    }
+    ambient_factors = {
+        key: factors[key] for key in sorted(factors) if key in ambient_names
+    }
+
+    def _digest(payload: object) -> str:
+        return hashlib.sha256(
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+
+    combined_digest = _digest(
+        {
+            "declared_compile_factors": declared_factors,
+            "ambient_compile_factors": ambient_factors,
+        }
+    )
+    return {
+        "schema_version": 1,
+        "declared_compile_factors": declared_factors,
+        "ambient_compile_factors": ambient_factors,
+        "declared_factor_count": len(declared_factors),
+        "ambient_factor_count": len(ambient_factors),
+        "declared_factor_digest": _digest(declared_factors),
+        "ambient_factor_digest": _digest(ambient_factors),
+        "combined_factor_digest": combined_digest,
+    }
 
 
 def compile_factor_categories() -> dict[str, str]:
@@ -2368,6 +2409,7 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
 
 def compile_factor_manifest() -> dict[str, object]:
     factors = compile_factors()
+    identity_manifest = compile_factor_identity_manifest()
     categories = compile_factor_categories()
     policies = compile_factor_policies()
     ambient_policies = ambient_compile_factor_policies()
@@ -2383,6 +2425,7 @@ def compile_factor_manifest() -> dict[str, object]:
     return {
         "schema_version": 1,
         "factors": {key: factors[key] for key in included_keys},
+        "identity": identity_manifest,
         "categories": {key: categories[key] for key in sorted(categories)},
         "policies": {
             key: policies[key]
@@ -2402,6 +2445,14 @@ def compile_factor_manifest() -> dict[str, object]:
 def render_compile_factor_manifest() -> str:
     return json.dumps(
         compile_factor_manifest(),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def render_compile_factor_identity_manifest() -> str:
+    return json.dumps(
+        compile_factor_identity_manifest(),
         sort_keys=True,
         separators=(",", ":"),
     )

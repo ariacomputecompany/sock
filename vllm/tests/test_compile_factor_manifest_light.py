@@ -77,6 +77,9 @@ def test_compile_factor_manifest_lightweight() -> None:
         manifest["validation"]["compile_affecting_key_digest"]
         == envs._EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST
     )
+    assert manifest["identity"]["schema_version"] == 1
+    assert manifest["identity"]["declared_factor_count"] > 0
+    assert manifest["identity"]["ambient_factor_count"] > 0
 
     rendered = envs.render_compile_factor_manifest()
     reparsed = json.loads(rendered)
@@ -88,6 +91,22 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert reparsed["ambient_included_keys"] == manifest["ambient_included_keys"]
     assert reparsed["ignored_keys"] == manifest["ignored_keys"]
     assert reparsed["validation"] == manifest["validation"]
+
+    rendered_identity = envs.render_compile_factor_identity_manifest()
+    reparsed_identity = json.loads(rendered_identity)
+    assert reparsed_identity["schema_version"] == manifest["identity"]["schema_version"]
+    assert (
+        reparsed_identity["combined_factor_digest"]
+        == manifest["identity"]["combined_factor_digest"]
+    )
+    assert (
+        reparsed_identity["declared_factor_digest"]
+        == manifest["identity"]["declared_factor_digest"]
+    )
+    assert (
+        reparsed_identity["ambient_factor_digest"]
+        == manifest["identity"]["ambient_factor_digest"]
+    )
 
 
 def test_compile_factor_policy_detects_unexpected_compile_affecting_set() -> None:

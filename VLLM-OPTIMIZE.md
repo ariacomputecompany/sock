@@ -185,8 +185,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 ## 1. Canonical Compile Identity
 
 - [ ] Ensure every compile artifact, warmup artifact, cudagraph artifact, and autotune artifact derives from this canonical plan identity.
-- [ ] Stop treating raw CLI flags, raw env var bags, and raw runtime state as primary cache-key inputs.
-- [ ] Normalize all compile-affecting inputs before vLLM materialization begins.
 - [ ] Align this work with the tinygrad-inspired structural interning guidance in `/Users/deepsaint/Desktop/sock/TINYGRADREF.md`.
 
 ## 2. Compile-Affecting Input Cleanup
