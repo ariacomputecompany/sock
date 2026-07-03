@@ -1,103 +1,146 @@
 # sock
 
-sock is a compiler for inference-engine startup.
+sock is a compiler and build system for inference engines.
 
-Its job is to take an engine like `vLLM`, figure out exactly which compiled regions, kernels, caches, warmups, and backend-specific artifacts are needed for a given inference use-case, and build only that closure deterministically.
+It takes an engine such as `vLLM`, determines exactly which compiled regions, kernels, caches, warmups, and backend artifacts are required for a specific inference use-case, and builds that closure deterministically.
 
-In plain terms:
+The point is simple:
 
-- if you only need a specific part of an inference engine, you should not have to build the whole engine
-- if a cache or kernel binary is already admissible for reuse, `sock` should prove that and skip rebuilding it
-- if a runtime path can still trigger surprise compile work, `sock` should expose that explicitly instead of hiding it behind startup scripts
+- build exactly what you need
+- reuse exactly what is admissible
+- prove exactly what is ready to serve
+- refuse hidden compile work and stale cache assumptions
 
-The end goal is fast, deterministic, replay-safe partial builds for inference engines.
+## What sock does
 
-## What it is
+sock compiles inference-engine startup the way a normal compiler handles a program:
 
-- a build system and compiler layer for inference-engine startup
-- a deterministic closure planner for compiled regions, kernels, caches, topology, and warmup work
-- a way to compile or materialize only the parts of an engine needed for a specific serving intent
-- a schema-governed producer of `ResolvedBuildPlan`, `ArtifactClosure`, and `VerificationReport`
-- a proof system for what has been built, reused, warmed, and still remains risky
+- it parses a requested serving intent
+- it resolves engine-specific compile regions and backend choices
+- it computes the minimal valid artifact closure
+- it materializes only the required compiled outputs and caches
+- it executes the required warmup closure for the requested readiness target
+- it emits a replayable build bundle with strict verification
 
-## What it is not
+In practice, that means:
 
-- an inference engine
-- a scheduler or serving control plane
-- a frontend for model authoring or training
-- a replacement for CUDA, Triton, FlashInfer, TensorRT, or engine-native runtimes
+- if you only need a prefill path, sock builds the prefill closure
+- if you only need decode preparation, sock builds the decode closure
+- if a distributed startup needs leader/follower artifact fanout, sock plans and executes that explicitly
+- if an artifact is already valid for reuse, sock proves that and skips rebuilding it
+- if a requested scope would still leak runtime JIT, sock surfaces that as a bounded contract instead of hiding it
+
+## Product model
+
+sock treats inference-engine startup as a deterministic compilation problem.
+
+The canonical pipeline is:
+
+`RawRequest -> NormalizedRequest -> ResolvedBuildPlan -> ArtifactClosure -> VerificationReport`
+
+From that pipeline, sock produces:
+
+- a `ResolvedBuildPlan` describing the exact closure to build
+- an `ArtifactClosure` describing the concrete compiled artifacts and caches
+- a `VerificationReport` proving structural correctness, admissibility, warmup coverage, and runtime-JIT bounds
+- a replay bundle that can be verified and replayed without new compile work
+
+## Why it exists
+
+Inference engines are usually asked to do too much in one opaque startup lifecycle:
+
+- graph compilation
+- backend selection
+- Triton codegen
+- FlashInfer setup
+- cache shaping
+- CUDA graph capture
+- warmup
+- topology fanout
+
+When all of that is coupled together, operators get long cold starts, bad visibility, and very little control over what is actually being built.
+
+sock separates those concerns into explicit build units so startup becomes:
+
+- inspectable
+- deterministic
+- partially buildable
+- replay-safe
+- measurable
 
 ## V1 scope
 
-V1 is intentionally narrow and deep:
+sock goes deep before it goes broad.
+
+V1 is:
 
 - engine: `vLLM`
 - hardware: NVIDIA
 - platform: Linux
 
-The goal is to get deep closure quality for one real production engine before expanding breadth.
+This is not a shallow abstraction layer over many engines.
+It is a deep compiler-grade integration with one real production engine first, so the abstractions are proven against actual complexity.
 
-## Why it exists
+## What sock is
 
-Inference-engine startup is usually treated like one big opaque side effect:
+- a compiler for inference-engine startup
+- a deterministic build system for serving closures
+- a planner and executor for compiled regions, kernels, caches, and warmup work
+- a proof surface for artifact reuse, readiness, and no-surprise-JIT claims
+- a source-aligned integration layer over vendored engine code
 
-- import the engine
-- load the model
-- let torch compile what it wants
-- let Triton JIT what it wants
-- let backend autotune happen
-- let CUDA graph capture happen
-- hope requests do not trigger more work later
+## What sock is not
 
-That is bad for both build time and operator trust.
+- an inference engine
+- a serving control plane
+- a model training framework
+- a replacement for CUDA, Triton, FlashInfer, TensorRT, or engine-native runtimes
 
-sock exists to break that apart into explicit build units so startup becomes something we can compile intentionally instead of something we merely observe after the fact.
+sock compiles and materializes the engine-specific startup world.
+It does not replace the runtimes that ultimately execute the model.
 
-The central idea is simple:
+## How it builds less
 
-- discover compile-equivalent regions
-- discover cache ownership boundaries
-- discover warmup and runtime-JIT boundaries
-- compute the minimal valid closure for a requested use-case
-- build, verify, and replay that closure deterministically
+The core design goal is to avoid broad “build everything” behavior.
 
-## Current code shape
+sock does that by making the engine legible in terms of:
 
-The canonical semantic pipeline is:
+- compile-equivalent regions
+- cache ownership boundaries
+- backend-specific artifact scopes
+- topology-sensitive materialization paths
+- warmup scopes
+- runtime-JIT risk surfaces
 
-`RawRequest -> NormalizedRequest -> ResolvedBuildPlan -> ArtifactClosure -> VerificationReport`
+Those are then used to build only the minimal valid closure for the requested purpose.
 
-The Rust workspace is organized as:
+Examples:
 
-- `app/`: CLI entrypoint
-- `core/`: canonical semantic core, identities, validation, and replay helpers
-- `engine/`: engine-facing planner glue
-- `vllm/`: vendored `vLLM` source tree, pinned locally for deep integration work
+- `prefill_attention` can be planned and materialized separately from `decode_attention`
+- backend autotune caches can be treated as first-class artifacts instead of hidden side effects
+- CUDA graph captures can be handled as topology-scoped rank-local outputs
+- leader/follower artifact fanout can be chosen explicitly instead of emerging accidentally at runtime
 
-## Status
+## vLLM integration
 
-Today the project has the control plane for this compiler:
+sock vendors `vLLM` locally and integrates with it directly.
 
-- a compiling Rust workspace
-- a canonical `RawRequest -> NormalizedRequest -> ResolvedBuildPlan -> ArtifactClosure -> VerificationReport` contract
-- a deterministic `vLLM` planning path for NVIDIA/Linux with source-anchored compile regions
-- `vLLM` adapter truth for canonical region identity, cache ownership, topology-sensitive warmup surfaces, and machine-checkable residual JIT triggers
-- replay bundle emission and fail-closed bundle validation
-- CLI-visible explain, verify, replay, and doctor surfaces
-- compile-free `verify` and `replay` operator gates rendered in the verification surface
-- vendored `vLLM` source for source-aligned adapter work
+That integration preserves real `vLLM` structure rather than flattening it into fake-generic abstractions.
 
-What it does not have yet is the full data plane:
+sock models:
 
-- `sock build` does not yet perform real scoped materialization of vendored `vLLM` artifacts
-- partial-build execution is not finished yet
-- measured build-time reduction from live scoped execution is not finished yet
+- canonical compile region identity
+- backend binding per region
+- cache ownership surfaces
+- topology-sensitive warmup paths
+- backend-specific runtime-JIT triggers
+- materialization and reuse boundaries derived from `vLLM` source
 
-So the current repo is already a serious compiler/planner architecture for inference-engine startup, but it is not yet the completed selective build executor.
+This is what lets sock compile parts of the engine intentionally instead of treating `vLLM` startup as one opaque side effect.
 
 ## Operator workflow
 
-The production CLI surface is:
+The CLI surface is:
 
 - `cargo run --bin sock -- plan`
 - `cargo run --bin sock -- explain`
@@ -106,59 +149,47 @@ The production CLI surface is:
 - `cargo run --bin sock -- replay --bundle /tmp/sock-bundle`
 - `cargo run --bin sock -- doctor`
 
-Right now these commands are about planning, explaining, bundling, verifying, and replaying the build contract.
-The next implementation step is making `sock build` perform real scoped materialization against vendored `vLLM`.
+The workflow is:
 
-Replay bundles are intentionally strict:
+1. describe the serving intent
+2. inspect the resolved closure
+3. build the required subset
+4. verify the emitted bundle
+5. replay the result without new compile work
 
-- all emitted contract files are content-digested
-- plan identity must agree across the bundle
-- verification reports must exactly match the loaded build plan
-- invalid artifact reuse inside an otherwise well-formed bundle is rejected during verification
-- mismatches fail closed instead of being repaired implicitly
+## Verification model
 
-`sock verify` and `sock replay` are currently contract-validation paths, not materialization paths:
+Verification is strict and fail-closed.
 
-- they load an emitted bundle
-- they prove structural identity and verification consistency
-- they render bounded runtime-JIT evidence and compile-free operator gates
-- they do not perform new compile, warmup, or artifact materialization work
+sock verifies:
 
-That restriction is deliberate.
-Once the real executor lands, verify and replay should still stay compile-free.
+- artifact admissibility
+- plan identity consistency
+- cache and bundle integrity
+- warmup proof coverage
+- runtime-JIT evidence bounds
+- compile-free verify/replay operator gates
 
-## Verification
+Replay bundles are content-digested, identity-checked, and verification-checked.
+Invalid reuse, stale artifacts, and mismatched plan state are rejected instead of being repaired implicitly.
 
-Engineer-facing regression coverage lives in:
+## Repository layout
 
-- Rust unit and integration tests under the workspace crates
-- Fozzy scenarios under `tests/*.fozzy.json`
-- replay artifacts emitted by `sock build`, which are then verified and replayed without silent recompilation
-- host-backed Fozzy trace verify/replay/ci passes recorded from the real CLI workflow
+- `app/`: CLI and shared application contract surface
+- `core/`: canonical schemas, identity, validation, bundle logic, verification, and rendering
+- `engine/`: planner, executor integration, and `vLLM`-specific build logic
+- `vllm/`: vendored `vLLM` source tree used for direct integration
 
-## Integration shape
+## End goal
 
-The binary and library defaults now share one path:
+sock is the system you use when you want an inference engine to behave like a compiler target instead of a startup mystery.
 
-- `app/src/lib.rs` owns the default production host snapshot, request, planning entrypoint, diagnostics, and replay-bundle construction
-- `app/src/main.rs` is only the CLI shell over that shared contract
-- `engine/` owns planner and `vLLM` integration
-- `core/` owns the canonical schemas, validation, bundle strictness, rendering, and identity logic
+It gives operators deterministic control over:
 
-## End state
+- what gets built
+- what gets reused
+- what gets warmed
+- what is safe to serve
+- what can still trigger runtime specialization
 
-The product we are building is not “a nicer wrapper around `vLLM`.”
-
-It is:
-
-- a compiler for inference-engine startup
-- a deterministic builder for exact serving closures
-- a way to compile only the parts of an inference engine you actually need
-- a proof surface for reuse, warmup, and no-surprise-JIT claims
-
-`vLLM` is the first backend because it is complex enough to force the abstractions to be real.
-
-## Repository map
-
-- `SPEC.md`: product spec
-- `FIRST_PRINCIPLES_REPORT.md`: architectural reasoning
+The result is faster builds, smaller closures, cleaner cold starts, and a much better production DX for inference-engine deployment.
