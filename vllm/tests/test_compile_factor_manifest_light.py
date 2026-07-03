@@ -70,6 +70,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_DISABLE_PYNCCL"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_USE_NCCL_SYMM_MEM"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_ALLREDUCE_USE_SYMM_MEM"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_ALLREDUCE_USE_FLASHINFER"] == "runtime_non_compile"
     assert (
         manifest["categories"]["VLLM_DISABLE_SHARED_EXPERTS_STREAM"]
         == "runtime_non_compile"
@@ -107,6 +108,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_DISABLE_PYNCCL" in manifest["ignored_keys"]
     assert "VLLM_USE_NCCL_SYMM_MEM" in manifest["ignored_keys"]
     assert "VLLM_ALLREDUCE_USE_SYMM_MEM" in manifest["ignored_keys"]
+    assert "VLLM_ALLREDUCE_USE_FLASHINFER" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_SHARED_EXPERTS_STREAM" in manifest["ignored_keys"]
     assert "VLLM_SHARED_EXPERTS_STREAM_TOKEN_THRESHOLD" in manifest["ignored_keys"]
     assert "VLLM_MULTI_STREAM_GEMM_TOKEN_THRESHOLD" in manifest["ignored_keys"]
@@ -215,6 +217,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_DISABLE_PYNCCL" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_USE_NCCL_SYMM_MEM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_ALLREDUCE_USE_SYMM_MEM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_ALLREDUCE_USE_FLASHINFER" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert (
         "VLLM_DISABLE_SHARED_EXPERTS_STREAM"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
