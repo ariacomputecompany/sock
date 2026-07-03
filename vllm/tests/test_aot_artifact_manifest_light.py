@@ -1508,6 +1508,93 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
     assert all(item["present"] for item in manifest["artifacts"])
 
 
+def test_mega_serialization_skips_graph_pickler_fallback_payloads() -> None:
+    caching, _ = _load_caching_module()
+    artifacts = caching.StandaloneCompiledArtifacts()
+    artifacts.insert("block0", "shape0", b"payload")
+
+    class _Graph:
+        nodes = []
+
+    class _GraphModule:
+        graph = _Graph()
+
+        def named_children(self):
+            return []
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        backend = types.SimpleNamespace(
+            vllm_config=types.SimpleNamespace(compute_hash=lambda: "cfg-hash"),
+            compilation_config=types.SimpleNamespace(local_cache_dir=tmpdir),
+            compiler_manager=types.SimpleNamespace(
+                compiler=types.SimpleNamespace(name="inductor-light"),
+                compute_hash=lambda cfg: "compiler-hash",
+            ),
+            collect_standalone_compile_artifacts=lambda: (
+                artifacts,
+                {"block0": (0,)},
+                {"block0": True},
+            ),
+        )
+        compiled_fn = types.SimpleNamespace(
+            graph_module=_GraphModule(),
+            example_inputs=[],
+            prefix="unit-test",
+            optimized_call=lambda *args, **kwargs: None,
+            is_encoder=False,
+            vllm_backend=backend,
+            sym_tensor_indices=[],
+            aot_autograd_config={},
+            execution_plan={
+                "schema_version": 1,
+                "name": "execution_fn",
+                "with_submods": True,
+                "params": ["x"],
+                "ops": [{"kind": "return", "value": {"kind": "node", "name": "x"}}],
+            },
+            execution_code=None,
+            submod_names=["block0"],
+            consts=None,
+            shape_env=None,
+            _fake_mode=None,
+        )
+
+        original_flag = caching.envs.VLLM_USE_MEGA_AOT_ARTIFACT
+        original_serialize_graph_module = (
+            caching.VllmSerializableFunction.serialize_graph_module
+        )
+        original_graph_pickler_dumps = caching.GraphPickler.dumps
+        caching.envs.VLLM_USE_MEGA_AOT_ARTIFACT = True
+        caching.VllmSerializableFunction.serialize_graph_module = classmethod(
+            lambda cls, graph_module: (_ for _ in ()).throw(
+                AssertionError("graph fallback payload should not be serialized")
+            )
+        )
+        caching.GraphPickler.dumps = staticmethod(
+            lambda obj, options=None: (_ for _ in ()).throw(
+                AssertionError("example input pickle payload should not be serialized")
+            )
+        )
+        try:
+            serialized = caching.VllmSerializableFunction.serialize_compile_artifacts(
+                compiled_fn
+            )
+        finally:
+            caching.envs.VLLM_USE_MEGA_AOT_ARTIFACT = original_flag
+            caching.VllmSerializableFunction.serialize_graph_module = (
+                original_serialize_graph_module
+            )
+            caching.GraphPickler.dumps = original_graph_pickler_dumps
+
+    sidecar, payload = caching.unpack_serialized_compile_artifact_bundle(serialized)
+    state = caching.unpack_serialized_fn_state_bundle(payload)
+
+    assert sidecar is not None
+    assert state["graph_module"] is None
+    assert state["example_inputs"] is None
+    assert state["standalone_compile_artifact_store_bundle"] is not None
+
+
 def test_artifact_load_topology_summary_tracks_data_parallel_estimate() -> None:
     caching, _ = _load_caching_module()
     caching.envs.VLLM_DP_RANK = 2

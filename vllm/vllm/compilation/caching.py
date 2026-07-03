@@ -288,10 +288,11 @@ def pack_serialized_fn_state_bundle(state: dict[str, Any]) -> bytes:
     }
     blob_payloads: list[bytes] = []
     offset = 0
-    blob_specs = [
-        ("graph_module", state["graph_module"], "raw"),
-        ("example_inputs", state["example_inputs"], "raw"),
-    ]
+    blob_specs = []
+    if state.get("graph_module") is not None:
+        blob_specs.append(("graph_module", state["graph_module"], "raw"))
+    if state.get("example_inputs") is not None:
+        blob_specs.append(("example_inputs", state["example_inputs"], "raw"))
     if state.get("standalone_compile_artifact_store_bundle") is not None:
         blob_specs.append(
             (
@@ -362,6 +363,8 @@ def unpack_serialized_fn_state_bundle(
     payload = data[offset + header_size :]
 
     state: dict[str, Any] = {
+        "graph_module": None,
+        "example_inputs": None,
         "prefix": header["prefix"],
         "is_encoder": bool(header["is_encoder"]),
         "sym_tensor_indices": header.get("sym_tensor_indices"),
@@ -1023,8 +1026,6 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             state["example_inputs"],
             state.get("sym_tensor_indices"),
         )
-        state["graph_module"] = cls.serialize_graph_module(state["graph_module"])
-        state["example_inputs"] = GraphPickler.dumps(state["example_inputs"])
 
         if compiled_fn.vllm_backend:
             (
@@ -1082,6 +1083,27 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 returns_tuple_map=returns_tuple_map,
                 example_input_tensor_specs=example_input_tensor_specs,
             )
+
+        include_graph_module_blob = True
+        include_example_inputs_blob = True
+        if (
+            envs.VLLM_USE_MEGA_AOT_ARTIFACT
+            and state.get("execution_plan") is not None
+            and state.get("submod_names") is not None
+        ):
+            include_graph_module_blob = False
+        if envs.VLLM_USE_MEGA_AOT_ARTIFACT and example_input_tensor_specs is not None:
+            include_example_inputs_blob = False
+
+        if include_graph_module_blob:
+            state["graph_module"] = cls.serialize_graph_module(state["graph_module"])
+        else:
+            state["graph_module"] = None
+
+        if include_example_inputs_blob:
+            state["example_inputs"] = GraphPickler.dumps(state["example_inputs"])
+        else:
+            state["example_inputs"] = None
         return pack_serialized_compile_artifact_bundle(
             pack_serialized_fn_state_bundle(state), sidecar
         )
@@ -1155,10 +1177,12 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                     state["example_inputs"] = build_sparse_example_inputs_from_tensor_specs(
                         example_input_tensor_specs
                     )
-                else:
+                elif state["example_inputs"] is not None:
                     state["example_inputs"] = GraphPickler.loads(
                         state["example_inputs"], fake_mode
                     )
+                else:
+                    state["example_inputs"] = []
             else:
                 state["example_inputs"] = []
             submod_names = standalone_compile_artifacts.submodule_names()
@@ -1296,6 +1320,10 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             state.pop("_serialized_blob_codecs", None)
             return fn
 
+        if state["example_inputs"] is None or state["graph_module"] is None:
+            raise ValueError(
+                "serialized function state missing graph fallback payloads"
+            )
         state["example_inputs"] = GraphPickler.loads(state["example_inputs"], fake_mode)
         state["graph_module"] = cls.deserialize_graph_module(
             state["graph_module"], fake_mode
@@ -1544,6 +1572,10 @@ def reconstruct_serializable_fn_from_mega_artifact(
         logger.warning(
             "No execution code found, falling back to graph module execution."
         )
+        if state.get("graph_module") is None:
+            raise ValueError(
+                "missing graph module bytes for mega-artifact graph fallback"
+            )
         runtime_callable = GraphPickler.loads(
             state["graph_module"], fake_mode=fake_mode
         )

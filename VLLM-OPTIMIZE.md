@@ -396,8 +396,6 @@ They should be executed according to the ranked lane order above, not by raw sec
   - workaround for upstream bug
   - fallback behavior patch
 
-## 13. AOT Compile Artifact Improvements
-
 
 ## 14. Build System Simplification
 
