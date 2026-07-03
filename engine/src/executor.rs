@@ -10,9 +10,9 @@ use sock_core::{
     MaterializationExecutionReport, MaterializationNode, MaterializationNodeKind,
     MaterializationNodeRecord, MaterializationSchedulingMode, MaterializationWave,
     MaterializationWaveRecord, MaterializedArtifactRecord, ObservedReadinessLevel, QueueDiscipline,
-    RankDisposition, ReadinessObservation, RuntimeJitObservation, RuntimeJitObservationStatus,
-    SchemaVersion, SourceAnchor, StartupClosureOutcome, WarmupObligation, artifact_node_handle,
-    canonical_hash, canonical_json,
+    RankDisposition, ReadinessObservation, RegionCacheSharing, RuntimeJitObservation,
+    RuntimeJitObservationStatus, SchemaVersion, SourceAnchor, StartupClosureOutcome,
+    WarmupObligation, artifact_node_handle, canonical_hash, canonical_json,
 };
 use thiserror::Error;
 
@@ -55,6 +55,9 @@ struct MaterializedArtifactDocument {
     scope: String,
     class: sock_core::ArtifactClass,
     backend: sock_core::BackendFamily,
+    region_stable_identity: Option<sock_core::CanonicalHash>,
+    region_equivalence_identity: Option<sock_core::CanonicalHash>,
+    cache_sharing: Option<RegionCacheSharing>,
     cache_namespace: String,
     invalidation_domain: String,
     acquisition: ArtifactAcquisition,
@@ -302,7 +305,8 @@ impl MaterializationExecutor {
         cache_root: &Path,
     ) -> Result<MaterializedArtifactRecord, MaterializationError> {
         let started = Instant::now();
-        let storage_key = canonical_hash(requirement)?.to_string();
+        let region = compile_region_for_scope(outcome, &requirement.scope);
+        let storage_key = artifact_storage_key(outcome, requirement)?.to_string();
         let manifest_identity = outcome
             .closure
             .artifacts
@@ -330,6 +334,9 @@ impl MaterializationExecutor {
             scope: requirement.scope.clone(),
             class: requirement.class,
             backend: requirement.backend,
+            region_stable_identity: region.map(|entry| entry.stable_identity.clone()),
+            region_equivalence_identity: region.map(|entry| entry.equivalence_identity.clone()),
+            cache_sharing: region.map(|entry| entry.cache_sharing),
             cache_namespace: cache_namespace.clone(),
             invalidation_domain: invalidation_domain.clone(),
             acquisition: requirement.acquisition,
@@ -350,10 +357,21 @@ impl MaterializationExecutor {
         let observed_compile_ms = if is_transfer { 0 } else { elapsed_ms_now };
         let observed_transfer_ms = if is_transfer { elapsed_ms_now } else { 0 };
         let observed_rebuild_ms = observed_compile_ms.saturating_add(observed_transfer_ms);
-        let (disposition, cache_bytes_written, rebuild_ms, deserialization_ms) =
+        let (disposition, cache_bytes_written, rebuild_ms, deserialization_ms, final_document) =
             if cache_path.exists() {
+                evict_invalidated_siblings(
+                    cache_root,
+                    &cache_namespace,
+                    &invalidation_domain,
+                    requirement.class,
+                    &storage_key,
+                )?;
                 let existing = load_existing_document(&cache_path)?;
                 if same_artifact_document_identity(&existing.document, &document) {
+                    let mut document = document.clone();
+                    document.observed_compile_ms = existing.document.observed_compile_ms;
+                    document.observed_transfer_ms = existing.document.observed_transfer_ms;
+                    document.observed_rebuild_ms = existing.document.observed_rebuild_ms;
                     (
                         MaterializationDisposition::Reused,
                         0,
@@ -364,6 +382,7 @@ impl MaterializationExecutor {
                                 .saturating_add(existing.document.observed_transfer_ms),
                         ),
                         existing.duration_ms,
+                        document,
                     )
                 } else {
                     evict_invalidated_siblings(
@@ -384,6 +403,7 @@ impl MaterializationExecutor {
                         content.len() as u64,
                         observed_rebuild_ms,
                         0,
+                        document,
                     )
                 }
             } else {
@@ -405,9 +425,11 @@ impl MaterializationExecutor {
                     content.len() as u64,
                     observed_rebuild_ms,
                     0,
+                    document,
                 )
             };
-        copy_atomically(&cache_path, &absolute_path)?;
+        let bundle_content = canonical_json(&final_document)?;
+        write_bytes_atomically(&absolute_path, bundle_content.as_bytes())?;
         let bundle_bytes_written = if disposition == MaterializationDisposition::Reused {
             file_size(&absolute_path)?
         } else {
@@ -419,6 +441,9 @@ impl MaterializationExecutor {
             scope: requirement.scope.clone(),
             class: requirement.class,
             backend: requirement.backend,
+            region_stable_identity: region.map(|entry| entry.stable_identity.clone()),
+            region_equivalence_identity: region.map(|entry| entry.equivalence_identity.clone()),
+            cache_sharing: region.map(|entry| entry.cache_sharing),
             cache_namespace,
             invalidation_domain,
             acquisition: requirement.acquisition,
@@ -995,13 +1020,6 @@ fn write_bytes_atomically(path: &Path, bytes: &[u8]) -> Result<(), Materializati
     Ok(())
 }
 
-fn copy_atomically(source: &Path, destination: &Path) -> Result<(), MaterializationError> {
-    let temp_path = sibling_temp_path(destination);
-    fs::copy(source, &temp_path)?;
-    fs::rename(&temp_path, destination)?;
-    Ok(())
-}
-
 fn sibling_temp_path(path: &Path) -> std::path::PathBuf {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1068,6 +1086,22 @@ fn same_artifact_document_identity(
     left: &MaterializedArtifactDocument,
     right: &MaterializedArtifactDocument,
 ) -> bool {
+    if left.cache_sharing == Some(RegionCacheSharing::ContentAddressed)
+        && right.cache_sharing == Some(RegionCacheSharing::ContentAddressed)
+        && left.region_equivalence_identity == right.region_equivalence_identity
+    {
+        return left.schema_version == right.schema_version
+            && left.storage_key == right.storage_key
+            && left.class == right.class
+            && left.backend == right.backend
+            && left.cache_namespace == right.cache_namespace
+            && left.invalidation_domain == right.invalidation_domain
+            && left.acquisition == right.acquisition
+            && left.rank_disposition == right.rank_disposition
+            && left.engine_root == right.engine_root
+            && left.engine_revision == right.engine_revision;
+    }
+
     left.schema_version == right.schema_version
         && left.storage_key == right.storage_key
         && left.manifest_identity == right.manifest_identity
@@ -1081,12 +1115,46 @@ fn same_artifact_document_identity(
         && left.admissibility_summary == right.admissibility_summary
 }
 
-fn cache_namespace_for_scope(outcome: &PlanningOutcome, scope: &str) -> String {
+fn compile_region_for_scope<'a>(
+    outcome: &'a PlanningOutcome,
+    scope: &str,
+) -> Option<&'a sock_core::CompileRegion> {
     outcome
-        .adapter_survey
+        .plan
         .compile_regions
         .iter()
-        .find(|region| region.canonical_name == scope)
+        .find(|region| region.name == scope)
+}
+
+fn artifact_storage_key(
+    outcome: &PlanningOutcome,
+    requirement: &ArtifactRequirement,
+) -> Result<sock_core::CanonicalHash, CanonicalError> {
+    let Some(region) = compile_region_for_scope(outcome, &requirement.scope) else {
+        return canonical_hash(requirement);
+    };
+    if region.cache_sharing != RegionCacheSharing::ContentAddressed {
+        return canonical_hash(requirement);
+    }
+
+    canonical_hash(&(
+        region.equivalence_identity.clone(),
+        requirement.class,
+        requirement.backend,
+        requirement.acquisition,
+        requirement.portability,
+        requirement.rank_disposition,
+        requirement.admissibility.target_abi_identity.clone(),
+        requirement
+            .admissibility
+            .target_shape_envelope_identity
+            .clone(),
+        requirement.admissibility.target_topology.clone(),
+    ))
+}
+
+fn cache_namespace_for_scope(outcome: &PlanningOutcome, scope: &str) -> String {
+    compile_region_for_scope(outcome, scope)
         .map(|region| region.cache_namespace.clone())
         .or_else(|| {
             outcome

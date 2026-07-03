@@ -17,31 +17,6 @@ Working rule:
 - remove completed items instead of annotating them
 - treat any runtime-adjacent drift as an escalation out of Lane A
 
-## 4. Named Compile Regions
-
-- [ ] Promote compile regions already identified in `engine/src/vllm_adapter.rs` into first-class implementation concepts.
-- [ ] Keep separate named regions for:
-  - repeated transformer block body
-  - decode micrograph
-  - prefill micrograph
-  - attention/KV update boundary
-  - MoE specialty path
-- [ ] Ensure each region has:
-  - a stable identity
-  - a stable cache namespace
-  - a defined portability scope
-  - a defined rank/topology scope
-  - explicit warmup obligations
-  - explicit closure verification criteria
-- [ ] Avoid flattening distinct regions into one anonymous compile/cache surface.
-- [ ] Use region boundaries to reduce over-compilation and improve cache reuse.
-- [ ] Add explicit artifact sharing rules for isomorphic regions across ranks and processes.
-- [ ] Reuse identical subgraph artifacts across `rank_x_y` cache namespaces via content-addressed manifests, hardlinks, or equivalent indirection.
-- [ ] Detect repeated transformer-body regions before backend compilation begins, not only after serialized artifacts already exist on disk.
-- [ ] Introduce a region-equivalence pass that can prove two subgraphs are compile-equivalent even when they arose from different trace positions.
-
-- [ ] Reduce startup-time dependence on Python pickling and `GraphPickler` roundtrips where possible.
-
 ## 14. Build System Simplification
 
 - [ ] Split native build targets into:

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "build-named-compile-regions",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --region prefill_attention --readiness correctness >/dev/null\ngrep -q '\"name\":\"prefill_attention\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"cache_namespace\":\"compile-cache\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"cache_sharing\":\"content_addressed\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"portability_scope\":\"gpu_architecture_family\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"topology_scope\":\"cross_rank_and_cross_process\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"warmup_scope\":\"prefill_attention\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"stable_identity\":\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"equivalence_identity\":\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"closure_verification_criteria\":\\[' \"$bundle_dir/buildplan.json\"\ngrep -q '\"cache_sharing\":\"content_addressed\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"region_stable_identity\":\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"region_equivalence_identity\":\"' \"$bundle_dir/materialization_report.json\"\nprintf 'named-compile-regions\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "named-compile-regions\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --region prefill_attention --readiness correctness >/dev/null\ngrep -q '\"name\":\"prefill_attention\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"cache_namespace\":\"compile-cache\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"cache_sharing\":\"content_addressed\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"portability_scope\":\"gpu_architecture_family\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"topology_scope\":\"cross_rank_and_cross_process\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"warmup_scope\":\"prefill_attention\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"stable_identity\":\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"equivalence_identity\":\"' \"$bundle_dir/buildplan.json\"\ngrep -q '\"closure_verification_criteria\":\\[' \"$bundle_dir/buildplan.json\"\ngrep -q '\"cache_sharing\":\"content_addressed\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"region_stable_identity\":\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"region_equivalence_identity\":\"' \"$bundle_dir/materialization_report.json\"\nprintf 'named-compile-regions\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "named-compile-regions\n",
+      "expect_stderr": ""
+    }
+  ]
+}

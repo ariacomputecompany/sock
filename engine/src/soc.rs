@@ -166,10 +166,10 @@ fn selector_snapshot(scope: &BuildScope) -> SocSelectorSnapshot {
 
 fn cache_namespace_for_scope(outcome: &PlanningOutcome, scope: &str) -> String {
     outcome
-        .adapter_survey
+        .plan
         .compile_regions
         .iter()
-        .find(|region| region.canonical_name == scope)
+        .find(|region| region.name == scope)
         .map(|region| region.cache_namespace.clone())
         .or_else(|| {
             outcome

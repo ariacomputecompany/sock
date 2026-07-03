@@ -112,7 +112,6 @@ impl Planner {
             &shape_envelope,
             &selected_backends,
             &compile_regions,
-            &adapter_survey,
             &optimization_envelope,
             scope,
         )?;
@@ -463,6 +462,49 @@ impl Planner {
                 rationale: region.rationale.clone(),
                 invalidation_domain: region.invalidation_domain.clone(),
                 shape_planes: region.shape_planes.clone(),
+                stable_identity: canonical_hash(&(
+                    region.canonical_name.clone(),
+                    region.kind,
+                    resolve_backend_binding(region.backend_binding, selected_backends),
+                    region.boundaries.clone(),
+                    region.invalidation_domain.clone(),
+                    region.shape_planes.clone(),
+                    region.artifact_portability,
+                    region.rank_disposition,
+                    region.topology_sensitive,
+                    region.cache_namespace.clone(),
+                    region.warmup_scope.clone(),
+                    region.cache_sharing,
+                    region.portability_scope.clone(),
+                    region.topology_scope.clone(),
+                    region.closure_verification_criteria.clone(),
+                ))
+                .expect("compile region stable identity"),
+                equivalence_identity: canonical_hash(&(
+                    region.kind,
+                    resolve_backend_binding(region.backend_binding, selected_backends),
+                    region.boundaries.clone(),
+                    region.invalidation_domain.clone(),
+                    region.shape_planes.clone(),
+                    region.artifact_portability,
+                    region.rank_disposition,
+                    region.topology_sensitive,
+                    region.cache_namespace.clone(),
+                    region.warmup_scope.clone(),
+                    region.cache_sharing,
+                    region.portability_scope.clone(),
+                    region.topology_scope.clone(),
+                ))
+                .expect("compile region equivalence identity"),
+                cache_namespace: region.cache_namespace.clone(),
+                cache_sharing: region.cache_sharing,
+                portability: region.artifact_portability,
+                rank_disposition: region.rank_disposition,
+                topology_sensitive: region.topology_sensitive,
+                portability_scope: region.portability_scope.clone(),
+                topology_scope: region.topology_scope.clone(),
+                warmup_scope: region.warmup_scope.clone(),
+                closure_verification_criteria: region.closure_verification_criteria.clone(),
                 evidence: region.evidence.clone(),
             })
             .collect::<Vec<_>>();
@@ -847,7 +889,6 @@ impl Planner {
         shape_envelope: &ShapeEnvelope,
         selected_backends: &BackendSelection,
         compile_regions: &[CompileRegion],
-        adapter_survey: &AdapterSurvey,
         optimization_envelope: &OptimizationEnvelope,
         scope: &BuildScope,
     ) -> Result<Vec<ArtifactRequirement>, PlanError> {
@@ -866,8 +907,9 @@ impl Planner {
             .iter()
             .filter(|region| scope.allows_artifact_scope(&region.name))
             .flat_map(|region| {
-                let (graph_portability, graph_rank_disposition, graph_cache_namespace) =
-                    cache_traits(&region.name, adapter_survey);
+                let graph_portability = region.portability;
+                let graph_rank_disposition = region.rank_disposition;
+                let graph_cache_namespace = region.cache_namespace.clone();
                 let acquisition = region_acquisition(region.family, selected_backends);
                 [
                     ArtifactRequirement {
@@ -1904,28 +1946,6 @@ fn region_acquisition(
             .map(|candidate| candidate.acquisition)
             .unwrap_or(ArtifactAcquisition::LocalAotBuild)
     }
-}
-
-fn cache_traits(
-    region_name: &str,
-    adapter_survey: &AdapterSurvey,
-) -> (ArtifactPortability, RankDisposition, String) {
-    adapter_survey
-        .compile_regions
-        .iter()
-        .find(|region| region.canonical_name == region_name)
-        .map(|region| {
-            (
-                region.artifact_portability,
-                region.rank_disposition,
-                region.cache_namespace.clone(),
-            )
-        })
-        .unwrap_or((
-            ArtifactPortability::AbiClusterPortable,
-            RankDisposition::Shared,
-            "compile-cache".to_owned(),
-        ))
 }
 
 fn warmup_proof_ids_for_scope(scope: &str, warmup_obligations: &[WarmupObligation]) -> Vec<String> {

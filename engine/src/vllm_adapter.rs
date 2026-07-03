@@ -8,8 +8,8 @@ use sock_core::{
     AdapterHook, AdapterResult, AdapterSurvey, ArtifactPortability, CacheOwnershipSurface,
     CompileAffectingKnob, CompileRegionKind, ConfigInputSource, CoveragePlane, DiagnosticSeverity,
     EffectiveConfigInput, EngineAdapter, EngineAdapterContract, JitRiskLevel,
-    PreservedEngineAbstraction, RankDisposition, ResidualRuntimeJitSurface, SourceAnchor,
-    SourceEvidence, TargetEngine,
+    PreservedEngineAbstraction, RankDisposition, RegionCacheSharing, ResidualRuntimeJitSurface,
+    SourceAnchor, SourceEvidence, TargetEngine,
 };
 
 use crate::vllm;
@@ -250,6 +250,14 @@ impl VllmAdapter {
                 false,
                 "compile-cache",
                 "transformer_block_body",
+                RegionCacheSharing::ContentAddressed,
+                "gpu_architecture_family",
+                "cross_rank_and_cross_process",
+                vec![
+                    "standalone compiled graph manifest present".to_owned(),
+                    "warmup scope transformer_block_body verified".to_owned(),
+                    "compile-equivalence proven before backend compilation".to_owned(),
+                ],
                 "vllm/vllm/v1/core/kv_cache_utils.py",
                 &["The layers in the models are repeated with some patterns"],
             )?,
@@ -276,6 +284,14 @@ impl VllmAdapter {
                 true,
                 "cuda-graph-cache",
                 "decode_attention",
+                RegionCacheSharing::NamespaceLocal,
+                "exact_runtime_topology",
+                "rank_local",
+                vec![
+                    "decode_attention warmup proof present".to_owned(),
+                    "cuda-graph capture artifact recorded".to_owned(),
+                    "topology-scoped capture legality verified".to_owned(),
+                ],
                 "vllm/vllm/v1/attention/backends/gdn_attn.py",
                 &["self.decode_cudagraph_max_bs", "self.use_full_cuda_graph"],
             )?,
@@ -298,6 +314,14 @@ impl VllmAdapter {
                 false,
                 "compile-cache",
                 "prefill_attention",
+                RegionCacheSharing::ContentAddressed,
+                "gpu_architecture_family",
+                "cross_rank_and_cross_process",
+                vec![
+                    "prefill_attention warmup proof present".to_owned(),
+                    "prefill metadata kernels materialized on native vLLM seam".to_owned(),
+                    "shape-envelope bounded prefill specialization verified".to_owned(),
+                ],
                 "vllm/vllm/model_executor/warmup/sparse_mla_triton_warmup.py",
                 &[
                     "_warm_sparse_swa_prefill_metadata_kernel",
@@ -326,6 +350,14 @@ impl VllmAdapter {
                 true,
                 "flashinfer-autotune-cache",
                 "kv_cache_update",
+                RegionCacheSharing::ContentAddressed,
+                "gpu_architecture_family",
+                "shared_topology",
+                vec![
+                    "kv_cache_update warmup proof present".to_owned(),
+                    "flashinfer autotune materialization recorded".to_owned(),
+                    "mixed prefill/decode boundary coverage verified".to_owned(),
+                ],
                 "vllm/vllm/model_executor/warmup/flashinfer_sparse_mla_warmup.py",
                 &[
                     "Warm DSv4 sparse-MLA mixed prefill+decode attention",
@@ -351,6 +383,15 @@ impl VllmAdapter {
                 true,
                 "compile-cache",
                 "moe_specialty_path",
+                RegionCacheSharing::ContentAddressed,
+                "exact_runtime_topology",
+                "shared_topology",
+                vec![
+                    "moe_specialty_path warmup proof present".to_owned(),
+                    "fallback namespace widening audited".to_owned(),
+                    "topology-sensitive MoE closure verified without residual compile drift"
+                        .to_owned(),
+                ],
                 "vllm/vllm/env_override.py",
                 &["deep MoE/TP graphs", "_VLLM_FALLBACK_NAMESPACE_PREFIXES"],
             )?,
@@ -630,6 +671,10 @@ impl VllmAdapter {
         topology_sensitive: bool,
         cache_namespace: &str,
         warmup_scope: &str,
+        cache_sharing: RegionCacheSharing,
+        portability_scope: &str,
+        topology_scope: &str,
+        closure_verification_criteria: Vec<String>,
         file: &'static str,
         anchor_patterns: &[&'static str],
     ) -> AdapterResult<AdapterCompileRegion> {
@@ -649,6 +694,10 @@ impl VllmAdapter {
             topology_sensitive,
             cache_namespace: cache_namespace.to_owned(),
             warmup_scope: warmup_scope.to_owned(),
+            cache_sharing,
+            portability_scope: portability_scope.to_owned(),
+            topology_scope: topology_scope.to_owned(),
+            closure_verification_criteria,
             evidence: self.evidence(file, rationale, anchor_patterns)?,
         })
     }

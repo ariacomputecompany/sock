@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ArtifactAcquisition, ArtifactClass, BackendFamily, CanonicalHash, FanoutStrategy,
-    MaterializationNodeKind, QueueDiscipline, QueueKind, RankDisposition, SchemaVersion,
-    SourceAnchor, ValidationStatus,
+    MaterializationNodeKind, QueueDiscipline, QueueKind, RankDisposition, RegionCacheSharing,
+    SchemaVersion, SourceAnchor, ValidationStatus,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,6 +20,9 @@ pub struct MaterializedArtifactRecord {
     pub scope: String,
     pub class: ArtifactClass,
     pub backend: BackendFamily,
+    pub region_stable_identity: Option<CanonicalHash>,
+    pub region_equivalence_identity: Option<CanonicalHash>,
+    pub cache_sharing: Option<RegionCacheSharing>,
     pub cache_namespace: String,
     pub invalidation_domain: String,
     pub acquisition: ArtifactAcquisition,

@@ -6,13 +6,31 @@ use crate::{
 
 #[must_use]
 pub fn render_plan_summary(plan: &ResolvedBuildPlan) -> String {
+    let region_summary = if plan.compile_regions.is_empty() {
+        "none".to_owned()
+    } else {
+        plan.compile_regions
+            .iter()
+            .map(|region| {
+                format!(
+                    "{}:{}:{}:{:?}",
+                    region.name,
+                    region.cache_namespace,
+                    region.equivalence_identity,
+                    region.cache_sharing
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("|")
+    };
     format!(
-        "plan {}\nengine {}\nmodel {}@{}\nbackend {:?}\n",
+        "plan {}\nengine {}\nmodel {}@{}\nbackend {:?}\nregions {}\n",
         plan.structural_identity.plan_identity,
         plan.normalized_request.engine.as_str(),
         plan.normalized_request.model.repository,
         plan.normalized_request.model.revision,
-        plan.selected_backends.primary.family
+        plan.selected_backends.primary.family,
+        region_summary
     )
 }
 

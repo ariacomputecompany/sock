@@ -81,6 +81,13 @@ pub enum AdapterBackendBinding {
     Fixed(BackendFamily),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegionCacheSharing {
+    NamespaceLocal,
+    ContentAddressed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterCompileRegion {
     pub name: String,
@@ -98,6 +105,10 @@ pub struct AdapterCompileRegion {
     pub topology_sensitive: bool,
     pub cache_namespace: String,
     pub warmup_scope: String,
+    pub cache_sharing: RegionCacheSharing,
+    pub portability_scope: String,
+    pub topology_scope: String,
+    pub closure_verification_criteria: Vec<String>,
     pub evidence: SourceEvidence,
 }
 

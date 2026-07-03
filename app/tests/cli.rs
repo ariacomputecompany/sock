@@ -99,6 +99,26 @@ fn prepare_prefill_path_uses_common_intent_contract() {
         .expect("compile regions array");
     assert_eq!(compile_regions.len(), 1);
     assert_eq!(compile_regions[0]["name"], "prefill_attention");
+    assert_eq!(compile_regions[0]["cache_namespace"], "compile-cache");
+    assert_eq!(compile_regions[0]["cache_sharing"], "content_addressed");
+    assert_eq!(
+        compile_regions[0]["portability_scope"],
+        "gpu_architecture_family"
+    );
+    assert_eq!(
+        compile_regions[0]["topology_scope"],
+        "cross_rank_and_cross_process"
+    );
+    assert_eq!(compile_regions[0]["warmup_scope"], "prefill_attention");
+    assert!(compile_regions[0]["stable_identity"].is_string());
+    assert!(compile_regions[0]["equivalence_identity"].is_string());
+    assert!(
+        compile_regions[0]["closure_verification_criteria"]
+            .as_array()
+            .expect("closure verification criteria")
+            .len()
+            >= 2
+    );
 }
 
 #[test]
@@ -686,6 +706,11 @@ fn scoped_prefill_build_emits_minimal_closure() {
             .iter()
             .all(|artifact| artifact["scope"] == "prefill_attention")
     );
+    assert!(materialized_artifacts.iter().all(|artifact| {
+        artifact["cache_sharing"] == "content_addressed"
+            && artifact["region_stable_identity"].is_string()
+            && artifact["region_equivalence_identity"].is_string()
+    }));
     assert!(materialized_artifacts.iter().all(|artifact| {
         let relative_path = artifact["relative_path"].as_str().expect("relative path");
         dir.path().join(relative_path).exists()

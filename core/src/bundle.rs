@@ -490,6 +490,22 @@ mod tests {
                 rationale: "prefill region".to_owned(),
                 invalidation_domain: "prefill_attention".to_owned(),
                 shape_planes: vec![CoveragePlane::Correctness, CoveragePlane::Performance],
+                stable_identity: canonical_hash(&"fixture-prefill-stable")
+                    .expect("fixture prefill stable identity"),
+                equivalence_identity: canonical_hash(&"fixture-prefill-equivalence")
+                    .expect("fixture prefill equivalence identity"),
+                cache_namespace: "compile-cache".to_owned(),
+                cache_sharing: crate::RegionCacheSharing::ContentAddressed,
+                portability: ArtifactPortability::GpuArchitectureFamilyPortable,
+                rank_disposition: RankDisposition::Shared,
+                topology_sensitive: false,
+                portability_scope: "gpu_architecture_family".to_owned(),
+                topology_scope: "cross_rank_and_cross_process".to_owned(),
+                warmup_scope: "prefill_attention".to_owned(),
+                closure_verification_criteria: vec![
+                    "prefill warmup proof present".to_owned(),
+                    "shape-envelope bounded specialization verified".to_owned(),
+                ],
                 evidence: SourceEvidence {
                     summary: "fixture".to_owned(),
                     anchors: Vec::new(),
@@ -508,6 +524,22 @@ mod tests {
                     CoveragePlane::Correctness,
                     CoveragePlane::Performance,
                     CoveragePlane::CudaGraph,
+                ],
+                stable_identity: canonical_hash(&"fixture-decode-stable")
+                    .expect("fixture decode stable identity"),
+                equivalence_identity: canonical_hash(&"fixture-decode-equivalence")
+                    .expect("fixture decode equivalence identity"),
+                cache_namespace: "cuda-graph-cache".to_owned(),
+                cache_sharing: crate::RegionCacheSharing::NamespaceLocal,
+                portability: ArtifactPortability::TopologyScoped,
+                rank_disposition: RankDisposition::RankLocal,
+                topology_sensitive: true,
+                portability_scope: "exact_runtime_topology".to_owned(),
+                topology_scope: "rank_local".to_owned(),
+                warmup_scope: "decode_attention".to_owned(),
+                closure_verification_criteria: vec![
+                    "decode warmup proof present".to_owned(),
+                    "cuda graph capture verified".to_owned(),
                 ],
                 evidence: SourceEvidence {
                     summary: "fixture".to_owned(),
@@ -996,6 +1028,15 @@ mod tests {
                 scope: "prefill_attention".to_owned(),
                 class: ArtifactClass::CompiledGraph,
                 backend: BackendFamily::FlashInfer,
+                region_stable_identity: Some(
+                    canonical_hash(&"fixture-prefill-stable")
+                        .expect("fixture prefill stable identity"),
+                ),
+                region_equivalence_identity: Some(
+                    canonical_hash(&"fixture-prefill-equivalence")
+                        .expect("fixture prefill equivalence identity"),
+                ),
+                cache_sharing: Some(crate::RegionCacheSharing::ContentAddressed),
                 cache_namespace: "compile-cache".to_owned(),
                 invalidation_domain: "prefill_attention".to_owned(),
                 acquisition: ArtifactAcquisition::VendorPrebuilt,

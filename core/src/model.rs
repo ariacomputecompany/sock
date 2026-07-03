@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::CanonicalHash;
-use crate::adapter::{CompileRegionKind, SourceEvidence};
+use crate::adapter::{CompileRegionKind, RegionCacheSharing, SourceEvidence};
 use crate::backend::{
     ArtifactAdmissibilityProof, BackendAdmissibilityProof, BackendCapabilityRegistry,
     BackendDecisionPlan,
@@ -262,6 +262,17 @@ pub struct CompileRegion {
     pub rationale: String,
     pub invalidation_domain: String,
     pub shape_planes: Vec<CoveragePlane>,
+    pub stable_identity: CanonicalHash,
+    pub equivalence_identity: CanonicalHash,
+    pub cache_namespace: String,
+    pub cache_sharing: RegionCacheSharing,
+    pub portability: ArtifactPortability,
+    pub rank_disposition: RankDisposition,
+    pub topology_sensitive: bool,
+    pub portability_scope: String,
+    pub topology_scope: String,
+    pub warmup_scope: String,
+    pub closure_verification_criteria: Vec<String>,
     pub evidence: SourceEvidence,
 }
 
