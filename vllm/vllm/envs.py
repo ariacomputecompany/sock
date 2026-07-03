@@ -388,6 +388,9 @@ def env_with_choices(
                 f"Valid options: {actual_choices}."
             )
 
+        if not case_sensitive:
+            return actual_choices[check_choices.index(check_value)]
+
         return value
 
     return _get_validated_env
@@ -427,6 +430,7 @@ def env_list_with_choices(
 
         # Resolve choices if it's a callable (for lazy loading)
         actual_choices = choices() if callable(choices) else choices
+        normalized_values: list[str] = []
 
         # Validate each value
         for val in values:
@@ -443,7 +447,12 @@ def env_list_with_choices(
                     f"Valid options: {actual_choices}."
                 )
 
-        return values
+            if not case_sensitive:
+                normalized_values.append(actual_choices[check_choices.index(check_value)])
+            else:
+                normalized_values.append(val)
+
+        return normalized_values
 
     return _get_validated_env_list
 

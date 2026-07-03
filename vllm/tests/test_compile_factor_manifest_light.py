@@ -3,9 +3,11 @@
 
 import importlib.util
 import json
+import os
 import sys
 import types
 from pathlib import Path
+from unittest.mock import patch
 
 
 def _normalize_value(value):
@@ -146,3 +148,46 @@ def test_compile_factor_policy_detects_unexpected_compile_affecting_set() -> Non
         assert validation["reasons"] == ["compile_affecting_env_var_set_changed"]
     finally:
         envs._EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST = original_digest
+
+
+def test_case_insensitive_choice_envs_canonicalize_for_identity() -> None:
+    envs = _load_envs_module()
+
+    with patch.dict(
+        os.environ,
+        {
+            "VLLM_FLOAT32_MATMUL_PRECISION": "HIGHEST",
+            "VLLM_BUILD_PROFILE": "MINIMAL-DEV",
+        },
+        clear=False,
+    ):
+        factors = envs.compile_factors()
+        manifest = envs.compile_factor_manifest()
+        build_profile = envs.environment_variables["VLLM_BUILD_PROFILE"]()
+
+    assert factors["VLLM_FLOAT32_MATMUL_PRECISION"] == "highest"
+    assert manifest["categories"]["VLLM_BUILD_PROFILE"] == "host_only"
+    assert "VLLM_BUILD_PROFILE" not in factors
+    assert build_profile == "minimal-dev"
+
+
+def test_case_insensitive_choice_helpers_return_canonical_spelling() -> None:
+    envs = _load_envs_module()
+
+    with patch.dict(os.environ, {"TEST_ENV": "OPTION1"}, clear=False):
+        env_func = envs.env_with_choices(
+            "TEST_ENV", "default", ["option1", "option2"], case_sensitive=False
+        )
+        assert env_func() == "option1"
+
+    with patch.dict(os.environ, {"TEST_ENV": "OPTION1,option2"}, clear=False):
+        env_list_func = envs.env_list_with_choices(
+            "TEST_ENV", [], ["option1", "option2"], case_sensitive=False
+        )
+        assert env_list_func() == ["option1", "option2"]
+
+    with patch.dict(os.environ, {"TEST_ENV": "OPTION1,option2"}, clear=False):
+        env_set_func = envs.env_set_with_choices(
+            "TEST_ENV", [], ["option1", "option2"], case_sensitive=False
+        )
+        assert env_set_func() == {"option1", "option2"}
