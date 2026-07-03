@@ -80,6 +80,27 @@ def test_compile_factor_manifest_lightweight() -> None:
         == "runtime_non_compile"
     )
     assert manifest["categories"]["VLLM_MQ_MAX_CHUNK_BYTES_MB"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_NIXL_SIDE_CHANNEL_PORT"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MOONCAKE_BOOTSTRAP_PORT"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MOONCAKE_STORE_TIER_LOG"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MOONCAKE_LOAD_RECV_THREADS"] == "runtime_non_compile"
+    assert (
+        manifest["categories"]["VLLM_MOONCAKE_DISK_STAGING_USABLE_RATIO"]
+        == "runtime_non_compile"
+    )
+    assert manifest["categories"]["MOONCAKE_PREFERRED_SEGMENT"] == "runtime_non_compile"
+    assert (
+        manifest["categories"]["MOONCAKE_REQUESTER_LOCAL_HOSTNAME"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_MOONCAKE_ABORT_REQUEST_TIMEOUT"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_OBJECT_STORAGE_SHM_BUFFER_NAME"]
+        == "runtime_non_compile"
+    )
     assert (
         manifest["categories"]["VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE"]
         == "runtime_non_compile"
@@ -126,6 +147,15 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_ALLOW_INSECURE_SERIALIZATION" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_REQUEST_ID_RANDOMIZATION" in manifest["ignored_keys"]
     assert "VLLM_MQ_MAX_CHUNK_BYTES_MB" in manifest["ignored_keys"]
+    assert "VLLM_NIXL_SIDE_CHANNEL_PORT" in manifest["ignored_keys"]
+    assert "VLLM_MOONCAKE_BOOTSTRAP_PORT" in manifest["ignored_keys"]
+    assert "VLLM_MOONCAKE_STORE_TIER_LOG" in manifest["ignored_keys"]
+    assert "VLLM_MOONCAKE_LOAD_RECV_THREADS" in manifest["ignored_keys"]
+    assert "VLLM_MOONCAKE_DISK_STAGING_USABLE_RATIO" in manifest["ignored_keys"]
+    assert "MOONCAKE_PREFERRED_SEGMENT" in manifest["ignored_keys"]
+    assert "MOONCAKE_REQUESTER_LOCAL_HOSTNAME" in manifest["ignored_keys"]
+    assert "VLLM_MOONCAKE_ABORT_REQUEST_TIMEOUT" in manifest["ignored_keys"]
+    assert "VLLM_OBJECT_STORAGE_SHM_BUFFER_NAME" in manifest["ignored_keys"]
     assert "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE" in manifest["ignored_keys"]
     assert "VLLM_ENABLE_CUDAGRAPH_GC" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_SHARED_EXPERTS_STREAM" in manifest["ignored_keys"]
@@ -247,6 +277,42 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert (
         "VLLM_MQ_MAX_CHUNK_BYTES_MB"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_NIXL_SIDE_CHANNEL_PORT"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MOONCAKE_BOOTSTRAP_PORT"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MOONCAKE_STORE_TIER_LOG"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MOONCAKE_LOAD_RECV_THREADS"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MOONCAKE_DISK_STAGING_USABLE_RATIO"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "MOONCAKE_PREFERRED_SEGMENT"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "MOONCAKE_REQUESTER_LOCAL_HOSTNAME"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MOONCAKE_ABORT_REQUEST_TIMEOUT"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_OBJECT_STORAGE_SHM_BUFFER_NAME"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
     )
     assert (
