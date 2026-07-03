@@ -3,9 +3,10 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
+use crate::CanonicalHash;
 use crate::adapter::{CompileRegionKind, SourceEvidence};
-use crate::canonical::{CanonicalError, CanonicalHash, canonical_hash};
 use crate::identity::StructuralIdentity;
+use crate::request::{GuaranteeTarget, NormalizedRequest};
 use crate::rewrite::PassTrace;
 use crate::verification::{GuaranteeEvidence, ValidationIssue, VerificationReport};
 
@@ -157,30 +158,6 @@ pub enum GuaranteeLevel {
     StrictNoSurpriseJit,
 }
 
-impl GuaranteeLevel {
-    #[must_use]
-    pub fn rank(self) -> u8 {
-        match self {
-            Self::Advisory => 0,
-            Self::WarmupBounded => 1,
-            Self::ShapeBoundedAot => 2,
-            Self::StrictNoSurpriseJit => 3,
-        }
-    }
-}
-
-impl PartialOrd for GuaranteeLevel {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for GuaranteeLevel {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.rank().cmp(&other.rank())
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum FailureMode {
     FailClosed,
@@ -206,205 +183,28 @@ pub enum ValidationStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ConfigLayer {
-    pub name: String,
-    pub precedence: u8,
-    pub entries: Vec<ConfigEntry>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ConfigEntry {
-    pub key: String,
-    pub value: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ModelRef {
-    pub repository: String,
-    pub revision: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct EngineSource {
-    pub kind: String,
-    pub revision: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct RequestedEnvironment {
-    pub operating_system: OperatingSystem,
-    pub accelerator_vendor: AcceleratorVendor,
-    pub gpu_arches: Vec<String>,
-    pub cuda_version: String,
-    pub driver_version: String,
-    pub python_abi: String,
-    pub libc_abi: String,
-}
-
-impl RequestedEnvironment {
-    pub fn canonicalize(&mut self) {
-        self.gpu_arches.sort();
-        self.gpu_arches.dedup();
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ExecutionTopology {
-    pub tensor_parallelism: u16,
-    pub pipeline_parallelism: u16,
-    pub replicas: u16,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct GuaranteeTarget {
-    pub level: GuaranteeLevel,
-    pub failure_mode: FailureMode,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BackendPolicy {
-    pub preferred_families: Vec<BackendFamily>,
-    pub require_prebuilt_artifacts: bool,
-    pub allow_runtime_jit: bool,
-    pub correctness_target: GuaranteeTarget,
-    pub performance_target: GuaranteeTarget,
-}
-
-impl BackendPolicy {
-    pub fn canonicalize(&mut self) {
-        self.preferred_families.sort();
-        self.preferred_families.dedup();
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ShapeRange {
-    pub min_batch_size: u32,
-    pub max_batch_size: u32,
-    pub min_sequence_length: u32,
-    pub max_sequence_length: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct ShapePoint {
-    pub batch_size: u32,
-    pub sequence_length: u32,
-    pub plane: CoveragePlane,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ShapePolicy {
-    pub correctness_range: ShapeRange,
-    pub performance_range: ShapeRange,
-    pub hot_shapes: Vec<ShapePoint>,
-    pub cuda_graph_shapes: Vec<ShapePoint>,
-}
-
-impl ShapePolicy {
-    pub fn canonicalize(&mut self) {
-        self.hot_shapes.sort();
-        self.hot_shapes.dedup();
-        self.cuda_graph_shapes.sort();
-        self.cuda_graph_shapes.dedup();
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct CachePolicy {
-    pub namespace: String,
-    pub allow_cross_machine_reuse: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct WarmupPolicy {
-    pub max_warmup_steps: u32,
-    pub verify_cuda_graph_capture: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RawRequest {
-    pub engine: TargetEngine,
-    pub model: ModelRef,
-    pub engine_source: EngineSource,
-    pub environment: RequestedEnvironment,
-    pub topology: ExecutionTopology,
-    pub backend_policy: BackendPolicy,
-    pub shape_policy: ShapePolicy,
-    pub cache_policy: CachePolicy,
-    pub warmup_policy: WarmupPolicy,
-    pub layered_config: Vec<ConfigLayer>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NormalizedRequest {
-    pub engine: TargetEngine,
-    pub model: ModelRef,
-    pub engine_source: EngineSource,
-    pub environment: RequestedEnvironment,
-    pub topology: ExecutionTopology,
-    pub backend_policy: BackendPolicy,
-    pub shape_policy: ShapePolicy,
-    pub cache_policy: CachePolicy,
-    pub warmup_policy: WarmupPolicy,
-    pub layered_config: Vec<ConfigLayer>,
-    pub identity: CanonicalHash,
-}
-
-impl RawRequest {
-    pub fn normalize(mut self) -> Result<NormalizedRequest, CanonicalError> {
-        self.environment.canonicalize();
-        self.backend_policy.canonicalize();
-        self.shape_policy.canonicalize();
-        self.layered_config
-            .sort_by_key(|layer| (layer.precedence, layer.name.clone()));
-        for layer in &mut self.layered_config {
-            layer.entries.sort();
-            layer.entries.dedup();
+impl GuaranteeLevel {
+    #[must_use]
+    pub fn rank(self) -> u8 {
+        match self {
+            Self::Advisory => 0,
+            Self::WarmupBounded => 1,
+            Self::ShapeBoundedAot => 2,
+            Self::StrictNoSurpriseJit => 3,
         }
-
-        let body = NormalizedRequestBody {
-            engine: self.engine,
-            model: self.model,
-            engine_source: self.engine_source,
-            environment: self.environment,
-            topology: self.topology,
-            backend_policy: self.backend_policy,
-            shape_policy: self.shape_policy,
-            cache_policy: self.cache_policy,
-            warmup_policy: self.warmup_policy,
-            layered_config: self.layered_config,
-        };
-        let identity = canonical_hash(&body)?;
-
-        Ok(NormalizedRequest {
-            engine: body.engine,
-            model: body.model,
-            engine_source: body.engine_source,
-            environment: body.environment,
-            topology: body.topology,
-            backend_policy: body.backend_policy,
-            shape_policy: body.shape_policy,
-            cache_policy: body.cache_policy,
-            warmup_policy: body.warmup_policy,
-            layered_config: body.layered_config,
-            identity,
-        })
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct NormalizedRequestBody {
-    engine: TargetEngine,
-    model: ModelRef,
-    engine_source: EngineSource,
-    environment: RequestedEnvironment,
-    topology: ExecutionTopology,
-    backend_policy: BackendPolicy,
-    shape_policy: ShapePolicy,
-    cache_policy: CachePolicy,
-    warmup_policy: WarmupPolicy,
-    layered_config: Vec<ConfigLayer>,
+impl PartialOrd for GuaranteeLevel {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for GuaranteeLevel {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.rank().cmp(&other.rank())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -446,8 +246,8 @@ pub struct ShapeEnvelopeNode {
     pub name: String,
     pub plane: CoveragePlane,
     pub intent: RangeIntent,
-    pub range: ShapeRange,
-    pub exact_shape: Option<ShapePoint>,
+    pub range: crate::ShapeRange,
+    pub exact_shape: Option<crate::ShapePoint>,
     pub required_backends: Vec<BackendFamily>,
 }
 
@@ -713,103 +513,102 @@ impl ResolvedBuildPlan {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{canonical_json, parse_canonical_json};
+    use crate::{RawRequest, canonical_json, parse_canonical_json};
 
     fn base_request() -> RawRequest {
         RawRequest {
-            engine: TargetEngine::Vllm,
-            model: ModelRef {
+            engine: crate::TargetEngine::Vllm,
+            model: crate::ModelRef {
                 repository: "meta-llama/Llama-3.1-8B-Instruct".to_owned(),
                 revision: "main".to_owned(),
             },
-            engine_source: EngineSource {
+            engine_source: crate::EngineSource {
                 kind: "vendored".to_owned(),
                 revision: "deadbeef".to_owned(),
             },
-            environment: RequestedEnvironment {
-                operating_system: OperatingSystem::Linux,
-                accelerator_vendor: AcceleratorVendor::Nvidia,
+            environment: crate::RequestedEnvironment {
+                operating_system: crate::OperatingSystem::Linux,
+                accelerator_vendor: crate::AcceleratorVendor::Nvidia,
                 gpu_arches: vec!["sm90".to_owned(), "sm80".to_owned()],
                 cuda_version: "12.4".to_owned(),
                 driver_version: "550.54".to_owned(),
                 python_abi: "cp311".to_owned(),
                 libc_abi: "glibc-2.35".to_owned(),
             },
-            topology: ExecutionTopology {
+            topology: crate::ExecutionTopology {
                 tensor_parallelism: 2,
                 pipeline_parallelism: 1,
                 replicas: 1,
             },
-            backend_policy: BackendPolicy {
+            backend_policy: crate::BackendPolicy {
                 preferred_families: vec![
-                    BackendFamily::Triton,
-                    BackendFamily::FlashInfer,
-                    BackendFamily::Triton,
+                    crate::BackendFamily::Triton,
+                    crate::BackendFamily::FlashInfer,
+                    crate::BackendFamily::Triton,
                 ],
                 require_prebuilt_artifacts: true,
                 allow_runtime_jit: false,
-                correctness_target: GuaranteeTarget {
-                    level: GuaranteeLevel::ShapeBoundedAot,
-                    failure_mode: FailureMode::FailClosed,
+                correctness_target: crate::GuaranteeTarget {
+                    level: crate::GuaranteeLevel::ShapeBoundedAot,
+                    failure_mode: crate::FailureMode::FailClosed,
                 },
-                performance_target: GuaranteeTarget {
-                    level: GuaranteeLevel::WarmupBounded,
-                    failure_mode: FailureMode::FailOpen,
+                performance_target: crate::GuaranteeTarget {
+                    level: crate::GuaranteeLevel::WarmupBounded,
+                    failure_mode: crate::FailureMode::FailOpen,
                 },
             },
-            shape_policy: ShapePolicy {
-                correctness_range: ShapeRange {
+            shape_policy: crate::ShapePolicy {
+                correctness_range: crate::ShapeRange {
                     min_batch_size: 1,
                     max_batch_size: 8,
                     min_sequence_length: 1,
                     max_sequence_length: 4096,
                 },
-                performance_range: ShapeRange {
+                performance_range: crate::ShapeRange {
                     min_batch_size: 1,
                     max_batch_size: 4,
                     min_sequence_length: 1,
                     max_sequence_length: 2048,
                 },
                 hot_shapes: vec![
-                    ShapePoint {
+                    crate::ShapePoint {
                         batch_size: 1,
                         sequence_length: 128,
-                        plane: CoveragePlane::Performance,
+                        plane: crate::CoveragePlane::Performance,
                     },
-                    ShapePoint {
+                    crate::ShapePoint {
                         batch_size: 4,
                         sequence_length: 2048,
-                        plane: CoveragePlane::Performance,
+                        plane: crate::CoveragePlane::Performance,
                     },
                 ],
-                cuda_graph_shapes: vec![ShapePoint {
+                cuda_graph_shapes: vec![crate::ShapePoint {
                     batch_size: 1,
                     sequence_length: 128,
-                    plane: CoveragePlane::CudaGraph,
+                    plane: crate::CoveragePlane::CudaGraph,
                 }],
             },
-            cache_policy: CachePolicy {
+            cache_policy: crate::CachePolicy {
                 namespace: "prod".to_owned(),
                 allow_cross_machine_reuse: false,
             },
-            warmup_policy: WarmupPolicy {
+            warmup_policy: crate::WarmupPolicy {
                 max_warmup_steps: 6,
                 verify_cuda_graph_capture: true,
             },
             layered_config: vec![
-                ConfigLayer {
+                crate::ConfigLayer {
                     name: "env".to_owned(),
                     precedence: 0,
-                    entries: vec![ConfigEntry {
+                    entries: vec![crate::ConfigEntry {
                         key: "VLLM_USE_V1".to_owned(),
                         value: "1".to_owned(),
                     }],
                 },
-                ConfigLayer {
+                crate::ConfigLayer {
                     name: "project".to_owned(),
                     precedence: 1,
-                    entries: vec![ConfigEntry {
+                    entries: vec![crate::ConfigEntry {
                         key: "tensor_parallel_size".to_owned(),
                         value: "2".to_owned(),
                     }],
@@ -844,7 +643,7 @@ mod tests {
     fn canonical_round_trip_is_stable() {
         let request = base_request().normalize().expect("normalized");
         let rendered = canonical_json(&request).expect("json");
-        let reparsed: NormalizedRequest = parse_canonical_json(&rendered).expect("parse");
+        let reparsed: crate::NormalizedRequest = parse_canonical_json(&rendered).expect("parse");
 
         assert_eq!(request, reparsed);
     }
