@@ -7,7 +7,7 @@
       "cmd": "sh",
       "args": [
         "-c",
-        "set -eu\npython3 -m py_compile vllm/setup.py vllm/vllm/build_profiles.py vllm/vllm/envs.py vllm/vllm/compilation/caching.py\ncd vllm\n.venv-codex/bin/python -m pytest --noconftest tests/test_build_profiles.py tests/test_compile_factor_manifest_light.py -q >/tmp/vllm-build-safe-pytest.txt\ngrep -q '5 passed' /tmp/vllm-build-safe-pytest.txt\ncd ..\ngrep -q 'VLLM_BUILD_PROFILE' vllm/setup.py\ngrep -q 'option(VLLM_BUILD_TRITON_KERNELS' vllm/CMakeLists.txt\ngrep -q 'if(VLLM_BUILD_FLASH_ATTN)' vllm/CMakeLists.txt\nprintf 'vllm-build-safe\\n'"
+        "set -eu\npython3 -m py_compile vllm/setup.py vllm/vllm/build_profiles.py vllm/vllm/envs.py vllm/vllm/compilation/caching.py\ncd vllm\n.venv-codex/bin/python -m pytest --noconftest tests/test_build_profiles.py tests/test_compile_factor_manifest_light.py tests/test_aot_artifact_manifest_light.py -q >/tmp/vllm-build-safe-pytest.txt\ngrep -q '7 passed' /tmp/vllm-build-safe-pytest.txt\ncd ..\ngrep -q 'VLLM_BUILD_PROFILE' vllm/setup.py\ngrep -q 'option(VLLM_BUILD_TRITON_KERNELS' vllm/CMakeLists.txt\ngrep -q 'if(VLLM_BUILD_FLASH_ATTN)' vllm/CMakeLists.txt\ngrep -q 'standalone_compile_artifact_store_identity' vllm/vllm/compilation/caching.py\ngrep -q 'def manifest_summary' vllm/vllm/compilation/caching.py\nprintf 'vllm-build-safe\\n'"
       ],
       "exit_code": 0,
       "stdout": "vllm-build-safe\n",
@@ -19,7 +19,7 @@
       "cmd": "sh",
       "args": [
         "-c",
-        "set -eu\npython3 -m py_compile vllm/setup.py vllm/vllm/build_profiles.py vllm/vllm/envs.py vllm/vllm/compilation/caching.py\ncd vllm\n.venv-codex/bin/python -m pytest --noconftest tests/test_build_profiles.py tests/test_compile_factor_manifest_light.py -q >/tmp/vllm-build-safe-pytest.txt\ngrep -q '5 passed' /tmp/vllm-build-safe-pytest.txt\ncd ..\ngrep -q 'VLLM_BUILD_PROFILE' vllm/setup.py\ngrep -q 'option(VLLM_BUILD_TRITON_KERNELS' vllm/CMakeLists.txt\ngrep -q 'if(VLLM_BUILD_FLASH_ATTN)' vllm/CMakeLists.txt\nprintf 'vllm-build-safe\\n'"
+        "set -eu\npython3 -m py_compile vllm/setup.py vllm/vllm/build_profiles.py vllm/vllm/envs.py vllm/vllm/compilation/caching.py\ncd vllm\n.venv-codex/bin/python -m pytest --noconftest tests/test_build_profiles.py tests/test_compile_factor_manifest_light.py tests/test_aot_artifact_manifest_light.py -q >/tmp/vllm-build-safe-pytest.txt\ngrep -q '7 passed' /tmp/vllm-build-safe-pytest.txt\ncd ..\ngrep -q 'VLLM_BUILD_PROFILE' vllm/setup.py\ngrep -q 'option(VLLM_BUILD_TRITON_KERNELS' vllm/CMakeLists.txt\ngrep -q 'if(VLLM_BUILD_FLASH_ATTN)' vllm/CMakeLists.txt\ngrep -q 'standalone_compile_artifact_store_identity' vllm/vllm/compilation/caching.py\ngrep -q 'def manifest_summary' vllm/vllm/compilation/caching.py\nprintf 'vllm-build-safe\\n'"
       ],
       "expect_exit": 0,
       "expect_stdout": "vllm-build-safe\n",

@@ -402,9 +402,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 ## 13. AOT Compile Artifact Improvements
 
-- [ ] Improve `vllm/vllm/compilation/caching.py` artifact structure.
-- [ ] Keep content-addressed deduplication, but expose it through an explicit manifest.
-- [ ] Split artifact metadata from artifact payload bytes.
 - [ ] Store explicit versioning and compatibility metadata.
 - [ ] Avoid opaque pickled state as the sole long-term artifact format where possible.
 - [ ] Track:
@@ -426,7 +423,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 - [ ] Track deserialization wall time separately from compile time and cache lookup time.
 - [ ] Measure duplicate-load cost across ranks and processes, not just duplicate artifact bytes on disk.
 - [ ] Distinguish artifact-store identity from rank-local placement so one compiled payload can back multiple rank-local manifests.
-- [ ] Record why a cache entry was reused at the subgraph level, not just at the whole-run level.
 - [ ] Reduce reliance on runtime `exec` for stitching-graph execution code where a pre-emitted module, manifest-bound callable, or equivalent static representation would work.
 - [ ] Keep Python source generation and Python object rehydration off the common warm-start fast path wherever possible.
 - [ ] Treat the torch.compile cache as a graph-artifact store with explicit proof metadata, not just as a directory of reusable byproducts.

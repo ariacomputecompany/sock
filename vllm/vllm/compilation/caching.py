@@ -4,6 +4,7 @@
 import contextlib
 import hashlib
 import inspect
+import json
 import os
 import pickle
 from collections.abc import Callable, Sequence
@@ -57,10 +58,8 @@ class StandaloneCompiledArtifacts:
         self.loaded_submodule_store: dict[str, Any] = {}
 
     def insert(self, submod_name: str, shape: str, entry: bytes) -> None:
-        hasher = hashlib.sha256()
-        hasher.update(entry)
-        hex_digest = hasher.hexdigest()
-        self.submodule_bytes[f"{submod_name}_{shape}"] = hex_digest
+        hex_digest = artifact_bytes_hash(entry)
+        self.submodule_bytes[artifact_entry_key(submod_name, shape)] = hex_digest
         if hex_digest not in self.submodule_bytes_store:
             self.submodule_bytes_store[hex_digest] = entry
             compilation_counter.num_compiled_artifacts_saved += 1
@@ -89,7 +88,7 @@ class StandaloneCompiledArtifacts:
             shape,
         )
         return self.submodule_bytes_store[
-            self.submodule_bytes[f"{submod_name}_{shape}"]
+            self.submodule_bytes[artifact_entry_key(submod_name, shape)]
         ]
 
     def get_loaded(self, submod_name: str, shape: str) -> Any:
@@ -99,7 +98,7 @@ class StandaloneCompiledArtifacts:
             shape,
         )
         return self.loaded_submodule_store[
-            self.submodule_bytes[f"{submod_name}_{shape}"]
+            self.submodule_bytes[artifact_entry_key(submod_name, shape)]
         ]
 
     def size_bytes(self) -> int:
@@ -115,6 +114,60 @@ class StandaloneCompiledArtifacts:
         # get unique "{submod_name}" from "{submod_name}_{shape}", preserving order
         names = [cache_key.rsplit("_", 1)[0] for cache_key in self.submodule_bytes]
         return list(dict.fromkeys(names))
+
+    def manifest_summary(self) -> dict[str, object]:
+        hash_usage_counts: dict[str, int] = {}
+        for digest in self.submodule_bytes.values():
+            hash_usage_counts[digest] = hash_usage_counts.get(digest, 0) + 1
+
+        entries = []
+        for entry_key, digest in sorted(self.submodule_bytes.items()):
+            submod_name, shape = entry_key.rsplit("_", 1)
+            entry_bytes = self.submodule_bytes_store[digest]
+            entries.append(
+                {
+                    "submodule_name": submod_name,
+                    "shape": shape,
+                    "artifact_hash": digest,
+                    "artifact_bytes": len(entry_bytes),
+                    "deduped": hash_usage_counts[digest] > 1,
+                    "reuse_reason": (
+                        "content_addressed_dedup"
+                        if hash_usage_counts[digest] > 1
+                        else "unique_artifact"
+                    ),
+                }
+            )
+
+        stores = [
+            {
+                "artifact_hash": digest,
+                "artifact_bytes": len(entry_bytes),
+                "entry_count": hash_usage_counts[digest],
+            }
+            for digest, entry_bytes in sorted(self.submodule_bytes_store.items())
+        ]
+
+        return {
+            "schema_version": 1,
+            "entry_count": self.num_entries(),
+            "unique_artifact_count": self.num_artifacts(),
+            "total_bytes": self.size_bytes(),
+            "entries": entries,
+            "stores": stores,
+        }
+
+    def store_identity(self) -> str:
+        manifest = self.manifest_summary()
+        return safe_hash(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode(),
+            usedforsecurity=False,
+        ).hexdigest()
+
+    def render_manifest(self) -> str:
+        manifest = self.manifest_summary()
+        manifest["store_identity"] = self.store_identity()
+        return json.dumps(manifest, sort_keys=True, separators=(",", ":"))
 
     def load_all(self) -> None:
         import concurrent.futures
@@ -292,6 +345,12 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 returns_tuple_map,
             ) = compiled_fn.vllm_backend.collect_standalone_compile_artifacts()
             state["standalone_compile_artifacts"] = standalone_compile_artifacts
+            state["standalone_compile_artifact_manifest"] = (
+                standalone_compile_artifacts.manifest_summary()
+            )
+            state["standalone_compile_artifact_store_identity"] = (
+                standalone_compile_artifacts.store_identity()
+            )
             state["sym_shape_indices_map"] = sym_shape_indices_map
             state["returns_tuple_map"] = returns_tuple_map
         return pickle.dumps(state)
@@ -307,6 +366,12 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         state["example_inputs"] = GraphPickler.loads(state["example_inputs"], fake_mode)
 
         standalone_compile_artifacts = state.pop("standalone_compile_artifacts", None)
+        standalone_compile_artifact_manifest = state.pop(
+            "standalone_compile_artifact_manifest", None
+        )
+        standalone_compile_artifact_store_identity = state.pop(
+            "standalone_compile_artifact_store_identity", None
+        )
         sym_shape_indices_map = state.pop("sym_shape_indices_map", {})
         returns_tuple_map = state.pop("returns_tuple_map", {})
 
@@ -321,6 +386,15 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             submod_names = standalone_compile_artifacts.submodule_names()
             num_submods = len(submod_names)
             num_artifacts = standalone_compile_artifacts.num_artifacts()
+            if standalone_compile_artifact_manifest is not None:
+                logger.info(
+                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s",
+                    standalone_compile_artifact_manifest.get("entry_count", 0),
+                    standalone_compile_artifact_manifest.get(
+                        "unique_artifact_count", 0
+                    ),
+                    standalone_compile_artifact_store_identity or "<unknown>",
+                )
 
             with functorch_ctx:
                 fn = reconstruct_serializable_fn_from_mega_artifact(
@@ -579,6 +653,16 @@ def aot_compile_hash_factors(vllm_config: VllmConfig) -> list[str]:
         factors.extend(get_inductor_factors())
 
     return factors
+
+
+def artifact_entry_key(submod_name: str, shape: str) -> str:
+    return f"{submod_name}_{shape}"
+
+
+def artifact_bytes_hash(entry: bytes) -> str:
+    hasher = hashlib.sha256()
+    hasher.update(entry)
+    return hasher.hexdigest()
 
 
 def render_aot_compile_factor_manifest(vllm_config: VllmConfig) -> str:
