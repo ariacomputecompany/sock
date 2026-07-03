@@ -245,9 +245,9 @@ class StandaloneCompiledArtifacts:
             submod_name,
             shape,
         )
-        return self.loaded_submodule_store[
+        return self._load_digest(
             self.submodule_bytes[artifact_entry_key(submod_name, shape)]
-        ]
+        )
 
     def size_bytes(self) -> int:
         return sum(len(entry) for entry in self.submodule_bytes_store.values())
@@ -385,20 +385,126 @@ class StandaloneCompiledArtifacts:
     def _store_cache_identity(self) -> tuple[str, tuple[str, ...]]:
         return self.store_identity(), tuple(sorted(self.submodule_bytes_store))
 
-    def load_all(self) -> None:
-        import concurrent.futures
+    def _init_load_report(self, store_identity: str, target_artifact_count: int) -> None:
+        self._last_load_report = {
+            "schema_version": 1,
+            "load_path": "already_loaded",
+            "loaded_artifact_count": len(self.loaded_submodule_store),
+            "target_artifact_count": target_artifact_count,
+            "fresh_deserialize_count": 0,
+            "shared_reuse_count": 0,
+            "already_loaded_count": 0,
+            "deserialization_wall_time_ms": 0.0,
+            "store_identity": store_identity,
+        }
 
+    def _update_load_path(self) -> None:
+        assert self._last_load_report is not None
+        fresh_count = int(self._last_load_report["fresh_deserialize_count"])
+        shared_count = int(self._last_load_report["shared_reuse_count"])
+        already_loaded_count = int(self._last_load_report["already_loaded_count"])
+        active_paths = sum(
+            1
+            for count in (fresh_count, shared_count, already_loaded_count)
+            if count > 0
+        )
+        if active_paths > 1:
+            self._last_load_report["load_path"] = "mixed_materialization"
+        elif fresh_count > 0:
+            self._last_load_report["load_path"] = "fresh_deserialize"
+        elif shared_count > 0:
+            self._last_load_report["load_path"] = "shared_loaded_store"
+        else:
+            self._last_load_report["load_path"] = "already_loaded"
+
+    def _record_load_result(
+        self,
+        *,
+        store_identity: str,
+        source: Literal["already_loaded", "shared_loaded_store", "fresh_deserialize"],
+        target_artifact_count: int,
+        deserialization_elapsed_ms: float = 0.0,
+    ) -> None:
+        if self._last_load_report is None:
+            self._init_load_report(store_identity, target_artifact_count)
+        assert self._last_load_report is not None
+        report = self._last_load_report
+        report["loaded_artifact_count"] = len(self.loaded_submodule_store)
+        report["target_artifact_count"] = target_artifact_count
+        report["store_identity"] = store_identity
+        if source == "already_loaded":
+            report["already_loaded_count"] = int(report["already_loaded_count"]) + 1
+        elif source == "shared_loaded_store":
+            report["shared_reuse_count"] = int(report["shared_reuse_count"]) + 1
+        else:
+            report["fresh_deserialize_count"] = (
+                int(report["fresh_deserialize_count"]) + 1
+            )
+            report["deserialization_wall_time_ms"] = round(
+                float(report["deserialization_wall_time_ms"]) + deserialization_elapsed_ms,
+                6,
+            )
+        self._update_load_path()
+
+    def _load_digest(self, digest: str) -> Any:
+        store_identity, _ = self._store_cache_identity()
+        target_artifact_count = len(self.submodule_bytes_store)
+        if digest in self.loaded_submodule_store:
+            self._record_load_result(
+                store_identity=store_identity,
+                source="already_loaded",
+                target_artifact_count=target_artifact_count,
+            )
+            return self.loaded_submodule_store[digest]
+
+        shared_loaded_store = _SHARED_LOADED_ARTIFACT_STORES.get(store_identity)
+        if shared_loaded_store is not None and digest in shared_loaded_store:
+            self.loaded_submodule_store[digest] = shared_loaded_store[digest]
+            self._record_load_result(
+                store_identity=store_identity,
+                source="shared_loaded_store",
+                target_artifact_count=target_artifact_count,
+            )
+            return self.loaded_submodule_store[digest]
+
+        from torch._inductor.standalone_compile import AOTCompiledArtifact
+
+        start_time = time.perf_counter()
+        entry = pickle.loads(self.submodule_bytes_store[digest])
+        compilation_counter.num_compiled_artifacts_loaded += 1
+        loaded_artifact = AOTCompiledArtifact.deserialize(entry)
+        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+        self.loaded_submodule_store[digest] = loaded_artifact
+        _SHARED_LOADED_ARTIFACT_STORES.setdefault(store_identity, {})[
+            digest
+        ] = loaded_artifact
+        self._record_load_result(
+            store_identity=store_identity,
+            source="fresh_deserialize",
+            target_artifact_count=target_artifact_count,
+            deserialization_elapsed_ms=elapsed_ms,
+        )
+        return loaded_artifact
+
+    def build_lazy_loaded_artifact(self, digest: str) -> "LazyLoadedArtifact":
+        return LazyLoadedArtifact(self, digest)
+
+    def mark_deferred_materialization(self) -> None:
+        store_identity, _ = self._store_cache_identity()
+        self._init_load_report(
+            store_identity, target_artifact_count=len(self.submodule_bytes_store)
+        )
+        assert self._last_load_report is not None
+        self._last_load_report["load_path"] = "deferred_materialization"
+
+    def load_all(self) -> None:
         store_identity, store_keys = self._store_cache_identity()
 
         # check already loaded
         if len(self.loaded_submodule_store) == len(self.submodule_bytes_store):
-            self._last_load_report = {
-                "schema_version": 1,
-                "load_path": "already_loaded",
-                "loaded_artifact_count": len(self.loaded_submodule_store),
-                "deserialization_wall_time_ms": 0.0,
-                "store_identity": store_identity,
-            }
+            self._init_load_report(
+                store_identity, target_artifact_count=len(self.submodule_bytes_store)
+            )
             return
 
         shared_loaded_store = _SHARED_LOADED_ARTIFACT_STORES.get(store_identity)
@@ -412,38 +518,20 @@ class StandaloneCompiledArtifacts:
                     "schema_version": 1,
                     "load_path": "shared_loaded_store",
                     "loaded_artifact_count": len(self.loaded_submodule_store),
+                    "target_artifact_count": len(self.submodule_bytes_store),
+                    "fresh_deserialize_count": 0,
+                    "shared_reuse_count": len(self.loaded_submodule_store),
+                    "already_loaded_count": 0,
                     "deserialization_wall_time_ms": 0.0,
                     "store_identity": store_identity,
                 }
                 return
 
-        from torch._inductor.standalone_compile import AOTCompiledArtifact
-
-        def _load_entry(entry_bytes: bytes) -> AOTCompiledArtifact:
-            entry = pickle.loads(entry_bytes)
-            compilation_counter.num_compiled_artifacts_loaded += 1
-            return AOTCompiledArtifact.deserialize(entry)
-
-        start_time = time.perf_counter()
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            entries = list(self.submodule_bytes_store.values())
-            loaded_entries = list(executor.map(_load_entry, entries))
-        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-
-        for i, k in enumerate(self.submodule_bytes_store.keys()):
-            self.loaded_submodule_store[k] = loaded_entries[i]
-
-        _SHARED_LOADED_ARTIFACT_STORES[store_identity] = dict(
-            self.loaded_submodule_store
+        self._init_load_report(
+            store_identity, target_artifact_count=len(self.submodule_bytes_store)
         )
-
-        self._last_load_report = {
-            "schema_version": 1,
-            "load_path": "fresh_deserialize",
-            "loaded_artifact_count": len(loaded_entries),
-            "deserialization_wall_time_ms": round(elapsed_ms, 6),
-            "store_identity": store_identity,
-        }
+        for digest in self.submodule_bytes_store:
+            self._load_digest(digest)
         logger.debug("loaded all %s submodules", self.num_artifacts())
 
     def __getstate__(self) -> dict[str, dict[str, str] | dict[str, bytes]]:
@@ -972,7 +1060,18 @@ def reconstruct_serializable_fn_from_mega_artifact(
     is_encoder = state.get("is_encoder", False)
     compilation_config = vllm_config.compilation_config
 
-    standalone_compile_artifacts.load_all()
+    piecewise_submod_names = standalone_compile_artifacts.submodule_names()
+    compiled_callables: dict[str, dict[str, Callable[..., Any]]] = {}
+
+    for cache_key in standalone_compile_artifacts.submodule_bytes:
+        submod_name, shape_str = cache_key.rsplit("_", 1)
+        compiled_callables.setdefault(submod_name, {})[shape_str] = (
+            standalone_compile_artifacts.build_lazy_loaded_artifact(
+                standalone_compile_artifacts.submodule_bytes[cache_key]
+            )
+        )
+
+    standalone_compile_artifacts.mark_deferred_materialization()
     load_report = standalone_compile_artifacts.last_load_report()
     startup_closure = summarize_startup_closure(
         manifest_verification={
@@ -987,15 +1086,6 @@ def reconstruct_serializable_fn_from_mega_artifact(
         load_report=load_report,
         assumes_closure=False,
     )
-
-    piecewise_submod_names = standalone_compile_artifacts.submodule_names()
-    compiled_callables: dict[str, dict[str, Callable[..., Any]]] = {}
-
-    for cache_key in standalone_compile_artifacts.submodule_bytes:
-        submod_name, shape_str = cache_key.rsplit("_", 1)
-        compiled_callables.setdefault(submod_name, {})[shape_str] = (
-            standalone_compile_artifacts.get_loaded(submod_name, shape_str)
-        )
 
     vllm_backend = VllmBackend(vllm_config, prefix, is_encoder)
     dummy_cache_dir = os.path.join(envs.VLLM_CACHE_ROOT, "dummy_cache")
@@ -1125,6 +1215,22 @@ def artifact_bytes_hash(entry: bytes) -> str:
     hasher = hashlib.sha256()
     hasher.update(entry)
     return hasher.hexdigest()
+
+
+class LazyLoadedArtifact:
+    def __init__(
+        self,
+        standalone_compile_artifacts: "StandaloneCompiledArtifacts",
+        artifact_digest: str,
+    ) -> None:
+        self.standalone_compile_artifacts = standalone_compile_artifacts
+        self.artifact_digest = artifact_digest
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        loaded_artifact = self.standalone_compile_artifacts._load_digest(
+            self.artifact_digest
+        )
+        return loaded_artifact(*args, **kwargs)
 
 
 def build_standalone_artifact_compatibility_manifest(

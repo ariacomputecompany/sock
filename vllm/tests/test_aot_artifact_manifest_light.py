@@ -1080,9 +1080,73 @@ def test_load_report_marks_already_loaded_fast_path() -> None:
         "schema_version": 1,
         "load_path": "already_loaded",
         "loaded_artifact_count": 1,
+        "target_artifact_count": 1,
+        "fresh_deserialize_count": 0,
+        "shared_reuse_count": 0,
+        "already_loaded_count": 0,
         "deserialization_wall_time_ms": 0.0,
         "store_identity": artifacts.store_identity(),
     }
+
+
+def test_get_loaded_materializes_only_requested_artifact() -> None:
+    caching, counter = _load_caching_module()
+    artifacts = caching.StandaloneCompiledArtifacts()
+    payload0 = pickle.dumps({"artifact": "payload0"})
+    payload1 = pickle.dumps({"artifact": "payload1"})
+    digest0 = caching.artifact_bytes_hash(payload0)
+    digest1 = caching.artifact_bytes_hash(payload1)
+    artifacts.submodule_bytes["block0_shape0"] = digest0
+    artifacts.submodule_bytes["block1_shape0"] = digest1
+    artifacts.submodule_bytes_store[digest0] = payload0
+    artifacts.submodule_bytes_store[digest1] = payload1
+
+    loaded = artifacts.get_loaded("block0", "shape0")
+    report = artifacts.last_load_report()
+
+    assert loaded == {"deserialized": {"artifact": "payload0"}}
+    assert counter.num_compiled_artifacts_loaded == 1
+    assert set(artifacts.loaded_submodule_store) == {digest0}
+    assert report == {
+        "schema_version": 1,
+        "load_path": "fresh_deserialize",
+        "loaded_artifact_count": 1,
+        "target_artifact_count": 2,
+        "fresh_deserialize_count": 1,
+        "shared_reuse_count": 0,
+        "already_loaded_count": 0,
+        "deserialization_wall_time_ms": report["deserialization_wall_time_ms"],
+        "store_identity": artifacts.store_identity(),
+    }
+    assert float(report["deserialization_wall_time_ms"]) >= 0.0
+
+
+def test_lazy_loaded_artifact_defers_materialization_until_call() -> None:
+    caching, counter = _load_caching_module()
+    payload = pickle.dumps({"artifact": "payload"})
+    digest = caching.artifact_bytes_hash(payload)
+
+    artifacts = caching.StandaloneCompiledArtifacts()
+    artifacts.submodule_bytes["block0_shape0"] = digest
+    artifacts.submodule_bytes_store[digest] = payload
+    artifacts.mark_deferred_materialization()
+
+    class _CallableArtifact:
+        def __call__(self, *args, **kwargs):
+            return {"args": args, "kwargs": kwargs}
+
+    sys.modules[
+        "torch._inductor.standalone_compile"
+    ].AOTCompiledArtifact.deserialize = staticmethod(lambda entry: _CallableArtifact())
+
+    lazy_artifact = artifacts.build_lazy_loaded_artifact(digest)
+    report_before = artifacts.last_load_report()
+
+    assert counter.num_compiled_artifacts_loaded == 0
+    assert report_before["load_path"] == "deferred_materialization"
+    assert lazy_artifact(1, token=2) == {"args": (1,), "kwargs": {"token": 2}}
+    assert counter.num_compiled_artifacts_loaded == 1
+    assert artifacts.last_load_report()["load_path"] == "fresh_deserialize"
 
 
 def test_load_report_reuses_shared_loaded_store_without_deserializing() -> None:
@@ -1118,6 +1182,10 @@ def test_load_report_reuses_shared_loaded_store_without_deserializing() -> None:
         "schema_version": 1,
         "load_path": "shared_loaded_store",
         "loaded_artifact_count": 1,
+        "target_artifact_count": 1,
+        "fresh_deserialize_count": 0,
+        "shared_reuse_count": 1,
+        "already_loaded_count": 0,
         "deserialization_wall_time_ms": 0.0,
         "store_identity": second.store_identity(),
     }

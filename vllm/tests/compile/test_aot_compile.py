@@ -657,10 +657,11 @@ class TestStandaloneCompiledArtifacts:
         submod_name = "test_mod"
         shape = "test_shape"
         cache.insert(submod_name, shape, pickle.dumps(b"test_data"))
-        cache.load_all()
 
         retrieved_artifact = cache.get_loaded(submod_name, shape)
         assert retrieved_artifact == mock_artifact
+        assert len(cache.loaded_submodule_store) == 1
+        assert cache.last_load_report()["load_path"] == "fresh_deserialize"
 
     def test_getstate_setstate(self):
         cache = StandaloneCompiledArtifacts()
