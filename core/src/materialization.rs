@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ArtifactAcquisition, ArtifactClass, BackendFamily, CanonicalHash, MaterializationNodeKind,
-    QueueKind, SchemaVersion, SourceAnchor,
+    QueueDiscipline, QueueKind, SchemaVersion, SourceAnchor,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +25,7 @@ pub struct MaterializedArtifactRecord {
     pub bytes_written: u64,
     pub compile_ms: u64,
     pub transfer_ms: u64,
+    pub rebuild_ms: u64,
     pub source_anchors: Vec<SourceAnchor>,
 }
 
@@ -42,14 +43,37 @@ pub struct MaterializationNodeRecord {
     pub bytes_written: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MaterializationSchedulingMode {
+    Sequential,
+    Parallel,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MaterializationWaveRecord {
     pub wave_name: String,
     pub queue: QueueKind,
+    pub discipline: QueueDiscipline,
+    pub scheduling_mode: MaterializationSchedulingMode,
+    pub max_parallelism: u16,
     pub node_names: Vec<String>,
     pub relative_path: String,
     pub duration_ms: u64,
     pub bytes_written: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClosureExpansionRecord {
+    pub requested_regions: Vec<String>,
+    pub requested_artifact_scopes: Vec<String>,
+    pub requested_backend_families: Vec<String>,
+    pub requested_cache_namespaces: Vec<String>,
+    pub requested_warmup_scopes: Vec<String>,
+    pub expanded_regions: Vec<String>,
+    pub expanded_artifact_scopes: Vec<String>,
+    pub expanded_warmup_scopes: Vec<String>,
+    pub deterministically_closed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +88,8 @@ pub struct MaterializationExecutionReport {
     pub total_bytes_written: u64,
     pub total_compile_ms: u64,
     pub total_transfer_ms: u64,
+    pub total_rebuild_ms: u64,
+    pub closure_expansion: ClosureExpansionRecord,
     pub artifacts: Vec<MaterializedArtifactRecord>,
     pub nodes: Vec<MaterializationNodeRecord>,
     pub waves: Vec<MaterializationWaveRecord>,

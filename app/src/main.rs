@@ -117,7 +117,7 @@ fn main() -> Result<()> {
             let bundle = replay_bundle(&outcome);
             let vllm_integration = build_vllm_integration_document(&outcome)?;
             validate_scoped_vllm_subset(&scope, &vllm_integration)?;
-            let materialization = MaterializationExecutor::new().execute(&outcome, &out)?;
+            let materialization = MaterializationExecutor::new().execute(&outcome, &scope, &out)?;
             std::fs::write(
                 out.join("vllm_integration.json"),
                 canonical_json(&vllm_integration)?.as_bytes(),
@@ -222,13 +222,14 @@ fn emit_build(
     match format {
         OutputMode::Summary => {
             println!(
-                "bundle={} plan_identity={} replay_entrypoint={} artifacts={} reused={} bytes_written={}",
+                "bundle={} plan_identity={} replay_entrypoint={} artifacts={} reused={} bytes_written={} rebuild_ms={}",
                 out.display(),
                 bundle.build_plan.structural_identity.plan_identity,
                 metadata.replay_entrypoint,
                 materialization.artifact_count,
                 materialization.reused_artifact_count,
-                materialization.total_bytes_written
+                materialization.total_bytes_written,
+                materialization.total_rebuild_ms
             );
         }
         OutputMode::Json => {

@@ -74,6 +74,24 @@ fn build_verify_and_replay_bundle_round_trip() {
             .expect("artifact count")
             > 0
     );
+    assert_eq!(
+        materialization["closure_expansion"]["deterministically_closed"],
+        Value::Bool(true)
+    );
+    assert!(
+        materialization["waves"]
+            .as_array()
+            .expect("waves array")
+            .iter()
+            .all(|wave| wave.get("discipline").is_some())
+    );
+    assert!(
+        materialization["waves"]
+            .as_array()
+            .expect("waves array")
+            .iter()
+            .all(|wave| wave.get("scheduling_mode").is_some())
+    );
 
     let integration: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("vllm_integration.json"))
@@ -180,6 +198,26 @@ fn repeated_build_reuses_materialized_artifacts() {
             .expect("reused artifact count")
             > 0
     );
+    assert!(
+        materialization["total_rebuild_ms"]
+            .as_u64()
+            .expect("total rebuild ms")
+            > 0
+    );
+    let reused_artifact = materialization["artifacts"]
+        .as_array()
+        .expect("artifacts array")
+        .iter()
+        .find(|artifact| artifact["disposition"] == "reused")
+        .expect("reused artifact");
+    assert_eq!(reused_artifact["compile_ms"], Value::from(0));
+    assert_eq!(reused_artifact["transfer_ms"], Value::from(0));
+    assert!(
+        reused_artifact["rebuild_ms"]
+            .as_u64()
+            .expect("artifact rebuild ms")
+            > 0
+    );
 }
 
 #[test]
@@ -255,6 +293,29 @@ fn scoped_prefill_build_emits_minimal_closure() {
         let relative_path = artifact["relative_path"].as_str().expect("relative path");
         dir.path().join(relative_path).exists()
     }));
+    assert_eq!(
+        materialization["closure_expansion"]["requested_regions"],
+        Value::Array(vec![Value::String("prefill_attention".to_owned())])
+    );
+    assert_eq!(
+        materialization["closure_expansion"]["expanded_regions"],
+        Value::Array(vec![Value::String("prefill_attention".to_owned())])
+    );
+    assert_eq!(
+        materialization["closure_expansion"]["expanded_warmup_scopes"],
+        Value::Array(vec![Value::String("prefill_attention".to_owned())])
+    );
+    assert_eq!(
+        materialization["closure_expansion"]["deterministically_closed"],
+        Value::Bool(true)
+    );
+    assert!(
+        materialization["waves"]
+            .as_array()
+            .expect("waves array")
+            .iter()
+            .any(|wave| wave["scheduling_mode"] == "parallel")
+    );
 
     let integration: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("vllm_integration.json"))
