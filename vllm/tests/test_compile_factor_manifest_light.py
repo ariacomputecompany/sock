@@ -65,6 +65,8 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_COMPUTE_NANS_IN_LOGITS"] == "debug_only"
     assert manifest["categories"]["VLLM_MEDIA_CONNECTOR"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_CPU_KVCACHE_SPACE"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_USE_SPINLOOP_EXT"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_CPU_OMP_THREADS_BIND"] == "host_only"
     assert manifest["categories"]["VLLM_PROCESS_NAME_PREFIX"] == "host_only"
     assert (
@@ -85,6 +87,8 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_COMPUTE_NANS_IN_LOGITS" in manifest["ignored_keys"]
     assert "VLLM_MEDIA_CONNECTOR" in manifest["ignored_keys"]
     assert "VLLM_CPU_KVCACHE_SPACE" in manifest["ignored_keys"]
+    assert "VLLM_USE_SIMPLE_KV_OFFLOAD" in manifest["ignored_keys"]
+    assert "VLLM_USE_SPINLOOP_EXT" in manifest["ignored_keys"]
     assert "VLLM_CPU_OMP_THREADS_BIND" in manifest["ignored_keys"]
     assert "VLLM_PROCESS_NAME_PREFIX" in manifest["ignored_keys"]
     assert (
@@ -186,6 +190,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_CONFIGURE_LOGGING" in manifest["audit"]["category_keys"]["debug_only"]
     assert "VLLM_API_KEY" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_MEDIA_CONNECTOR" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_USE_SPINLOOP_EXT" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_CPU_OMP_THREADS_BIND" in manifest["audit"]["category_keys"]["host_only"]
     assert "VLLM_LOG_MODEL_INSPECTION" in manifest["audit"]["category_keys"]["debug_only"]
     assert (
