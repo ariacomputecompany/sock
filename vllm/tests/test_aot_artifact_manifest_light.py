@@ -203,6 +203,20 @@ def test_artifact_manifest_summary_and_identity() -> None:
     assert rendered["entries"] == manifest["entries"]
     assert rendered["stores"] == manifest["stores"]
 
+    assert artifacts.reuse_summary() == {
+        "schema_version": 1,
+        "cache_hit_reason": "standalone_aot_artifact_manifest_match",
+        "artifact_reuse_mode": "content_addressed_dedup",
+        "entry_count": 3,
+        "unique_artifact_count": 2,
+        "deduped_entry_count": 2,
+        "duplicate_entry_count": 1,
+        "unique_bytes": len(b"same-bytes") + len(b"other-bytes"),
+        "expanded_entry_bytes": len(b"same-bytes") * 2 + len(b"other-bytes"),
+        "duplicate_bytes_elided": len(b"same-bytes"),
+        "duplicate_artifact_loads_avoided": 1,
+    }
+
 
 def test_serialized_state_records_artifact_manifest_metadata() -> None:
     caching, _ = _load_caching_module()
@@ -273,6 +287,19 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "env": {"schema_version": 1},
         "vllm_config_hash": "cfg-hash",
     }
+    assert state["standalone_compile_artifact_reuse_summary"] == {
+        "schema_version": 1,
+        "cache_hit_reason": "standalone_aot_artifact_manifest_match",
+        "artifact_reuse_mode": "content_addressed_dedup",
+        "entry_count": 2,
+        "unique_artifact_count": 1,
+        "deduped_entry_count": 2,
+        "duplicate_entry_count": 1,
+        "unique_bytes": len(b"payload"),
+        "expanded_entry_bytes": len(b"payload") * 2,
+        "duplicate_bytes_elided": len(b"payload"),
+        "duplicate_artifact_loads_avoided": 1,
+    }
     assert state["sym_shape_indices_map"] == {"block0": (0,)}
     assert state["returns_tuple_map"] == {"block0": True}
 
@@ -298,3 +325,21 @@ def test_artifact_manifest_verification_detects_mismatch() -> None:
     assert corrupted["ok"] is False
     assert corrupted["expected_store_identity"] == artifacts.store_identity()
     assert corrupted["actual_store_identity"] == artifacts.store_identity()
+
+
+def test_load_report_marks_already_loaded_fast_path() -> None:
+    caching, _ = _load_caching_module()
+    artifacts = caching.StandaloneCompiledArtifacts()
+    digest = caching.artifact_bytes_hash(b"payload")
+    artifacts.submodule_bytes["block0_shape0"] = digest
+    artifacts.submodule_bytes_store[digest] = b"payload"
+    artifacts.loaded_submodule_store[digest] = object()
+
+    artifacts.load_all()
+
+    assert artifacts.last_load_report() == {
+        "schema_version": 1,
+        "load_path": "already_loaded",
+        "loaded_artifact_count": 1,
+        "deserialization_wall_time_ms": 0.0,
+    }

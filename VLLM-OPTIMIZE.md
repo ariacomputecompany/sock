@@ -410,7 +410,6 @@ They should be executed according to the ranked lane order above, not by raw sec
   - backend/toolchain identity
   - patch profile
   - shape envelope
-- [ ] Make artifact loading and cache-hit reasons explainable.
 - [ ] Make artifact invalidation reasons explainable.
 - [ ] Verify “no new compile” against recorded traces.
 - [ ] Reduce startup-time dependence on Python pickling and `GraphPickler` roundtrips where possible.
@@ -418,7 +417,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 - [ ] Evaluate a more mmap-friendly or streaming-friendly payload format for compiled artifacts.
 - [ ] Keep opaque pickled Python state off the critical path for the common cache-hit case.
 - [ ] Replace “load everything eagerly” behavior with demand-driven or manifest-guided artifact hydration where practical.
-- [ ] Track deserialization wall time separately from compile time and cache lookup time.
 - [ ] Measure duplicate-load cost across ranks and processes, not just duplicate artifact bytes on disk.
 - [ ] Distinguish artifact-store identity from rank-local placement so one compiled payload can back multiple rank-local manifests.
 - [ ] Reduce reliance on runtime `exec` for stitching-graph execution code where a pre-emitted module, manifest-bound callable, or equivalent static representation would work.

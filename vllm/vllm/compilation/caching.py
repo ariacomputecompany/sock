@@ -8,6 +8,7 @@ import json
 import os
 import pickle
 import sys
+import time
 from collections.abc import Callable, Sequence
 from typing import Any, Literal
 from unittest.mock import patch
@@ -57,6 +58,7 @@ class StandaloneCompiledArtifacts:
         self.submodule_bytes_store: dict[str, bytes] = {}
         # dict from byte hash to loaded module
         self.loaded_submodule_store: dict[str, Any] = {}
+        self._last_load_report: dict[str, object] | None = None
 
     def insert(self, submod_name: str, shape: str, entry: bytes) -> None:
         hex_digest = artifact_bytes_hash(entry)
@@ -197,11 +199,49 @@ class StandaloneCompiledArtifacts:
         }
         return result
 
+    def reuse_summary(self) -> dict[str, object]:
+        unique_bytes = self.size_bytes()
+        total_entry_bytes = 0
+        deduped_entry_count = 0
+        for digest in self.submodule_bytes.values():
+            entry_size = len(self.submodule_bytes_store[digest])
+            total_entry_bytes += entry_size
+        hash_usage_counts: dict[str, int] = {}
+        for digest in self.submodule_bytes.values():
+            hash_usage_counts[digest] = hash_usage_counts.get(digest, 0) + 1
+        for count in hash_usage_counts.values():
+            if count > 1:
+                deduped_entry_count += count
+
+        duplicate_entry_count = self.num_entries() - self.num_artifacts()
+        return {
+            "schema_version": 1,
+            "cache_hit_reason": "standalone_aot_artifact_manifest_match",
+            "artifact_reuse_mode": "content_addressed_dedup",
+            "entry_count": self.num_entries(),
+            "unique_artifact_count": self.num_artifacts(),
+            "deduped_entry_count": deduped_entry_count,
+            "duplicate_entry_count": duplicate_entry_count,
+            "unique_bytes": unique_bytes,
+            "expanded_entry_bytes": total_entry_bytes,
+            "duplicate_bytes_elided": total_entry_bytes - unique_bytes,
+            "duplicate_artifact_loads_avoided": duplicate_entry_count,
+        }
+
+    def last_load_report(self) -> dict[str, object] | None:
+        return self._last_load_report
+
     def load_all(self) -> None:
         import concurrent.futures
 
         # check already loaded
         if len(self.loaded_submodule_store) == len(self.submodule_bytes_store):
+            self._last_load_report = {
+                "schema_version": 1,
+                "load_path": "already_loaded",
+                "loaded_artifact_count": len(self.loaded_submodule_store),
+                "deserialization_wall_time_ms": 0.0,
+            }
             return
 
         from torch._inductor.standalone_compile import AOTCompiledArtifact
@@ -211,13 +251,21 @@ class StandaloneCompiledArtifacts:
             compilation_counter.num_compiled_artifacts_loaded += 1
             return AOTCompiledArtifact.deserialize(entry)
 
+        start_time = time.perf_counter()
         with concurrent.futures.ThreadPoolExecutor() as executor:
             entries = list(self.submodule_bytes_store.values())
             loaded_entries = list(executor.map(_load_entry, entries))
+        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 
         for i, k in enumerate(self.submodule_bytes_store.keys()):
             self.loaded_submodule_store[k] = loaded_entries[i]
 
+        self._last_load_report = {
+            "schema_version": 1,
+            "load_path": "fresh_deserialize",
+            "loaded_artifact_count": len(loaded_entries),
+            "deserialization_wall_time_ms": round(elapsed_ms, 6),
+        }
         logger.debug("loaded all %s submodules", self.num_artifacts())
 
     def __getstate__(self) -> dict[str, dict[str, str] | dict[str, bytes]]:
@@ -383,6 +431,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             state["standalone_compile_artifact_compatibility"] = (
                 build_standalone_artifact_compatibility_manifest(vllm_config)
             )
+            state["standalone_compile_artifact_reuse_summary"] = (
+                standalone_compile_artifacts.reuse_summary()
+            )
             state["sym_shape_indices_map"] = sym_shape_indices_map
             state["returns_tuple_map"] = returns_tuple_map
         return pickle.dumps(state)
@@ -406,6 +457,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         )
         standalone_compile_artifact_compatibility = state.pop(
             "standalone_compile_artifact_compatibility", None
+        )
+        standalone_compile_artifact_reuse_summary = state.pop(
+            "standalone_compile_artifact_reuse_summary", None
         )
         sym_shape_indices_map = state.pop("sym_shape_indices_map", {})
         returns_tuple_map = state.pop("returns_tuple_map", {})
@@ -436,12 +490,21 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                         f"actual_store_identity={verification['actual_store_identity']}"
                     )
                 logger.info(
-                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s compatibility=%s",
+                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s reuse=%s compatibility=%s",
                     standalone_compile_artifact_manifest.get("entry_count", 0),
                     standalone_compile_artifact_manifest.get(
                         "unique_artifact_count", 0
                     ),
                     standalone_compile_artifact_store_identity or "<unknown>",
+                    (
+                        json.dumps(
+                            standalone_compile_artifact_reuse_summary,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                        if standalone_compile_artifact_reuse_summary is not None
+                        else "<unknown>"
+                    ),
                     (
                         json.dumps(
                             standalone_compile_artifact_compatibility,
@@ -591,6 +654,7 @@ def reconstruct_serializable_fn_from_mega_artifact(
     compilation_config = vllm_config.compilation_config
 
     standalone_compile_artifacts.load_all()
+    load_report = standalone_compile_artifacts.last_load_report()
 
     piecewise_submod_names = standalone_compile_artifacts.submodule_names()
     compiled_callables: dict[str, dict[str, Callable[..., Any]]] = {}
@@ -653,6 +717,14 @@ def reconstruct_serializable_fn_from_mega_artifact(
         logger.debug(
             "Replaced submodule %s with piecewise backend from cache",
             submod_name,
+        )
+
+    if load_report is not None:
+        logger.info(
+            "standalone compile artifact load complete. loaded_artifacts=%d deserialization_wall_time_ms=%.6f load_path=%s",
+            load_report.get("loaded_artifact_count", 0),
+            float(load_report.get("deserialization_wall_time_ms", 0.0)),
+            load_report.get("load_path", "<unknown>"),
         )
 
     # Use codegen'd execution code if available, fall back to split_gm
