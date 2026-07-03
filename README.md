@@ -56,8 +56,36 @@ This project is early, but it already has:
 
 - a compiling Rust workspace
 - a canonical plan/closure/verification scaffold
-- a minimal deterministic planner
+- a deterministic `vLLM` planning path for NVIDIA/Linux
+- replay bundle emission and fail-closed bundle validation
+- CLI-visible explain, verify, replay, and doctor surfaces
 - vendored `vLLM` source for source-aligned adapter work
+
+## Operator workflow
+
+The production CLI surface is:
+
+- `cargo run --bin sock -- plan`
+- `cargo run --bin sock -- explain`
+- `cargo run --bin sock -- build --out /tmp/sock-bundle`
+- `cargo run --bin sock -- verify --bundle /tmp/sock-bundle`
+- `cargo run --bin sock -- replay --bundle /tmp/sock-bundle`
+- `cargo run --bin sock -- doctor`
+
+Replay bundles are intentionally strict:
+
+- all emitted contract files are content-digested
+- plan identity must agree across the bundle
+- verification reports must exactly match the loaded build plan
+- mismatches fail closed instead of being repaired implicitly
+
+## Verification
+
+Engineer-facing regression coverage lives in:
+
+- Rust unit and integration tests under the workspace crates
+- Fozzy scenarios under `tests/*.fozzy.json`
+- replay artifacts emitted by `sock build`, which are then verified and replayed without silent recompilation
 
 ## Repository map
 

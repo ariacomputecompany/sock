@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "plan-host",
+  "steps": [
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "cargo run --quiet --bin sock -- plan"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "plan d2e4f809b85fe114aa8157eefd5c76363b9a7296e46b9d55de846d095aaa13a3\nengine vllm\nmodel meta-llama/Llama-3.1-8B-Instruct@main\nbackend FlashInfer\n",
+      "expect_stderr": ""
+    }
+  ]
+}

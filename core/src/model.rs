@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
+use crate::adapter::{CompileRegionKind, SourceEvidence};
 use crate::canonical::{CanonicalError, CanonicalHash, canonical_hash};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -91,6 +92,49 @@ pub enum ArtifactAcquisition {
     UpstreamCacheBundle,
     LocalAotBuild,
     LocalSourceBuild,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum QueueKind {
+    Compile,
+    Assemble,
+    ArtifactIo,
+    Warmup,
+    Verify,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum MaterializationNodeKind {
+    Compile,
+    Assemble,
+    Materialize,
+    Transfer,
+    Warmup,
+    Verify,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum CoverageState {
+    Compiled,
+    Executed,
+    Captured,
+    Autotuned,
+    VerifiedNoNewCompile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ArtifactPortability {
+    HostLocalOnly,
+    AbiClusterPortable,
+    GpuArchitectureFamilyPortable,
+    TopologyScoped,
+    ShapeEnvelopeScoped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum RankDisposition {
+    Shared,
+    RankLocal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -383,9 +427,15 @@ pub struct BackendSelection {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CompileRegion {
     pub name: String,
+    pub kind: CompileRegionKind,
     pub family: BackendFamily,
     pub reusable: bool,
+    pub regional_compile_candidate: bool,
+    pub boundaries: Vec<String>,
+    pub rationale: String,
+    pub invalidation_domain: String,
     pub shape_planes: Vec<CoveragePlane>,
+    pub evidence: SourceEvidence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -408,6 +458,12 @@ pub struct WarmupObligation {
     pub node_name: String,
     pub region_name: String,
     pub step_count: u32,
+    pub plane: CoveragePlane,
+    pub blocking: bool,
+    pub required_artifacts: Vec<String>,
+    pub rank_scope: Vec<u16>,
+    pub requires_capture: bool,
+    pub requires_autotune: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -416,19 +472,64 @@ pub struct ArtifactRequirement {
     pub backend: BackendFamily,
     pub acquisition: ArtifactAcquisition,
     pub scope: String,
+    pub portability: ArtifactPortability,
+    pub rank_disposition: RankDisposition,
+    pub expected_bytes: Option<u64>,
+    pub expected_compile_ms: Option<u64>,
+    pub expected_transfer_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct MaterializationNode {
     pub name: String,
     pub wave: u32,
+    pub kind: MaterializationNodeKind,
+    pub queue: QueueKind,
+    pub plane: CoveragePlane,
+    pub dependency_nodes: Vec<String>,
     pub consumes: Vec<String>,
     pub produces: Vec<String>,
+    pub rank_scope: Vec<u16>,
+    pub invalidation_domain: String,
+    pub replay_boundary: String,
+    pub expected_compile_ms: Option<u64>,
+    pub expected_bytes_written: Option<u64>,
+    pub expected_transfer_ms: Option<u64>,
+    pub residual_jit_risk_removed: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct LeaderAssignment {
+    pub artifact_scope: String,
+    pub leader_rank: u16,
+    pub follower_ranks: Vec<u16>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct WaveEstimate {
+    pub expected_compile_ms: Option<u64>,
+    pub expected_bytes_written: Option<u64>,
+    pub expected_transfer_ms: Option<u64>,
+    pub fanout_count: u16,
+    pub residual_jit_risk_removed: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct MaterializationWave {
+    pub name: String,
+    pub queue: QueueKind,
+    pub node_names: Vec<String>,
+    pub estimate: WaveEstimate,
+    pub hazard_repairs: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MaterializationGraph {
     pub nodes: Vec<MaterializationNode>,
+    pub waves: Vec<MaterializationWave>,
+    pub leader_assignments: Vec<LeaderAssignment>,
+    pub early_serve_frontier: Vec<String>,
+    pub late_bindings: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -468,6 +569,9 @@ pub struct CoverageWitness {
     pub plane: CoveragePlane,
     pub node_name: String,
     pub evidence: String,
+    pub coverage_states: Vec<CoverageState>,
+    pub artifact_scopes: Vec<String>,
+    pub uncovered_residuals: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -490,6 +594,8 @@ pub struct VerificationReport {
     pub level: ValidationLevel,
     pub status: ValidationStatus,
     pub issues: Vec<ValidationIssue>,
+    pub phase_timings: Vec<(QueueKind, Option<u64>)>,
+    pub runtime_jit_witnesses: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -631,6 +737,19 @@ impl ResolvedBuildPlan {
             level: ValidationLevel::WitnessBacked,
             status,
             issues,
+            phase_timings: self
+                .materialization_graph
+                .waves
+                .iter()
+                .map(|wave| (wave.queue, wave.estimate.expected_compile_ms))
+                .collect(),
+            runtime_jit_witnesses: self
+                .guarantee_envelope
+                .residual_risks
+                .iter()
+                .filter(|risk| risk.class == HazardClass::ResidualLazyCompile)
+                .map(|risk| risk.summary.clone())
+                .collect(),
         }
     }
 }

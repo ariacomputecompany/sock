@@ -1,5 +1,6 @@
 [package]
 name = "sock-app"
+default-run = "sock"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

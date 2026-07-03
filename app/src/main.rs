@@ -1,17 +1,56 @@
+use std::path::{Path, PathBuf};
+
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use sock_core::{
     AcceleratorVendor, BackendFamily, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer,
-    CoveragePlane, EngineSource, ExecutionTopology, FailureMode, GuaranteeLevel, GuaranteeTarget,
-    ModelRef, OperatingSystem, RawRequest, RequestedEnvironment, ShapePoint, ShapePolicy,
-    ShapeRange, TargetEngine, WarmupPolicy, canonical_json,
+    CoveragePlane, DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode,
+    GuaranteeLevel, GuaranteeTarget, ModelRef, OperatingSystem, RawRequest, ReplayBundle,
+    ReplayBundleMetadata, RequestedEnvironment, RewriteTraceDocument, ShapePoint, ShapePolicy,
+    ShapeRange, TargetEngine, WarmupPolicy, canonical_json, render_diagnostics, render_explain,
+    render_plan_summary, render_verification_report,
 };
-use sock_engine::{Planner, PlannerHostSnapshot, vllm};
+use sock_engine::{Planner, PlannerHostSnapshot, PlanningOutcome, vllm};
 
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Parser)]
+#[command(name = "sock")]
 struct Cli {
-    #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
-    format: OutputMode,
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    Plan {
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
+    Explain {
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
+    Build {
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
+    Verify {
+        #[arg(long)]
+        bundle: PathBuf,
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
+    Replay {
+        #[arg(long)]
+        bundle: PathBuf,
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
+    Doctor {
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -22,7 +61,35 @@ enum OutputMode {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let planner = Planner::new(PlannerHostSnapshot {
+
+    match cli.command {
+        Command::Plan { format } => emit_plan(&plan()?, format)?,
+        Command::Explain { format } => {
+            let outcome = plan()?;
+            let diagnostics = diagnostics_for(&outcome);
+            let rewrite_trace = rewrite_trace_for(&outcome);
+            emit_explain(&outcome, &diagnostics, &rewrite_trace, format)?;
+        }
+        Command::Build { out, format } => {
+            let outcome = plan()?;
+            let bundle = replay_bundle(&outcome);
+            let metadata = bundle.write_to(&out)?;
+            emit_build(&out, &bundle, &metadata, format)?;
+        }
+        Command::Verify { bundle, format } => {
+            emit_verify(&ReplayBundle::load_from(&bundle)?, format)?;
+        }
+        Command::Replay { bundle, format } => {
+            emit_replay(&ReplayBundle::load_from(&bundle)?, format)?;
+        }
+        Command::Doctor { format } => emit_doctor(&planner_host(), format)?,
+    }
+
+    Ok(())
+}
+
+fn planner_host() -> PlannerHostSnapshot {
+    PlannerHostSnapshot {
         operating_system: OperatingSystem::Linux,
         accelerator_vendor: AcceleratorVendor::Nvidia,
         gpu_arches: vec!["sm90".to_owned()],
@@ -31,8 +98,11 @@ fn main() -> Result<()> {
         python_abi: "cp311".to_owned(),
         libc_abi: "glibc-2.35".to_owned(),
         flashinfer_prebuilt_available: true,
-    });
-    let outcome = planner.resolve(RawRequest {
+    }
+}
+
+fn production_request() -> RawRequest {
+    RawRequest {
         engine: TargetEngine::Vllm,
         model: ModelRef {
             repository: "meta-llama/Llama-3.1-8B-Instruct".to_owned(),
@@ -130,43 +200,165 @@ fn main() -> Result<()> {
                 }],
             },
         ],
-    })?;
+    }
+}
 
-    match cli.format {
+fn plan() -> Result<PlanningOutcome> {
+    Ok(Planner::new(planner_host()).resolve(production_request())?)
+}
+
+fn diagnostics_for(outcome: &PlanningOutcome) -> DiagnosticsDocument {
+    DiagnosticsDocument::from_outcome(
+        &outcome.plan,
+        &outcome.verification,
+        &outcome.plan.rewrite_trace,
+    )
+}
+
+fn rewrite_trace_for(outcome: &PlanningOutcome) -> RewriteTraceDocument {
+    RewriteTraceDocument::new(&outcome.plan, outcome.plan.rewrite_trace.clone())
+}
+
+fn replay_bundle(outcome: &PlanningOutcome) -> ReplayBundle {
+    ReplayBundle {
+        build_plan: outcome.plan.clone(),
+        artifact_closure: outcome.closure.clone(),
+        verification_report: outcome.verification.clone(),
+        diagnostics: diagnostics_for(outcome),
+        rewrite_trace: rewrite_trace_for(outcome),
+    }
+}
+
+fn emit_plan(outcome: &PlanningOutcome, format: OutputMode) -> Result<()> {
+    match format {
+        OutputMode::Summary => print!("{}", render_plan_summary(&outcome.plan)),
+        OutputMode::Json => println!("{}", canonical_json(&outcome.plan)?),
+    }
+    Ok(())
+}
+
+fn emit_explain(
+    outcome: &PlanningOutcome,
+    diagnostics: &DiagnosticsDocument,
+    rewrite_trace: &RewriteTraceDocument,
+    format: OutputMode,
+) -> Result<()> {
+    match format {
         OutputMode::Summary => {
-            println!("engine={}", outcome.plan.normalized_request.engine.as_str());
-            println!(
-                "plan_identity={}",
-                outcome.plan.structural_identity.plan_identity
+            print!(
+                "{}",
+                render_explain(&outcome.plan, diagnostics, rewrite_trace)
             );
-            println!(
-                "primary_backend={}",
-                outcome.plan.selected_backends.primary.family.as_str()
-            );
-            println!(
-                "correctness_guarantee={:?}",
-                outcome.plan.guarantee_envelope.achieved_correctness
-            );
-            println!(
-                "performance_guarantee={:?}",
-                outcome.plan.guarantee_envelope.achieved_performance
-            );
-            println!("verification={:?}", outcome.verification.status);
-            println!("vllm_revision={}", vllm::revision());
         }
         OutputMode::Json => {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "plan": serde_json::from_str::<serde_json::Value>(&canonical_json(&outcome.plan)?)?,
-                    "closure": serde_json::from_str::<serde_json::Value>(&canonical_json(&outcome.closure)?)?,
-                    "verification": serde_json::from_str::<serde_json::Value>(&canonical_json(&outcome.verification)?)?,
-                    "vllm_root": vllm::root(),
-                    "vllm_revision": vllm::revision(),
+                canonical_json(&serde_json::json!({
+                    "plan": outcome.plan,
+                    "diagnostics": diagnostics,
+                    "rewrite_trace": rewrite_trace,
+                    "verification": outcome.verification,
                 }))?
             );
         }
     }
+    Ok(())
+}
 
+fn emit_build(
+    out: &Path,
+    bundle: &ReplayBundle,
+    metadata: &ReplayBundleMetadata,
+    format: OutputMode,
+) -> Result<()> {
+    match format {
+        OutputMode::Summary => {
+            println!(
+                "bundle={} plan_identity={} replay_entrypoint={}",
+                out.display(),
+                bundle.build_plan.structural_identity.plan_identity,
+                metadata.replay_entrypoint
+            );
+        }
+        OutputMode::Json => {
+            println!(
+                "{}",
+                canonical_json(&serde_json::json!({
+                    "bundle_path": out,
+                    "plan_identity": bundle.build_plan.structural_identity.plan_identity,
+                    "metadata": metadata,
+                }))?
+            );
+        }
+    }
+    Ok(())
+}
+
+fn emit_verify(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
+    match format {
+        OutputMode::Summary => print!(
+            "{}",
+            render_verification_report(&bundle.verification_report)
+        ),
+        OutputMode::Json => println!("{}", canonical_json(&bundle.verification_report)?),
+    }
+    Ok(())
+}
+
+fn emit_replay(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
+    match format {
+        OutputMode::Summary => {
+            print!("{}", render_plan_summary(&bundle.build_plan));
+            print!(
+                "{}",
+                render_verification_report(&bundle.verification_report)
+            );
+            print!("{}", render_diagnostics(&bundle.diagnostics));
+        }
+        OutputMode::Json => {
+            println!(
+                "{}",
+                canonical_json(&serde_json::json!({
+                    "plan": bundle.build_plan,
+                    "verification": bundle.verification_report,
+                    "diagnostics": bundle.diagnostics,
+                }))?
+            );
+        }
+    }
+    Ok(())
+}
+
+fn emit_doctor(host: &PlannerHostSnapshot, format: OutputMode) -> Result<()> {
+    match format {
+        OutputMode::Summary => {
+            println!(
+                "host os={:?} vendor={:?} arches={} cuda={} driver={} python_abi={} libc_abi={} flashinfer_prebuilt={}",
+                host.operating_system,
+                host.accelerator_vendor,
+                host.gpu_arches.join(","),
+                host.cuda_version,
+                host.driver_version,
+                host.python_abi,
+                host.libc_abi,
+                host.flashinfer_prebuilt_available
+            );
+        }
+        OutputMode::Json => {
+            println!(
+                "{}",
+                canonical_json(&serde_json::json!({
+                    "operating_system": format!("{:?}", host.operating_system),
+                    "accelerator_vendor": format!("{:?}", host.accelerator_vendor),
+                    "gpu_arches": host.gpu_arches,
+                    "cuda_version": host.cuda_version,
+                    "driver_version": host.driver_version,
+                    "python_abi": host.python_abi,
+                    "libc_abi": host.libc_abi,
+                    "flashinfer_prebuilt_available": host.flashinfer_prebuilt_available,
+                }))?
+            );
+        }
+    }
     Ok(())
 }
