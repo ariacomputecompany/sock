@@ -59,6 +59,7 @@ def build_standalone_artifact_sidecar(
     *,
     standalone_compile_artifact_manifest: dict[str, object],
     standalone_compile_artifact_store_identity: str,
+    standalone_compile_artifact_placement_identity: str,
     standalone_compile_artifact_compatibility: dict[str, object],
     standalone_compile_artifact_reuse_summary: dict[str, object],
     standalone_compile_artifact_proof_manifest: dict[str, object],
@@ -71,6 +72,7 @@ def build_standalone_artifact_sidecar(
         "payload_kind": "vllm_standalone_compile_artifact_sidecar",
         "artifact_manifest": _json_ready(standalone_compile_artifact_manifest),
         "store_identity": standalone_compile_artifact_store_identity,
+        "placement_identity": standalone_compile_artifact_placement_identity,
         "compatibility": _json_ready(standalone_compile_artifact_compatibility),
         "reuse_summary": _json_ready(standalone_compile_artifact_reuse_summary),
         "proof_manifest": _json_ready(standalone_compile_artifact_proof_manifest),
@@ -418,6 +420,34 @@ def build_artifact_load_topology_summary(
     }
 
 
+def build_rank_local_placement_manifest(
+    *,
+    submodule_bytes: dict[str, str],
+) -> dict[str, object]:
+    placement_entries = [
+        {
+            "entry_key": entry_key,
+            "artifact_hash": digest,
+        }
+        for entry_key, digest in sorted(submodule_bytes.items())
+    ]
+    return {
+        "schema_version": 1,
+        "global_rank": int(os.environ.get("RANK", str(getattr(envs, "VLLM_DP_RANK", 0)))),
+        "local_rank": int(getattr(envs, "LOCAL_RANK", 0)),
+        "data_parallel_rank": int(getattr(envs, "VLLM_DP_RANK", 0)),
+        "data_parallel_rank_local": int(
+            getattr(
+                envs,
+                "VLLM_DP_RANK_LOCAL",
+                int(getattr(envs, "VLLM_DP_RANK", 0)),
+            )
+        ),
+        "data_parallel_size": max(int(getattr(envs, "VLLM_DP_SIZE", 1)), 1),
+        "entries": placement_entries,
+    }
+
+
 class StandaloneCompiledArtifacts:
     """Storage for standalone compiled artifacts with content-based deduplication.
 
@@ -541,8 +571,34 @@ class StandaloneCompiledArtifacts:
             "stores": stores,
         }
 
+    def payload_manifest(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "unique_artifact_count": self.num_artifacts(),
+            "total_bytes": self.size_bytes(),
+            "stores": [
+                {
+                    "artifact_hash": digest,
+                    "artifact_bytes": len(entry_bytes),
+                }
+                for digest, entry_bytes in sorted(self.submodule_bytes_store.items())
+            ],
+        }
+
+    def placement_manifest(self) -> dict[str, object]:
+        return build_rank_local_placement_manifest(
+            submodule_bytes=self.submodule_bytes,
+        )
+
     def store_identity(self) -> str:
-        manifest = self.manifest_summary()
+        manifest = self.payload_manifest()
+        return safe_hash(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode(),
+            usedforsecurity=False,
+        ).hexdigest()
+
+    def placement_identity(self) -> str:
+        manifest = self.placement_manifest()
         return safe_hash(
             json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode(),
             usedforsecurity=False,
@@ -551,6 +607,7 @@ class StandaloneCompiledArtifacts:
     def render_manifest(self) -> str:
         manifest = self.manifest_summary()
         manifest["store_identity"] = self.store_identity()
+        manifest["placement_identity"] = self.placement_identity()
         return json.dumps(manifest, sort_keys=True, separators=(",", ":"))
 
     def verify_manifest(
@@ -580,6 +637,8 @@ class StandaloneCompiledArtifacts:
             "reasons": reasons,
             "expected_store_identity": expected.get("store_identity"),
             "actual_store_identity": self.store_identity(),
+            "expected_placement_identity": expected.get("placement_identity"),
+            "actual_placement_identity": self.placement_identity(),
             "entry_count": actual.get("entry_count"),
             "unique_artifact_count": actual.get("unique_artifact_count"),
             "total_bytes": actual.get("total_bytes"),
@@ -607,6 +666,7 @@ class StandaloneCompiledArtifacts:
             "cache_hit_reason": "standalone_aot_artifact_manifest_match",
             "artifact_reuse_mode": "content_addressed_dedup",
             "store_identity": store_identity,
+            "placement_identity": self.placement_identity(),
             "entry_count": self.num_entries(),
             "unique_artifact_count": self.num_artifacts(),
             "deduped_entry_count": deduped_entry_count,
@@ -954,6 +1014,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             standalone_compile_artifact_store_identity = (
                 standalone_compile_artifacts.store_identity()
             )
+            standalone_compile_artifact_placement_identity = (
+                standalone_compile_artifacts.placement_identity()
+            )
             standalone_compile_artifact_compatibility = (
                 build_standalone_artifact_compatibility_manifest(vllm_config)
             )
@@ -974,6 +1037,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 ),
                 standalone_compile_artifact_store_identity=(
                     standalone_compile_artifact_store_identity
+                ),
+                standalone_compile_artifact_placement_identity=(
+                    standalone_compile_artifact_placement_identity
                 ),
                 standalone_compile_artifact_compatibility=(
                     standalone_compile_artifact_compatibility
@@ -1018,6 +1084,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         standalone_compile_artifact_store_identity = sidecar_metadata.get(
             "store_identity"
         ) or state.pop("standalone_compile_artifact_store_identity", None)
+        standalone_compile_artifact_placement_identity = sidecar_metadata.get(
+            "placement_identity"
+        ) or state.pop("standalone_compile_artifact_placement_identity", None)
         standalone_compile_artifact_compatibility = sidecar_metadata.get(
             "compatibility"
         ) or state.pop("standalone_compile_artifact_compatibility", None)
@@ -1070,6 +1139,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 manifest_with_identity = dict(standalone_compile_artifact_manifest)
                 manifest_with_identity["store_identity"] = (
                     standalone_compile_artifact_store_identity
+                )
+                manifest_with_identity["placement_identity"] = (
+                    standalone_compile_artifact_placement_identity
                 )
                 verification = standalone_compile_artifacts.verify_manifest(
                     manifest_with_identity

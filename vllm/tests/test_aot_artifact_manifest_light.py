@@ -322,6 +322,7 @@ def test_artifact_manifest_summary_and_identity() -> None:
 
     rendered = json.loads(artifacts.render_manifest())
     assert rendered["store_identity"] == artifacts.store_identity()
+    assert rendered["placement_identity"] == artifacts.placement_identity()
     assert rendered["entries"] == manifest["entries"]
     assert rendered["stores"] == manifest["stores"]
 
@@ -331,6 +332,7 @@ def test_artifact_manifest_summary_and_identity() -> None:
         "cache_hit_reason": "standalone_aot_artifact_manifest_match",
         "artifact_reuse_mode": "content_addressed_dedup",
         "store_identity": artifacts.store_identity(),
+        "placement_identity": artifacts.placement_identity(),
         "entry_count": 3,
         "unique_artifact_count": 2,
         "deduped_entry_count": 2,
@@ -429,6 +431,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "payload_kind": "vllm_standalone_compile_artifact_sidecar",
         "artifact_manifest": artifacts.manifest_summary(),
         "store_identity": artifacts.store_identity(),
+        "placement_identity": artifacts.placement_identity(),
         "compatibility": {
             "schema_version": 1,
             "hash_algorithm": "sha256",
@@ -443,6 +446,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             "cache_hit_reason": "standalone_aot_artifact_manifest_match",
             "artifact_reuse_mode": "content_addressed_dedup",
             "store_identity": artifacts.store_identity(),
+            "placement_identity": artifacts.placement_identity(),
             "entry_count": 2,
             "unique_artifact_count": 1,
             "deduped_entry_count": 2,
@@ -654,6 +658,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "cache_hit_reason": "standalone_aot_artifact_manifest_match",
         "artifact_reuse_mode": "content_addressed_dedup",
         "store_identity": artifacts.store_identity(),
+        "placement_identity": artifacts.placement_identity(),
         "entry_count": 2,
         "unique_artifact_count": 1,
         "deduped_entry_count": 2,
@@ -839,12 +844,15 @@ def test_artifact_manifest_verification_detects_mismatch() -> None:
 
     manifest = artifacts.manifest_summary()
     manifest["store_identity"] = artifacts.store_identity()
+    manifest["placement_identity"] = artifacts.placement_identity()
     verified = artifacts.verify_manifest(manifest)
 
     assert verified["ok"] is True
     assert verified["reasons"] == []
     assert verified["expected_store_identity"] == artifacts.store_identity()
     assert verified["actual_store_identity"] == artifacts.store_identity()
+    assert verified["expected_placement_identity"] == artifacts.placement_identity()
+    assert verified["actual_placement_identity"] == artifacts.placement_identity()
 
     corrupted_manifest = json.loads(json.dumps(manifest))
     corrupted_manifest["total_bytes"] = 1
@@ -854,6 +862,23 @@ def test_artifact_manifest_verification_detects_mismatch() -> None:
     assert corrupted["reasons"] == ["total_bytes_mismatch"]
     assert corrupted["expected_store_identity"] == artifacts.store_identity()
     assert corrupted["actual_store_identity"] == artifacts.store_identity()
+    assert corrupted["expected_placement_identity"] == artifacts.placement_identity()
+    assert corrupted["actual_placement_identity"] == artifacts.placement_identity()
+
+
+def test_store_identity_is_stable_across_rank_local_placement() -> None:
+    caching, _ = _load_caching_module()
+
+    artifacts_a = caching.StandaloneCompiledArtifacts()
+    artifacts_a.insert("block0", "shape0", b"payload")
+    artifacts_a.insert("block1", "shape0", b"payload")
+
+    artifacts_b = caching.StandaloneCompiledArtifacts()
+    artifacts_b.insert("block9", "shape0", b"payload")
+    artifacts_b.insert("block3", "shape7", b"payload")
+
+    assert artifacts_a.store_identity() == artifacts_b.store_identity()
+    assert artifacts_a.placement_identity() != artifacts_b.placement_identity()
 
 
 def test_compatibility_drift_explains_mismatches() -> None:
