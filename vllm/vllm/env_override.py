@@ -1019,6 +1019,8 @@ def patch_profile_manifest() -> dict[str, object]:
         eligible: bool,
         applied: bool,
         detail: str,
+        obsolete: bool = False,
+        obsolete_reason: str | None = None,
     ) -> None:
         patches.append(
             {
@@ -1027,6 +1029,8 @@ def patch_profile_manifest() -> dict[str, object]:
                 "eligible": eligible,
                 "applied": applied,
                 "detail": detail,
+                "obsolete": obsolete,
+                "obsolete_reason": obsolete_reason,
             }
         )
 
@@ -1047,6 +1051,12 @@ def patch_profile_manifest() -> dict[str, object]:
         eligible=is_torch_equal("2.9.0"),
         applied=is_torch_equal("2.9.0"),
         detail="PythonWrapperCodegen.memory_plan_reuse override",
+        obsolete=is_torch_equal_or_newer("2.10.0"),
+        obsolete_reason=(
+            "torch_version_outside_patch_window"
+            if is_torch_equal_or_newer("2.10.0")
+            else None
+        ),
     )
     add_patch(
         "torch_2_9_graph_partition_signature",
@@ -1054,6 +1064,12 @@ def patch_profile_manifest() -> dict[str, object]:
         eligible=is_torch_equal("2.9.0"),
         applied=is_torch_equal("2.9.0"),
         detail="Graph partition signature override for Inductor partitioning",
+        obsolete=is_torch_equal_or_newer("2.10.0"),
+        obsolete_reason=(
+            "torch_version_outside_patch_window"
+            if is_torch_equal_or_newer("2.10.0")
+            else None
+        ),
     )
     add_patch(
         "torch_2_9_scheduler_partition",
@@ -1061,6 +1077,12 @@ def patch_profile_manifest() -> dict[str, object]:
         eligible=is_torch_equal("2.9.0"),
         applied=is_torch_equal("2.9.0"),
         detail="Scheduler.should_partition and GraphLowering._update_scheduler override",
+        obsolete=is_torch_equal_or_newer("2.10.0"),
+        obsolete_reason=(
+            "torch_version_outside_patch_window"
+            if is_torch_equal_or_newer("2.10.0")
+            else None
+        ),
     )
     add_patch(
         "torch_2_9_get_raw_stream",
@@ -1068,6 +1090,12 @@ def patch_profile_manifest() -> dict[str, object]:
         eligible=is_torch_equal("2.9.0") or is_torch_equal("2.9.1"),
         applied=hasattr(__import__("builtins"), "get_raw_stream"),
         detail="builtins.get_raw_stream injection for Inductor autotune",
+        obsolete=is_torch_equal_or_newer("2.10.0"),
+        obsolete_reason=(
+            "torch_version_outside_patch_window"
+            if is_torch_equal_or_newer("2.10.0")
+            else None
+        ),
     )
     add_patch(
         "graph_capture_runtime_env",
@@ -1077,6 +1105,12 @@ def patch_profile_manifest() -> dict[str, object]:
         applied=is_torch_equal_or_newer("2.10.0")
         and not is_torch_equal_or_newer("2.12.0.dev"),
         detail="GraphCaptureOutput.get_runtime_env builtins backport",
+        obsolete=is_torch_equal_or_newer("2.12.0.dev"),
+        obsolete_reason=(
+            "torch_version_outside_patch_window"
+            if is_torch_equal_or_newer("2.12.0.dev")
+            else None
+        ),
     )
     add_patch(
         "constrain_to_fx_strides",
@@ -1085,6 +1119,12 @@ def patch_profile_manifest() -> dict[str, object]:
         and not is_torch_equal_or_newer("2.12.0.dev"),
         applied=_constrain_to_fx_strides_patched,
         detail="Inductor lowering.constrain_to_fx_strides opaque-meta fix",
+        obsolete=is_torch_equal_or_newer("2.12.0.dev"),
+        obsolete_reason=(
+            "torch_version_outside_patch_window"
+            if is_torch_equal_or_newer("2.12.0.dev")
+            else None
+        ),
     )
     add_patch(
         "fxgraphcache_pickle",
@@ -1110,6 +1150,12 @@ def patch_profile_manifest() -> dict[str, object]:
         if hasattr(torch, "_inductor")
         else False,
         detail="FxGraphCachePickler.dumps ValueError backport",
+        obsolete=is_torch_equal_or_newer("2.11.0"),
+        obsolete_reason=(
+            "torch_version_outside_patch_window"
+            if is_torch_equal_or_newer("2.11.0")
+            else None
+        ),
     )
     add_patch(
         "cpp_indirect_assert",
@@ -1137,6 +1183,12 @@ def patch_profile_manifest() -> dict[str, object]:
         and hasattr(torch._inductor.codegen, "cpp")
         else False,
         detail="CppVecKernel.indirect_assert scalar-mask fix",
+        obsolete=is_torch_equal_or_newer("2.12.0.dev"),
+        obsolete_reason=(
+            "torch_version_outside_patch_window"
+            if is_torch_equal_or_newer("2.12.0.dev")
+            else None
+        ),
     )
     add_patch(
         "fallback_allow_list",
@@ -1173,9 +1225,15 @@ def patch_profile_manifest() -> dict[str, object]:
         detail="Force Triton autotuner to select first running config",
     )
 
+    obsolete_patch_ids = [
+        patch["patch_id"] for patch in patches if bool(patch.get("obsolete"))
+    ]
+
     return {
         "schema_version": 1,
         "torch_version": getattr(torch, "__version__", "<unknown>"),
         "fallback_namespace_coverage": fallback_namespace_manifest(),
+        "obsolete_patch_count": len(obsolete_patch_ids),
+        "obsolete_patch_ids": obsolete_patch_ids,
         "patches": patches,
     }
