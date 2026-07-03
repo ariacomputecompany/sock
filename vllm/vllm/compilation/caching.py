@@ -10,6 +10,7 @@ import pickle
 import sys
 import time
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any, Literal
 from unittest.mock import patch
 
@@ -440,6 +441,14 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             state["standalone_compile_artifact_reuse_summary"] = (
                 standalone_compile_artifacts.reuse_summary()
             )
+            state["standalone_compile_artifact_proof_manifest"] = (
+                build_standalone_artifact_proof_manifest(
+                    compiled_fn.vllm_backend,
+                    standalone_compile_artifacts,
+                    sym_shape_indices_map,
+                    returns_tuple_map,
+                )
+            )
             state["sym_shape_indices_map"] = sym_shape_indices_map
             state["returns_tuple_map"] = returns_tuple_map
         return pickle.dumps(state)
@@ -466,6 +475,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         )
         standalone_compile_artifact_reuse_summary = state.pop(
             "standalone_compile_artifact_reuse_summary", None
+        )
+        standalone_compile_artifact_proof_manifest = state.pop(
+            "standalone_compile_artifact_proof_manifest", None
         )
         sym_shape_indices_map = state.pop("sym_shape_indices_map", {})
         returns_tuple_map = state.pop("returns_tuple_map", {})
@@ -510,7 +522,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                     assumes_closure=False,
                 )
                 logger.info(
-                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s reuse=%s compatibility=%s compatibility_drift=%s startup_closure=%s",
+                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s reuse=%s compatibility=%s compatibility_drift=%s startup_closure=%s proof=%s",
                     standalone_compile_artifact_manifest.get("entry_count", 0),
                     standalone_compile_artifact_manifest.get(
                         "unique_artifact_count", 0
@@ -543,6 +555,15 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                         startup_closure,
                         sort_keys=True,
                         separators=(",", ":"),
+                    ),
+                    (
+                        json.dumps(
+                            standalone_compile_artifact_proof_manifest,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                        if standalone_compile_artifact_proof_manifest is not None
+                        else "<unknown>"
                     ),
                 )
                 if not compatibility_drift["ok"]:
@@ -869,6 +890,116 @@ def build_standalone_artifact_compatibility_manifest(
         "env": envs.compile_factor_manifest(),
         "vllm_config_hash": (
             vllm_config.compute_hash() if vllm_config is not None else None
+        ),
+    }
+
+
+def load_compile_cache_key_factors(
+    local_cache_dir: str | None,
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+    meta_path = Path(local_cache_dir) / "cache_key_factors.json"
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text())
+    except Exception:
+        logger.warning("could not read compile cache key factors from %s", meta_path)
+        return None
+
+
+def build_shape_envelope_summary(
+    standalone_compile_artifacts: StandaloneCompiledArtifacts,
+    sym_shape_indices_map: dict[str, list[int]] | None,
+    returns_tuple_map: dict[str, bool] | None,
+) -> dict[str, object]:
+    submodule_shapes: dict[str, list[str]] = {}
+    for cache_key in sorted(standalone_compile_artifacts.submodule_bytes):
+        submod_name, shape_str = cache_key.rsplit("_", 1)
+        submodule_shapes.setdefault(submod_name, []).append(shape_str)
+
+    submodules = []
+    for submod_name, shapes in submodule_shapes.items():
+        submodules.append(
+            {
+                "submodule_name": submod_name,
+                "shape_variants": tuple(shapes),
+                "shape_count": len(shapes),
+                "symbolic_input_positions": tuple(
+                    (sym_shape_indices_map or {}).get(submod_name, [])
+                ),
+                "returns_tuple": bool((returns_tuple_map or {}).get(submod_name, False)),
+            }
+        )
+
+    return {
+        "schema_version": 1,
+        "submodule_count": len(submodules),
+        "total_shape_variants": sum(item["shape_count"] for item in submodules),
+        "submodules": submodules,
+    }
+
+
+def build_standalone_artifact_proof_manifest(
+    vllm_backend: Any,
+    standalone_compile_artifacts: StandaloneCompiledArtifacts,
+    sym_shape_indices_map: dict[str, list[int]] | None,
+    returns_tuple_map: dict[str, bool] | None,
+) -> dict[str, object]:
+    vllm_config = getattr(vllm_backend, "vllm_config", None)
+    compilation_config = getattr(vllm_backend, "compilation_config", None)
+    compiler_manager = getattr(vllm_backend, "compiler_manager", None)
+    cache_key_factors = load_compile_cache_key_factors(
+        getattr(compilation_config, "local_cache_dir", None)
+    )
+
+    compile_hashes = {
+        "env_policy_hash": (
+            hash_factors(cache_key_factors["env"])
+            if cache_key_factors is not None and "env" in cache_key_factors
+            else hash_factors(envs.compile_factors())
+        ),
+        "config_hash": (
+            cache_key_factors.get("config_hash")
+            if cache_key_factors is not None
+            else (vllm_config.compute_hash() if vllm_config is not None else None)
+        ),
+        "code_hash": (
+            cache_key_factors.get("code_hash") if cache_key_factors is not None else None
+        ),
+        "compiler_hash": (
+            cache_key_factors.get("compiler_hash")
+            if cache_key_factors is not None
+            else (
+                compiler_manager.compute_hash(vllm_config)
+                if compiler_manager is not None and vllm_config is not None
+                else None
+            )
+        ),
+    }
+
+    return {
+        "schema_version": 1,
+        "compile_hashes": compile_hashes,
+        "backend_identity": {
+            "backend_class": type(vllm_backend).__name__,
+            "prefix": getattr(vllm_backend, "prefix", None),
+            "is_encoder": bool(getattr(vllm_backend, "is_encoder", False)),
+            "compiler_name": (
+                getattr(getattr(compiler_manager, "compiler", None), "name", None)
+                if compiler_manager is not None
+                else None
+            ),
+        },
+        "toolchain_identity": {
+            "python_version": ".".join(str(part) for part in sys.version_info[:3]),
+            "torch_version": getattr(torch, "__version__", "<unknown>"),
+        },
+        "shape_envelope": build_shape_envelope_summary(
+            standalone_compile_artifacts,
+            sym_shape_indices_map,
+            returns_tuple_map,
         ),
     }
 

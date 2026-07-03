@@ -404,12 +404,7 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 - [ ] Avoid opaque pickled state as the sole long-term artifact format where possible.
 - [ ] Track:
-  - code hash
-  - config hash
-  - env/policy hash
-  - backend/toolchain identity
   - patch profile
-  - shape envelope
 - [ ] Verify “no new compile” against recorded traces.
 - [ ] Reduce startup-time dependence on Python pickling and `GraphPickler` roundtrips where possible.
 - [ ] Reduce artifact-load overhead from Python object reconstruction during warm start.

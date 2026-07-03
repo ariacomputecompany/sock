@@ -6,6 +6,7 @@ import importlib.util
 import json
 import pickle
 import sys
+import tempfile
 import types
 from pathlib import Path
 
@@ -233,44 +234,50 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         def named_children(self):
             return []
 
-    backend = types.SimpleNamespace(
-        vllm_config=types.SimpleNamespace(compute_hash=lambda: "cfg-hash"),
-        collect_standalone_compile_artifacts=lambda: (
-            artifacts,
-            {"block0": (0,)},
-            {"block0": True},
+    with tempfile.TemporaryDirectory() as tmpdir:
+        backend = types.SimpleNamespace(
+            vllm_config=types.SimpleNamespace(compute_hash=lambda: "cfg-hash"),
+            compilation_config=types.SimpleNamespace(local_cache_dir=tmpdir),
+            compiler_manager=types.SimpleNamespace(
+                compiler=types.SimpleNamespace(name="inductor-light"),
+                compute_hash=lambda cfg: "compiler-hash",
+            ),
+            collect_standalone_compile_artifacts=lambda: (
+                artifacts,
+                {"block0": (0,)},
+                {"block0": True},
+            ),
         )
-    )
-    compiled_fn = types.SimpleNamespace(
-        graph_module=_GraphModule(),
-        example_inputs=[],
-        prefix="unit-test",
-        optimized_call=lambda *args, **kwargs: None,
-        is_encoder=False,
-        vllm_backend=backend,
-        sym_tensor_indices=[],
-        aot_autograd_config={},
-        execution_code=None,
-        submod_names=None,
-        consts=None,
-        shape_env=None,
-        _fake_mode=None,
-    )
+        compiled_fn = types.SimpleNamespace(
+            graph_module=_GraphModule(),
+            example_inputs=[],
+            prefix="unit-test",
+            optimized_call=lambda *args, **kwargs: None,
+            is_encoder=False,
+            vllm_backend=backend,
+            sym_tensor_indices=[],
+            aot_autograd_config={},
+            execution_code=None,
+            submod_names=None,
+            consts=None,
+            shape_env=None,
+            _fake_mode=None,
+        )
 
-    original_serialize_graph_module = (
-        caching.VllmSerializableFunction.serialize_graph_module
-    )
-    caching.VllmSerializableFunction.serialize_graph_module = classmethod(
-        lambda cls, graph_module: b"graph-module"
-    )
-    try:
-        serialized = caching.VllmSerializableFunction.serialize_compile_artifacts(
-            compiled_fn
+        original_serialize_graph_module = (
+            caching.VllmSerializableFunction.serialize_graph_module
         )
-    finally:
-        caching.VllmSerializableFunction.serialize_graph_module = (
-            original_serialize_graph_module
+        caching.VllmSerializableFunction.serialize_graph_module = classmethod(
+            lambda cls, graph_module: b"graph-module"
         )
+        try:
+            serialized = caching.VllmSerializableFunction.serialize_compile_artifacts(
+                compiled_fn
+            )
+        finally:
+            caching.VllmSerializableFunction.serialize_graph_module = (
+                original_serialize_graph_module
+            )
     state = pickle.loads(serialized)
 
     assert state["standalone_compile_artifact_manifest"] == artifacts.manifest_summary()
@@ -299,6 +306,46 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "expanded_entry_bytes": len(b"payload") * 2,
         "duplicate_bytes_elided": len(b"payload"),
         "duplicate_artifact_loads_avoided": 1,
+    }
+    assert state["standalone_compile_artifact_proof_manifest"] == {
+        "schema_version": 1,
+        "compile_hashes": {
+            "env_policy_hash": "factors",
+            "config_hash": "cfg-hash",
+            "code_hash": None,
+            "compiler_hash": "compiler-hash",
+        },
+        "backend_identity": {
+            "backend_class": "SimpleNamespace",
+            "prefix": None,
+            "is_encoder": False,
+            "compiler_name": "inductor-light",
+        },
+        "toolchain_identity": {
+            "python_version": ".".join(str(part) for part in sys.version_info[:3]),
+            "torch_version": "2.9.0-light",
+        },
+        "shape_envelope": {
+            "schema_version": 1,
+            "submodule_count": 2,
+            "total_shape_variants": 2,
+            "submodules": [
+                {
+                    "submodule_name": "block0",
+                    "shape_variants": ("shape0",),
+                    "shape_count": 1,
+                    "symbolic_input_positions": (0,),
+                    "returns_tuple": True,
+                },
+                {
+                    "submodule_name": "block1",
+                    "shape_variants": ("shape0",),
+                    "shape_count": 1,
+                    "symbolic_input_positions": (),
+                    "returns_tuple": False,
+                },
+            ],
+        },
     }
     assert state["sym_shape_indices_map"] == {"block0": (0,)}
     assert state["returns_tuple_map"] == {"block0": True}
@@ -423,6 +470,77 @@ def test_startup_closure_summary_classifies_outcomes() -> None:
         "schema_version": 1,
         "status": "closure_by_assumption",
         "reasons": ["closure_not_proven_by_manifest"],
+    }
+
+
+def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
+    caching, _ = _load_caching_module()
+    artifacts = caching.StandaloneCompiledArtifacts()
+    artifacts.insert("block0", "shape0", b"payload")
+    artifacts.insert("block0", "shape1", b"payload-2")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        meta_path = Path(tmpdir) / "cache_key_factors.json"
+        meta_path.write_text(
+            json.dumps(
+                {
+                    "env": {"A": "B"},
+                    "config_hash": "cfg-from-file",
+                    "code_hash": "code-from-file",
+                    "compiler_hash": "compiler-from-file",
+                }
+            )
+        )
+        backend = types.SimpleNamespace(
+            prefix="unit-prefix",
+            is_encoder=True,
+            vllm_config=types.SimpleNamespace(compute_hash=lambda: "cfg-live"),
+            compilation_config=types.SimpleNamespace(local_cache_dir=tmpdir),
+            compiler_manager=types.SimpleNamespace(
+                compiler=types.SimpleNamespace(name="inductor-light"),
+                compute_hash=lambda cfg: "compiler-live",
+            ),
+        )
+
+        proof = caching.build_standalone_artifact_proof_manifest(
+            backend,
+            artifacts,
+            {"block0": [0, 2]},
+            {"block0": True},
+        )
+
+    assert proof == {
+        "schema_version": 1,
+        "compile_hashes": {
+            "env_policy_hash": "factors",
+            "config_hash": "cfg-from-file",
+            "code_hash": "code-from-file",
+            "compiler_hash": "compiler-from-file",
+        },
+        "backend_identity": {
+            "backend_class": "SimpleNamespace",
+            "prefix": "unit-prefix",
+            "is_encoder": True,
+            "compiler_name": "inductor-light",
+        },
+        "toolchain_identity": {
+            "python_version": ".".join(str(part) for part in sys.version_info[:3]),
+            "torch_version": "2.9.0-light",
+        },
+        "shape_envelope": {
+            "schema_version": 1,
+            "submodule_count": 1,
+            "total_shape_variants": 2,
+            "submodules": [
+                {
+                    "submodule_name": "block0",
+                    "shape_variants": ("shape0", "shape1"),
+                    "shape_count": 2,
+                    "symbolic_input_positions": (0, 2),
+                    "returns_tuple": True,
+                }
+            ],
+        },
     }
 
 
