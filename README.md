@@ -25,7 +25,8 @@ sock compiles inference-engine startup the way a normal compiler handles a progr
 In practice, that means:
 
 - if you only need a prefill path, sock builds the prefill closure
-- if you only need decode preparation, sock builds the decode closure
+- if a requested subset seam is semantically real in vendored `vLLM`, sock builds only that closure
+- if a requested subset seam actually depends on broader worker startup, sock fails closed instead of pretending it is standalone
 - if a distributed startup needs leader/follower artifact fanout, sock plans and executes that explicitly
 - if an artifact is already valid for reuse, sock proves that and skips rebuilding it
 - if a requested scope would still leak runtime JIT, sock surfaces that as a bounded contract instead of hiding it
@@ -117,6 +118,7 @@ Those are then used to build only the minimal valid closure for the requested pu
 Examples:
 
 - `prefill_attention` can be planned and materialized separately from `decode_attention`
+- `decode_attention` and `kv_cache_update` are tracked as explicit `vLLM` surfaces, but subset builds fail closed when vendored startup paths still require mixed-batch worker context
 - backend autotune caches can be treated as first-class artifacts instead of hidden side effects
 - CUDA graph captures can be handled as topology-scoped rank-local outputs
 - leader/follower artifact fanout can be chosen explicitly instead of emerging accidentally at runtime

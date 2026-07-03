@@ -14,6 +14,7 @@ use sock_core::{
 use sock_engine::{
     BuildReadiness, BuildScope, MaterializationExecutor, PlannerHostSnapshot, PlanningOutcome,
     build_vllm_entrypoint_document, build_vllm_integration_document, emit_vllm_entrypoints,
+    validate_scoped_vllm_subset,
 };
 
 #[derive(Debug, Parser)]
@@ -111,10 +112,12 @@ fn main() -> Result<()> {
             emit_explain(&outcome, &diagnostics, &rewrite_trace, format)?;
         }
         Command::Build { out, scope, format } => {
-            let outcome = plan_with_scope(&scope.into_scope())?;
+            let scope = scope.into_scope();
+            let outcome = plan_with_scope(&scope)?;
             let bundle = replay_bundle(&outcome);
-            let materialization = MaterializationExecutor::new().execute(&outcome, &out)?;
             let vllm_integration = build_vllm_integration_document(&outcome)?;
+            validate_scoped_vllm_subset(&scope, &vllm_integration)?;
+            let materialization = MaterializationExecutor::new().execute(&outcome, &out)?;
             std::fs::write(
                 out.join("vllm_integration.json"),
                 canonical_json(&vllm_integration)?.as_bytes(),

@@ -3,11 +3,12 @@ use std::collections::BTreeSet;
 use sock_core::{
     AdapterError, AdapterSurvey, ArtifactRequirement, CacheOwnershipSurface, CompileRegion,
     EngineAdapter, IntegrationScopeKind, SourceAnchor, SourceEvidence, VllmCallableTarget,
-    VllmIntegrationDocument, VllmIntegrationSurface,
+    VllmIntegrationDocument, VllmIntegrationSurface, VllmIsolationContract,
+    VllmIsolationDisposition,
 };
 use thiserror::Error;
 
-use crate::{PlanningOutcome, vllm, vllm_adapter::VllmAdapter};
+use crate::{BuildScope, PlanningOutcome, vllm, vllm_adapter::VllmAdapter};
 
 #[derive(Debug, Error)]
 pub enum VllmIntegrationError {
@@ -15,6 +16,14 @@ pub enum VllmIntegrationError {
     Adapter(#[from] AdapterError),
     #[error("missing vLLM integration mapping for scope {scope}")]
     MissingSurface { scope: String },
+    #[error(
+        "scoped subset build is not semantically valid for {surface_id}: requires {required_context}; blockers: {blockers}"
+    )]
+    NonIsolatableSubset {
+        surface_id: String,
+        required_context: String,
+        blockers: String,
+    },
 }
 
 pub fn build_vllm_integration_document(
@@ -49,6 +58,32 @@ pub fn build_vllm_integration_document(
     })
 }
 
+pub fn validate_scoped_vllm_subset(
+    scope: &BuildScope,
+    integration: &VllmIntegrationDocument,
+) -> Result<(), VllmIntegrationError> {
+    if !scope.has_subset_selectors() {
+        return Ok(());
+    }
+
+    for surface in integration
+        .surfaces
+        .iter()
+        .filter(|surface| surface.scope_kind == IntegrationScopeKind::CompileRegion)
+    {
+        if surface.isolation.subset_build_valid {
+            continue;
+        }
+        return Err(VllmIntegrationError::NonIsolatableSubset {
+            surface_id: surface.id.clone(),
+            required_context: surface.isolation.required_context.join(", "),
+            blockers: surface.isolation.blockers.join("; "),
+        });
+    }
+
+    Ok(())
+}
+
 fn integration_surface_for_region(
     region: &CompileRegion,
     survey: &AdapterSurvey,
@@ -72,6 +107,16 @@ fn integration_surface_for_region(
                 "Cache ownership boundaries".to_owned(),
                 "Layer identity in static forward context".to_owned(),
             ],
+            isolation: isolation(
+                VllmIsolationDisposition::ContextBound,
+                true,
+                false,
+                &["PiecewiseBackend context"],
+                &[],
+                "Subset compilation for transformer blocks is real, but the seam is only callable through vLLM's piecewise backend context.",
+                "vllm/vllm/compilation/piecewise_backend.py",
+                &["class PiecewiseBackend", "def compile_all_ranges(self) -> None:"],
+            )?,
             primary: callable(
                 "vllm.compilation.piecewise_backend",
                 "PiecewiseBackend.compile_all_ranges",
@@ -112,6 +157,16 @@ fn integration_surface_for_region(
                 "Graph and region boundaries".to_owned(),
                 "Custom-op boundaries".to_owned(),
             ],
+            isolation: isolation(
+                VllmIsolationDisposition::ContextBound,
+                true,
+                false,
+                &["Worker context"],
+                &[],
+                "Prefill warmup remains subset-build valid because vLLM exposes a worker-scoped warmup seam without forcing decode-owned mixed-batch capture.",
+                "vllm/vllm/model_executor/warmup/sparse_mla_triton_warmup.py",
+                &["def sparse_mla_triton_warmup_if_needed(worker: \"Worker\") -> None:"],
+            )?,
             primary: callable(
                 "vllm.model_executor.warmup.sparse_mla_triton_warmup",
                 "sparse_mla_triton_warmup_if_needed",
@@ -153,6 +208,19 @@ fn integration_surface_for_region(
                 "Graph and region boundaries".to_owned(),
                 "Layer identity in static forward context".to_owned(),
             ],
+            isolation: isolation(
+                VllmIsolationDisposition::NonIsolatable,
+                false,
+                false,
+                &["Full worker startup context"],
+                &[
+                    "Decode warmup forces mixed-batch dummy runs during kernel warmup.",
+                    "CUDA-graph capture sizing is derived from broader decode metadata builder state.",
+                ],
+                "Decode materialization is not a semantically real standalone subset build because the vendored warmup path crosses broader worker startup and mixed-batch capture boundaries.",
+                "vllm/vllm/model_executor/warmup/kernel_warmup.py",
+                &["def kernel_warmup(worker: \"Worker\"):", "create_mixed_batch=True"],
+            )?,
             primary: callable(
                 "vllm.model_executor.warmup.kernel_warmup",
                 "kernel_warmup",
@@ -194,6 +262,22 @@ fn integration_surface_for_region(
                 "Cache ownership boundaries".to_owned(),
                 "Graph and region boundaries".to_owned(),
             ],
+            isolation: isolation(
+                VllmIsolationDisposition::NonIsolatable,
+                false,
+                false,
+                &["Full worker startup context"],
+                &[
+                    "FlashInfer KV-update warmup reuses mixed prefill/decode warmup orchestration.",
+                    "Autotune cache resolution is runner-scoped rather than standalone-region scoped.",
+                ],
+                "KV-update materialization is not a semantically real standalone subset build because the vendored autotune seam depends on mixed-batch worker startup state.",
+                "vllm/vllm/model_executor/warmup/flashinfer_sparse_mla_warmup.py",
+                &[
+                    "def deepseek_v4_sparse_mla_attention_warmup(worker: \"Worker\") -> None:",
+                    "run_mixed_prefill_decode_warmup",
+                ],
+            )?,
             primary: callable(
                 "vllm.model_executor.warmup.flashinfer_sparse_mla_warmup",
                 "deepseek_v4_sparse_mla_attention_warmup",
@@ -231,6 +315,16 @@ fn integration_surface_for_region(
                 "Custom-op boundaries".to_owned(),
                 "Cache ownership boundaries".to_owned(),
             ],
+            isolation: isolation(
+                VllmIsolationDisposition::Standalone,
+                true,
+                true,
+                &[],
+                &[],
+                "MoE fallback patching is a true standalone vendored seam because it is exposed as a module function with no worker-owned runtime context.",
+                "vllm/vllm/env_override.py",
+                &["def _patch_inductor_fallback_allow_list() -> None:"],
+            )?,
             primary: callable(
                 "vllm.env_override",
                 "_patch_inductor_fallback_allow_list",
@@ -278,6 +372,16 @@ fn integration_surface_for_cache(
                 "Graph and region boundaries".to_owned(),
                 "Cache ownership boundaries".to_owned(),
             ],
+            isolation: isolation(
+                VllmIsolationDisposition::ContextBound,
+                true,
+                false,
+                &["PiecewiseBackend context"],
+                &[],
+                "Compile-cache ownership is subset-build valid, but write paths still run through vLLM's compilation backend context.",
+                "vllm/vllm/compilation/caching.py",
+                &["def aot_compile_hash_factors(vllm_config: VllmConfig) -> list[str]:"],
+            )?,
             primary: callable(
                 "vllm.compilation.caching",
                 "aot_compile_hash_factors",
@@ -319,6 +423,19 @@ fn integration_surface_for_cache(
                 "VLLM_HAS_FLASHINFER_CUBIN".to_owned(),
             ],
             preserved_abstractions: vec!["Cache ownership boundaries".to_owned()],
+            isolation: isolation(
+                VllmIsolationDisposition::NonIsolatable,
+                false,
+                false,
+                &["GPUModelRunner context"],
+                &[
+                    "FlashInfer autotune cache paths are resolved from the live runner.",
+                    "Autotune contents are produced by mixed-batch warmup rather than a standalone cache operation.",
+                ],
+                "FlashInfer autotune cache ownership is real, but standalone subset builds are not: the cache is produced from runner-scoped warmup state.",
+                "vllm/vllm/model_executor/warmup/flashinfer_autotune_cache.py",
+                &["def resolve_flashinfer_autotune_file(runner: \"GPUModelRunner\") -> Path:"],
+            )?,
             primary: callable(
                 "vllm.model_executor.warmup.flashinfer_autotune_cache",
                 "resolve_flashinfer_autotune_file",
@@ -350,6 +467,22 @@ fn integration_surface_for_cache(
                 "CompilationConfig".to_owned(),
             ],
             preserved_abstractions: vec!["Graph and region boundaries".to_owned()],
+            isolation: isolation(
+                VllmIsolationDisposition::NonIsolatable,
+                false,
+                false,
+                &["Full worker startup context"],
+                &[
+                    "Decode graph-cache sizing lives inside attention metadata builder state.",
+                    "Cache materialization is driven by decode kernel warmup rather than a standalone cache writer.",
+                ],
+                "CUDA-graph cache ownership is explicit, but standalone subset builds are not semantically real because capture state is created by broader decode startup.",
+                "vllm/vllm/v1/attention/backends/gdn_attn.py",
+                &[
+                    "self.use_full_cuda_graph: bool =",
+                    "self.decode_cudagraph_max_bs: int = (",
+                ],
+            )?,
             primary: callable(
                 "vllm.v1.attention.backends.gdn_attn",
                 "GDNAttentionMetadataBuilder.__init__",
@@ -430,6 +563,29 @@ fn callable(
         callable: callable.to_owned(),
         summary: summary.to_owned(),
         evidence,
+    })
+}
+
+fn isolation(
+    disposition: VllmIsolationDisposition,
+    subset_build_valid: bool,
+    direct_entrypoint_invocable: bool,
+    required_context: &[&str],
+    blockers: &[&str],
+    summary: &str,
+    file: &'static str,
+    anchor_patterns: &[&'static str],
+) -> Result<VllmIsolationContract, AdapterError> {
+    Ok(VllmIsolationContract {
+        disposition,
+        subset_build_valid,
+        direct_entrypoint_invocable,
+        required_context: required_context
+            .iter()
+            .map(|value| (*value).to_owned())
+            .collect(),
+        blockers: blockers.iter().map(|value| (*value).to_owned()).collect(),
+        evidence: evidence(file, summary, anchor_patterns)?,
     })
 }
 
@@ -634,5 +790,49 @@ mod tests {
                 assert!(anchor.line <= content.lines().count());
             }
         }
+    }
+
+    #[test]
+    fn integration_document_marks_non_isolatable_runtime_bound_surfaces() {
+        let planner = Planner::new(host());
+        let outcome = planner.resolve(request()).expect("plan");
+        let doc = build_vllm_integration_document(&outcome).expect("integration doc");
+
+        let decode = doc
+            .surfaces
+            .iter()
+            .find(|surface| surface.id == "compile-region:decode_attention")
+            .expect("decode surface");
+        assert_eq!(
+            decode.isolation.disposition,
+            VllmIsolationDisposition::NonIsolatable
+        );
+        assert!(!decode.isolation.subset_build_valid);
+        assert!(
+            decode
+                .isolation
+                .blockers
+                .iter()
+                .any(|blocker| blocker.contains("mixed-batch"))
+        );
+        assert!(!decode.isolation.evidence.anchors.is_empty());
+
+        let prefill = doc
+            .surfaces
+            .iter()
+            .find(|surface| surface.id == "compile-region:prefill_attention")
+            .expect("prefill surface");
+        assert_eq!(
+            prefill.isolation.disposition,
+            VllmIsolationDisposition::ContextBound
+        );
+        assert!(prefill.isolation.subset_build_valid);
+        assert!(
+            prefill
+                .isolation
+                .required_context
+                .iter()
+                .any(|context| context == "Worker context")
+        );
     }
 }

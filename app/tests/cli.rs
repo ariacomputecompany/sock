@@ -269,6 +269,14 @@ fn scoped_prefill_build_emits_minimal_closure() {
             .iter()
             .any(|surface| surface["id"] == "compile-region:prefill_attention")
     );
+    let prefill_surface = surfaces
+        .iter()
+        .find(|surface| surface["id"] == "compile-region:prefill_attention")
+        .expect("prefill integration surface");
+    assert_eq!(
+        prefill_surface["isolation"]["subset_build_valid"],
+        Value::Bool(true)
+    );
     assert!(
         !surfaces
             .iter()
@@ -317,17 +325,11 @@ fn backend_family_scope_selects_decode_closure() {
             "performance",
         ])
         .assert()
-        .success();
-
-    let plan: Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.path().join("buildplan.json")).expect("read buildplan"),
-    )
-    .expect("parse buildplan");
-    let compile_regions = plan["compile_regions"]
-        .as_array()
-        .expect("compile regions array");
-    assert_eq!(compile_regions.len(), 1);
-    assert_eq!(compile_regions[0]["name"], "decode_attention");
+        .failure()
+        .stderr(predicate::str::contains(
+            "scoped subset build is not semantically valid for compile-region:decode_attention",
+        ))
+        .stderr(predicate::str::contains("mixed-batch dummy runs"));
 }
 
 #[test]
@@ -346,17 +348,11 @@ fn cache_namespace_scope_selects_flashinfer_kv_update_closure() {
             "correctness",
         ])
         .assert()
-        .success();
-
-    let plan: Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.path().join("buildplan.json")).expect("read buildplan"),
-    )
-    .expect("parse buildplan");
-    let compile_regions = plan["compile_regions"]
-        .as_array()
-        .expect("compile regions array");
-    assert_eq!(compile_regions.len(), 1);
-    assert_eq!(compile_regions[0]["name"], "kv_cache_update");
+        .failure()
+        .stderr(predicate::str::contains(
+            "scoped subset build is not semantically valid for compile-region:kv_cache_update",
+        ))
+        .stderr(predicate::str::contains("mixed prefill/decode warmup"));
 }
 
 #[test]

@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{CanonicalHash, SchemaVersion, VllmCallableTarget};
+use crate::{CanonicalHash, SchemaVersion, VllmCallableTarget, VllmIsolationContract};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -26,6 +26,7 @@ pub struct VllmEntrypoint {
     pub id: String,
     pub surface_id: String,
     pub scope_name: String,
+    pub isolation: VllmIsolationContract,
     pub context_kind: VllmContextKind,
     pub call_strategy: VllmCallStrategy,
     pub callable: VllmCallableTarget,

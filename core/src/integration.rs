@@ -17,6 +17,24 @@ pub struct VllmCallableTarget {
     pub evidence: SourceEvidence,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VllmIsolationDisposition {
+    Standalone,
+    ContextBound,
+    NonIsolatable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VllmIsolationContract {
+    pub disposition: VllmIsolationDisposition,
+    pub subset_build_valid: bool,
+    pub direct_entrypoint_invocable: bool,
+    pub required_context: Vec<String>,
+    pub blockers: Vec<String>,
+    pub evidence: SourceEvidence,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VllmIntegrationSurface {
     pub id: String,
@@ -28,6 +46,7 @@ pub struct VllmIntegrationSurface {
     pub rationale: String,
     pub preserved_inputs: Vec<String>,
     pub preserved_abstractions: Vec<String>,
+    pub isolation: VllmIsolationContract,
     pub primary: VllmCallableTarget,
     pub auxiliary: Vec<VllmCallableTarget>,
 }

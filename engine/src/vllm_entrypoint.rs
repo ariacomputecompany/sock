@@ -35,6 +35,7 @@ pub fn build_vllm_entrypoint_document(
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
+                isolation: surface.isolation.clone(),
                 context_kind: VllmContextKind::PiecewiseBackend,
                 call_strategy: VllmCallStrategy::ContextMethod,
                 callable: surface.primary.clone(),
@@ -53,6 +54,7 @@ pub fn build_vllm_entrypoint_document(
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
+                isolation: surface.isolation.clone(),
                 context_kind: VllmContextKind::Worker,
                 call_strategy: VllmCallStrategy::ModuleFunctionWithContext,
                 callable: surface.primary.clone(),
@@ -68,6 +70,7 @@ pub fn build_vllm_entrypoint_document(
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
+                isolation: surface.isolation.clone(),
                 context_kind: VllmContextKind::Worker,
                 call_strategy: VllmCallStrategy::ModuleFunctionWithContext,
                 callable: surface.primary.clone(),
@@ -83,6 +86,7 @@ pub fn build_vllm_entrypoint_document(
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
+                isolation: surface.isolation.clone(),
                 context_kind: VllmContextKind::Worker,
                 call_strategy: VllmCallStrategy::ModuleFunctionWithContext,
                 callable: surface.primary.clone(),
@@ -101,6 +105,7 @@ pub fn build_vllm_entrypoint_document(
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
+                isolation: surface.isolation.clone(),
                 context_kind: VllmContextKind::None,
                 call_strategy: VllmCallStrategy::ModuleFunction,
                 callable: surface.primary.clone(),
@@ -247,6 +252,8 @@ def main() -> int:
         print(json.dumps({
             "entrypoint": document["id"],
             "surface_id": document["surface_id"],
+            "subset_build_valid": document["isolation"]["subset_build_valid"],
+            "direct_entrypoint_invocable": document["isolation"]["direct_entrypoint_invocable"],
             "context_kind": document["context_kind"],
             "call_strategy": document["call_strategy"],
             "required_env": document.get("required_env", []),
@@ -426,5 +433,19 @@ mod tests {
                 .iter()
                 .all(|entrypoint| entrypoint.wrapper_path.starts_with("vllm-entrypoints/"))
         );
+        let decode = entrypoints
+            .entrypoints
+            .iter()
+            .find(|entrypoint| entrypoint.scope_name == "decode_attention")
+            .expect("decode entrypoint");
+        assert!(!decode.isolation.subset_build_valid);
+        assert!(!decode.isolation.direct_entrypoint_invocable);
+        let moe = entrypoints
+            .entrypoints
+            .iter()
+            .find(|entrypoint| entrypoint.scope_name == "moe_specialty_path")
+            .expect("moe entrypoint");
+        assert!(moe.isolation.subset_build_valid);
+        assert!(moe.isolation.direct_entrypoint_invocable);
     }
 }

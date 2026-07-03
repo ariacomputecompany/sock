@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "build-invalid-subset-scope",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\nif cargo run --quiet --bin sock -- build --out \"$bundle_dir\" --backend-family cuda-graphs --readiness performance >\"$bundle_dir/stdout.txt\" 2>\"$bundle_dir/stderr.txt\"; then\n  echo 'decode-only subset build unexpectedly succeeded' >&2\n  exit 1\nfi\ngrep -q 'compile-region:decode_attention' \"$bundle_dir/stderr.txt\"\ngrep -q 'mixed-batch dummy runs' \"$bundle_dir/stderr.txt\"\nprintf 'fail-closed-subset\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "fail-closed-subset\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\nif cargo run --quiet --bin sock -- build --out \"$bundle_dir\" --cache-namespace flashinfer-autotune-cache --readiness correctness >\"$bundle_dir/stdout.txt\" 2>\"$bundle_dir/stderr.txt\"; then\n  echo 'kv-cache subset build unexpectedly succeeded' >&2\n  exit 1\nfi\ngrep -q 'compile-region:kv_cache_update' \"$bundle_dir/stderr.txt\"\ngrep -q 'mixed prefill/decode warmup' \"$bundle_dir/stderr.txt\"\nprintf 'fail-closed-subset\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "fail-closed-subset\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

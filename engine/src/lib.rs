@@ -12,4 +12,6 @@ pub use scope::{BuildReadiness, BuildScope};
 pub use vllm_entrypoint::{
     VllmEntrypointError, build_vllm_entrypoint_document, emit_vllm_entrypoints,
 };
-pub use vllm_integration::{VllmIntegrationError, build_vllm_integration_document};
+pub use vllm_integration::{
+    VllmIntegrationError, build_vllm_integration_document, validate_scoped_vllm_subset,
+};

@@ -20,13 +20,17 @@ pub struct BuildScope {
 
 impl BuildScope {
     #[must_use]
+    pub fn has_subset_selectors(&self) -> bool {
+        !self.region_names.is_empty()
+            || !self.artifact_scopes.is_empty()
+            || !self.backend_families.is_empty()
+            || !self.cache_namespaces.is_empty()
+            || !self.warmup_scopes.is_empty()
+    }
+
+    #[must_use]
     pub fn is_unscoped(&self) -> bool {
-        self.region_names.is_empty()
-            && self.artifact_scopes.is_empty()
-            && self.backend_families.is_empty()
-            && self.cache_namespaces.is_empty()
-            && self.warmup_scopes.is_empty()
-            && self.readiness.is_none()
+        !self.has_subset_selectors() && self.readiness.is_none()
     }
 
     #[must_use]
