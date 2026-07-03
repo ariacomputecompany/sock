@@ -55,6 +55,12 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_API_KEY"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_CONFIGURE_LOGGING"] == "debug_only"
     assert manifest["categories"]["VLLM_CUSTOM_SCOPES_FOR_PROFILING"] == "debug_only"
+    assert manifest["categories"]["VLLM_SKIP_MODEL_NAME_VALIDATION"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_ENFORCE_STRICT_TOOL_CALLING"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_ENABLE_RESPONSES_API_STORE"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_LOG_MODEL_INSPECTION"] == "debug_only"
+    assert manifest["categories"]["VLLM_DISABLE_LOG_LOGO"] == "debug_only"
+    assert manifest["categories"]["VLLM_COMPUTE_NANS_IN_LOGITS"] == "debug_only"
     assert (
         manifest["policies"]["VLLM_DISABLE_COMPILE_CACHE"]["included_in_compile_key"]
         is True
@@ -67,6 +73,10 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_DISABLE_COMPILE_CACHE" in manifest["included_keys"]
     assert "VLLM_API_KEY" in manifest["ignored_keys"]
     assert "VLLM_CONFIGURE_LOGGING" in manifest["ignored_keys"]
+    assert "VLLM_SKIP_MODEL_NAME_VALIDATION" in manifest["ignored_keys"]
+    assert "VLLM_ENFORCE_STRICT_TOOL_CALLING" in manifest["ignored_keys"]
+    assert "VLLM_LOG_MODEL_INSPECTION" in manifest["ignored_keys"]
+    assert "VLLM_COMPUTE_NANS_IN_LOGITS" in manifest["ignored_keys"]
     assert (
         "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
         in manifest["ambient_included_keys"]
@@ -91,6 +101,11 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["audit"]["overlap_keys"] == {}
     assert "VLLM_CONFIGURE_LOGGING" in manifest["audit"]["category_keys"]["debug_only"]
     assert "VLLM_API_KEY" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_LOG_MODEL_INSPECTION" in manifest["audit"]["category_keys"]["debug_only"]
+    assert (
+        "VLLM_ENFORCE_STRICT_TOOL_CALLING"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
 
     rendered = envs.render_compile_factor_manifest()
     reparsed = json.loads(rendered)
