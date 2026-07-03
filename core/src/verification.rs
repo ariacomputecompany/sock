@@ -18,6 +18,26 @@ pub struct GuaranteeEvidence {
     pub artifact_manifest: Vec<crate::ArtifactManifestEntry>,
     pub warmup_obligations: Vec<crate::WarmupObligation>,
     pub coverage_witnesses: Vec<CoverageWitness>,
+    pub runtime_jit_evidence: Vec<RuntimeJitEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct RuntimeJitEvidence {
+    pub surface_name: String,
+    pub backend_family: String,
+    pub trigger_shape_or_config: String,
+    pub topology_context: String,
+    pub bounded_by: Vec<String>,
+    pub mitigation: String,
+    pub contradiction_reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct OperatorGate {
+    pub command: String,
+    pub compile_free: bool,
+    pub forbidden_queues: Vec<QueueKind>,
+    pub rationale: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -34,4 +54,6 @@ pub struct VerificationReport {
     pub issues: Vec<ValidationIssue>,
     pub phase_timings: Vec<(QueueKind, Option<u64>)>,
     pub runtime_jit_witnesses: Vec<String>,
+    pub runtime_jit_evidence: Vec<RuntimeJitEvidence>,
+    pub operator_gates: Vec<OperatorGate>,
 }

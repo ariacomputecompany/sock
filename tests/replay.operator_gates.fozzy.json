@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "replay-operator-gates",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" >/dev/null\nreplay_out=$(cargo run --quiet --bin sock -- replay --bundle \"$bundle_dir\")\nprintf '%s' \"$replay_out\" | grep -q 'runtime-jit evidence:'\nprintf '%s' \"$replay_out\" | grep -q 'replay compile_free=true forbidden_queues=Compile,Assemble,ArtifactIo,Warmup'\nprintf '%s' \"$replay_out\" | grep -q '\\[info\\] verified_bundle'\nprintf 'replayed\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "replayed\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" >/dev/null\nreplay_out=$(cargo run --quiet --bin sock -- replay --bundle \"$bundle_dir\")\nprintf '%s' \"$replay_out\" | grep -q 'runtime-jit evidence:'\nprintf '%s' \"$replay_out\" | grep -q 'replay compile_free=true forbidden_queues=Compile,Assemble,ArtifactIo,Warmup'\nprintf '%s' \"$replay_out\" | grep -q '\\[info\\] verified_bundle'\nprintf 'replayed\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "replayed\n",
+      "expect_stderr": ""
+    }
+  ]
+}

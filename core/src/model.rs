@@ -14,7 +14,7 @@ use crate::rewrite::PassTrace;
 use crate::runtime::{
     NodeExecutionContract, RuntimeRoi, WarmupCoverageProof, WaveExecutionContract,
 };
-use crate::verification::{GuaranteeEvidence, ValidationIssue, VerificationReport};
+use crate::verification::{GuaranteeEvidence, OperatorGate, ValidationIssue, VerificationReport};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum TargetEngine {
@@ -400,6 +400,27 @@ impl ResolvedBuildPlan {
     #[must_use]
     pub fn validate(&self) -> VerificationReport {
         let mut issues = Vec::new();
+        let expected_artifact_manifest = self
+            .artifact_requirements
+            .iter()
+            .map(|requirement| ArtifactManifestEntry {
+                identity: format!(
+                    "{}:{:?}:{}",
+                    self.selected_backends.primary.family.as_str(),
+                    requirement.class,
+                    requirement.scope
+                ),
+                class: requirement.class,
+                backend: requirement.backend,
+                scope: requirement.scope.clone(),
+                admissibility: requirement.admissibility.clone(),
+            })
+            .collect::<Vec<_>>();
+        let mut actual_artifact_manifest = self.guarantee_evidence.artifact_manifest.clone();
+        let mut sorted_expected_artifact_manifest = expected_artifact_manifest.clone();
+        sorted_expected_artifact_manifest.sort();
+        actual_artifact_manifest.sort();
+        let operator_gates = operator_gates();
 
         if self.selected_backends.primary.family == BackendFamily::FlashInfer
             && !self
@@ -482,6 +503,16 @@ impl ResolvedBuildPlan {
                 severity: ValidationSeverity::Error,
                 code: "artifact_scope_missing".to_owned(),
                 message: "Artifact manifest contains an unscoped artifact".to_owned(),
+            });
+        }
+
+        if actual_artifact_manifest != sorted_expected_artifact_manifest {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "artifact_manifest_invalid_reuse".to_owned(),
+                message:
+                    "Artifact manifest does not exactly match the canonical artifact requirements."
+                        .to_owned(),
             });
         }
 
@@ -613,6 +644,102 @@ impl ResolvedBuildPlan {
             }
         }
 
+        let capability_witnesses = self
+            .guarantee_evidence
+            .capability_witnesses
+            .iter()
+            .map(|witness| (witness.key.as_str(), witness.value.as_str()))
+            .collect::<Vec<_>>();
+        for witness_key in &self
+            .selected_backends
+            .primary
+            .admissibility
+            .required_witnesses
+        {
+            match capability_witnesses
+                .iter()
+                .find(|(key, _)| key == witness_key)
+                .copied()
+            {
+                Some((_, value))
+                    if value.eq_ignore_ascii_case("missing")
+                        || value.eq_ignore_ascii_case("absent")
+                        || value.eq_ignore_ascii_case("false") =>
+                {
+                    issues.push(ValidationIssue {
+                        severity: ValidationSeverity::Error,
+                        code: "capability_witness_contradiction".to_owned(),
+                        message: format!(
+                            "Capability witness {} contradicts backend admissibility.",
+                            witness_key
+                        ),
+                    });
+                }
+                None => issues.push(ValidationIssue {
+                    severity: ValidationSeverity::Error,
+                    code: "capability_witness_missing".to_owned(),
+                    message: format!(
+                        "Capability witness {} required by backend admissibility is missing.",
+                        witness_key
+                    ),
+                }),
+                Some(_) => {}
+            }
+        }
+
+        if self
+            .guarantee_envelope
+            .residual_risks
+            .iter()
+            .any(|risk| risk.class == HazardClass::ResidualLazyCompile)
+            && self.guarantee_evidence.runtime_jit_evidence.is_empty()
+        {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "runtime_jit_evidence_missing".to_owned(),
+                message:
+                    "Residual runtime JIT risk exists but no structured runtime-JIT evidence was captured."
+                        .to_owned(),
+            });
+        }
+
+        for evidence in &self.guarantee_evidence.runtime_jit_evidence {
+            if evidence.bounded_by.is_empty() {
+                issues.push(ValidationIssue {
+                    severity: ValidationSeverity::Error,
+                    code: "runtime_jit_evidence_unbounded".to_owned(),
+                    message: format!(
+                        "Runtime-JIT surface {} is not bounded by any proof or artifact identity.",
+                        evidence.surface_name
+                    ),
+                });
+            }
+            if !evidence.contradiction_reasons.is_empty() {
+                issues.push(ValidationIssue {
+                    severity: ValidationSeverity::Error,
+                    code: "runtime_jit_evidence_contradiction".to_owned(),
+                    message: format!(
+                        "Runtime-JIT surface {} has contradiction evidence: {}",
+                        evidence.surface_name,
+                        evidence.contradiction_reasons.join(", ")
+                    ),
+                });
+            }
+        }
+
+        for gate in &operator_gates {
+            if gate.compile_free && gate.forbidden_queues.is_empty() {
+                issues.push(ValidationIssue {
+                    severity: ValidationSeverity::Error,
+                    code: "operator_gate_incomplete".to_owned(),
+                    message: format!(
+                        "Operator gate {} claims compile-free execution without forbidden queues.",
+                        gate.command
+                    ),
+                });
+            }
+        }
+
         for pass in &self.rewrite_trace {
             if let Err(message) = pass.validate() {
                 issues.push(ValidationIssue {
@@ -649,8 +776,37 @@ impl ResolvedBuildPlan {
                 .filter(|risk| risk.class == HazardClass::ResidualLazyCompile)
                 .map(|risk| risk.summary.clone())
                 .collect(),
+            runtime_jit_evidence: self.guarantee_evidence.runtime_jit_evidence.clone(),
+            operator_gates,
         }
     }
+}
+
+fn operator_gates() -> Vec<OperatorGate> {
+    let forbidden_queues = vec![
+        QueueKind::Compile,
+        QueueKind::Assemble,
+        QueueKind::ArtifactIo,
+        QueueKind::Warmup,
+    ];
+    vec![
+        OperatorGate {
+            command: "verify".to_owned(),
+            compile_free: true,
+            forbidden_queues: forbidden_queues.clone(),
+            rationale:
+                "Bundle verification must be purely structural and witness-backed; it may not materialize or compile anything."
+                    .to_owned(),
+        },
+        OperatorGate {
+            command: "replay".to_owned(),
+            compile_free: true,
+            forbidden_queues,
+            rationale:
+                "Replay must consume recorded bundle state only and never perform new artifact, compile, or warmup work."
+                    .to_owned(),
+        },
+    ]
 }
 
 #[cfg(test)]

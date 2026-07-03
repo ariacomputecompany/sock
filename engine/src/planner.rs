@@ -12,9 +12,9 @@ use sock_core::{
     MaterializationNodeKind, MaterializationWave, NodeExecutionContract, NormalizedRequest,
     OperatingSystem, PackagingStrategy, PassTrace, PortabilityFingerprint, QueueDiscipline,
     QueueKind, RangeIntent, RankDisposition, RawRequest, ResidualRuntimeRisk, ResolvedBuildPlan,
-    RewritePassContract, RewritePhase, RuntimeJitDisposition, RuntimeRoi, ServePhase,
-    ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapeRange, StructuralIdentity, ValidationStatus,
-    WarmupContradiction, WarmupCoverageProof, WarmupObligation, WaveEstimate,
+    RewritePassContract, RewritePhase, RuntimeJitDisposition, RuntimeJitEvidence, RuntimeRoi,
+    ServePhase, ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapeRange, StructuralIdentity,
+    ValidationStatus, WarmupContradiction, WarmupCoverageProof, WarmupObligation, WaveEstimate,
     WaveExecutionContract, canonical_hash,
 };
 use thiserror::Error;
@@ -109,11 +109,20 @@ impl Planner {
             .collect::<Vec<_>>();
         let coverage_witnesses =
             self.coverage_witnesses(&shape_envelope, &artifact_manifest, &residual_risks);
+        let runtime_jit_evidence = self.runtime_jit_evidence(
+            &normalized,
+            &selected_backends,
+            &compile_regions,
+            &warmup_obligations,
+            &artifact_requirements,
+            &adapter_survey,
+        );
         let guarantee_evidence = GuaranteeEvidence {
             capability_witnesses: capability_witnesses.clone(),
             artifact_manifest: artifact_manifest.clone(),
             warmup_obligations: warmup_obligations.clone(),
             coverage_witnesses,
+            runtime_jit_evidence,
         };
         let rewrite_trace = self.rewrite_trace(
             &normalized,
@@ -780,6 +789,38 @@ impl Planner {
         risks
     }
 
+    fn runtime_jit_evidence(
+        &self,
+        normalized: &NormalizedRequest,
+        selected_backends: &BackendSelection,
+        compile_regions: &[CompileRegion],
+        warmup_obligations: &[WarmupObligation],
+        artifact_requirements: &[ArtifactRequirement],
+        adapter_survey: &AdapterSurvey,
+    ) -> Vec<RuntimeJitEvidence> {
+        adapter_survey
+            .residual_jit_surfaces
+            .iter()
+            .filter(|surface| surface_applies(surface.backend_family.as_str(), selected_backends))
+            .map(|surface| RuntimeJitEvidence {
+                surface_name: surface.name.clone(),
+                backend_family: surface.backend_family.clone(),
+                trigger_shape_or_config: surface.trigger_shape_or_config.clone(),
+                topology_context: surface.topology_context.clone(),
+                bounded_by: bounded_by(
+                    normalized,
+                    selected_backends,
+                    compile_regions,
+                    warmup_obligations,
+                    artifact_requirements,
+                    surface.backend_family.as_str(),
+                ),
+                mitigation: surface.mitigation.clone(),
+                contradiction_reasons: contradiction_reasons(normalized, surface),
+            })
+            .collect()
+    }
+
     fn materialization_graph(
         &self,
         topology: &ExecutionTopology,
@@ -1368,6 +1409,72 @@ fn surface_applies(backend_family: &str, selected_backends: &BackendSelection) -
         "torch.compile" => true,
         _ => false,
     }
+}
+
+fn bounded_by(
+    normalized: &NormalizedRequest,
+    selected_backends: &BackendSelection,
+    compile_regions: &[CompileRegion],
+    warmup_obligations: &[WarmupObligation],
+    artifact_requirements: &[ArtifactRequirement],
+    backend_family: &str,
+) -> Vec<String> {
+    let regions = compile_regions
+        .iter()
+        .filter(|region| region.family.as_str() == backend_family)
+        .map(|region| format!("region:{}", region.name));
+    let warmups = warmup_obligations
+        .iter()
+        .filter(|obligation| {
+            compile_regions.iter().any(|region| {
+                region.name == obligation.region_name && region.family.as_str() == backend_family
+            })
+        })
+        .map(|obligation| obligation.proof.proof_id.clone());
+    let artifacts = artifact_requirements
+        .iter()
+        .filter(|requirement| requirement.backend.as_str() == backend_family)
+        .map(|requirement| format!("artifact:{}", requirement.scope));
+    let mut bounded = regions.chain(warmups).chain(artifacts).collect::<Vec<_>>();
+    if selected_backends.primary.family.as_str() == backend_family {
+        bounded.push(format!(
+            "selected_backend:primary:{}",
+            selected_backends.primary.family.as_str()
+        ));
+    }
+    bounded.extend(
+        selected_backends
+            .secondary
+            .iter()
+            .filter(|candidate| candidate.family.as_str() == backend_family)
+            .map(|candidate| format!("selected_backend:secondary:{}", candidate.family.as_str())),
+    );
+
+    if backend_family == "torch.compile" {
+        bounded.push(format!(
+            "packaging:{:?}",
+            normalized.backend_policy.packaging_strategy
+        ));
+        bounded.push(format!(
+            "runtime_jit_policy:{:?}",
+            normalized.backend_policy.runtime_jit_policy.disposition
+        ));
+        bounded.push(format!(
+            "primary_backend:{}",
+            selected_backends.primary.family.as_str()
+        ));
+    }
+
+    bounded.sort();
+    bounded.dedup();
+    bounded
+}
+
+fn contradiction_reasons(
+    _normalized: &NormalizedRequest,
+    _surface: &sock_core::ResidualRuntimeJitSurface,
+) -> Vec<String> {
+    Vec::new()
 }
 
 fn slug(value: &str) -> String {

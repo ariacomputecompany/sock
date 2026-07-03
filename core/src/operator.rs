@@ -67,6 +67,33 @@ pub fn render_verification_report(report: &VerificationReport) -> String {
             issue.severity, issue.code, issue.message
         ));
     }
+    if !report.runtime_jit_evidence.is_empty() {
+        out.push_str("runtime-jit evidence:\n");
+        for evidence in &report.runtime_jit_evidence {
+            out.push_str(&format!(
+                "  - {} backend={} bounded_by={} mitigation={}\n",
+                evidence.surface_name,
+                evidence.backend_family,
+                evidence.bounded_by.join(","),
+                evidence.mitigation
+            ));
+        }
+    }
+    if !report.operator_gates.is_empty() {
+        out.push_str("operator gates:\n");
+        for gate in &report.operator_gates {
+            out.push_str(&format!(
+                "  - {} compile_free={} forbidden_queues={}\n",
+                gate.command,
+                gate.compile_free,
+                gate.forbidden_queues
+                    .iter()
+                    .map(|queue| format!("{queue:?}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
+        }
+    }
     out
 }
 

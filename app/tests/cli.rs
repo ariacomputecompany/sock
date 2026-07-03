@@ -59,7 +59,11 @@ fn build_verify_and_replay_bundle_round_trip() {
         .arg(dir.path())
         .assert()
         .success()
-        .stdout(predicate::str::contains("verification Passed"));
+        .stdout(predicate::str::contains("verification Passed"))
+        .stdout(predicate::str::contains("runtime-jit evidence:"))
+        .stdout(predicate::str::contains(
+            "verify compile_free=true forbidden_queues=Compile,Assemble,ArtifactIo,Warmup",
+        ));
 
     Command::cargo_bin("sock")
         .expect("sock binary")
@@ -69,6 +73,10 @@ fn build_verify_and_replay_bundle_round_trip() {
         .success()
         .stdout(predicate::str::contains("plan "))
         .stdout(predicate::str::contains("verification Passed"))
+        .stdout(predicate::str::contains("runtime-jit evidence:"))
+        .stdout(predicate::str::contains(
+            "replay compile_free=true forbidden_queues=Compile,Assemble,ArtifactIo,Warmup",
+        ))
         .stdout(predicate::str::contains("[info] verified_bundle"));
 }
 

@@ -198,6 +198,11 @@ impl RewriteTraceDocument {
 fn categorize_issue(message: &str) -> DiagnosticCategory {
     if message.contains("FlashInfer") {
         DiagnosticCategory::Environment
+    } else if message.contains("runtime JIT")
+        || message.contains("Runtime-JIT")
+        || message.contains("artifact requirements")
+    {
+        DiagnosticCategory::Closure
     } else if message.contains("Warmup obligations") {
         DiagnosticCategory::Closure
     } else {
@@ -208,6 +213,11 @@ fn categorize_issue(message: &str) -> DiagnosticCategory {
 fn next_action(message: &str) -> String {
     if message.contains("Warmup obligations") {
         "Add explicit warmup coverage for the missing envelope nodes.".to_owned()
+    } else if message.contains("artifact requirements") {
+        "Rebuild the bundle so the artifact manifest matches the canonical plan exactly.".to_owned()
+    } else if message.contains("Runtime-JIT") || message.contains("runtime JIT") {
+        "Bound the residual runtime-JIT surface with explicit artifacts, warmup proofs, or backend identity before shipping."
+            .to_owned()
     } else if message.contains("FlashInfer") {
         "Provide the missing capability witness or stop selecting FlashInfer.".to_owned()
     } else {
