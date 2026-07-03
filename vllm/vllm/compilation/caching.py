@@ -7,6 +7,7 @@ import inspect
 import json
 import os
 import pickle
+import sys
 from collections.abc import Callable, Sequence
 from typing import Any, Literal
 from unittest.mock import patch
@@ -168,6 +169,33 @@ class StandaloneCompiledArtifacts:
         manifest = self.manifest_summary()
         manifest["store_identity"] = self.store_identity()
         return json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+
+    def verify_manifest(
+        self, manifest: dict[str, object] | None = None
+    ) -> dict[str, object]:
+        expected = manifest or self.manifest_summary()
+        actual = self.manifest_summary()
+        expected_entries = expected.get("entries")
+        actual_entries = actual.get("entries")
+        expected_stores = expected.get("stores")
+        actual_stores = actual.get("stores")
+        result = {
+            "ok": (
+                expected.get("schema_version") == actual.get("schema_version")
+                and expected.get("entry_count") == actual.get("entry_count")
+                and expected.get("unique_artifact_count")
+                == actual.get("unique_artifact_count")
+                and expected.get("total_bytes") == actual.get("total_bytes")
+                and expected_entries == actual_entries
+                and expected_stores == actual_stores
+            ),
+            "expected_store_identity": expected.get("store_identity"),
+            "actual_store_identity": self.store_identity(),
+            "entry_count": actual.get("entry_count"),
+            "unique_artifact_count": actual.get("unique_artifact_count"),
+            "total_bytes": actual.get("total_bytes"),
+        }
+        return result
 
     def load_all(self) -> None:
         import concurrent.futures
@@ -344,12 +372,16 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 sym_shape_indices_map,
                 returns_tuple_map,
             ) = compiled_fn.vllm_backend.collect_standalone_compile_artifacts()
+            vllm_config = getattr(compiled_fn.vllm_backend, "vllm_config", None)
             state["standalone_compile_artifacts"] = standalone_compile_artifacts
             state["standalone_compile_artifact_manifest"] = (
                 standalone_compile_artifacts.manifest_summary()
             )
             state["standalone_compile_artifact_store_identity"] = (
                 standalone_compile_artifacts.store_identity()
+            )
+            state["standalone_compile_artifact_compatibility"] = (
+                build_standalone_artifact_compatibility_manifest(vllm_config)
             )
             state["sym_shape_indices_map"] = sym_shape_indices_map
             state["returns_tuple_map"] = returns_tuple_map
@@ -372,6 +404,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         standalone_compile_artifact_store_identity = state.pop(
             "standalone_compile_artifact_store_identity", None
         )
+        standalone_compile_artifact_compatibility = state.pop(
+            "standalone_compile_artifact_compatibility", None
+        )
         sym_shape_indices_map = state.pop("sym_shape_indices_map", {})
         returns_tuple_map = state.pop("returns_tuple_map", {})
 
@@ -387,13 +422,35 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             num_submods = len(submod_names)
             num_artifacts = standalone_compile_artifacts.num_artifacts()
             if standalone_compile_artifact_manifest is not None:
+                manifest_with_identity = dict(standalone_compile_artifact_manifest)
+                manifest_with_identity["store_identity"] = (
+                    standalone_compile_artifact_store_identity
+                )
+                verification = standalone_compile_artifacts.verify_manifest(
+                    manifest_with_identity
+                )
+                if not verification["ok"]:
+                    raise ValueError(
+                        "Standalone compile artifact manifest verification failed: "
+                        f"expected_store_identity={verification['expected_store_identity']} "
+                        f"actual_store_identity={verification['actual_store_identity']}"
+                    )
                 logger.info(
-                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s",
+                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s compatibility=%s",
                     standalone_compile_artifact_manifest.get("entry_count", 0),
                     standalone_compile_artifact_manifest.get(
                         "unique_artifact_count", 0
                     ),
                     standalone_compile_artifact_store_identity or "<unknown>",
+                    (
+                        json.dumps(
+                            standalone_compile_artifact_compatibility,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                        if standalone_compile_artifact_compatibility is not None
+                        else "<unknown>"
+                    ),
                 )
 
             with functorch_ctx:
@@ -663,6 +720,22 @@ def artifact_bytes_hash(entry: bytes) -> str:
     hasher = hashlib.sha256()
     hasher.update(entry)
     return hasher.hexdigest()
+
+
+def build_standalone_artifact_compatibility_manifest(
+    vllm_config: VllmConfig | None,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "hash_algorithm": "sha256",
+        "python_version": ".".join(str(part) for part in sys.version_info[:3]),
+        "torch_version": getattr(torch, "__version__", "<unknown>"),
+        "mega_aot_enabled": envs.VLLM_USE_MEGA_AOT_ARTIFACT,
+        "env": envs.compile_factor_manifest(),
+        "vllm_config_hash": (
+            vllm_config.compute_hash() if vllm_config is not None else None
+        ),
+    }
 
 
 def render_aot_compile_factor_manifest(vllm_config: VllmConfig) -> str:

@@ -27,6 +27,7 @@ def _load_caching_module():
     module_path = root / "vllm" / "compilation" / "caching.py"
 
     torch_mod = types.ModuleType("torch")
+    torch_mod.__version__ = "2.9.0-light"
     torch_mod.Tensor = type("Tensor", (), {})
     torch_mod.SymInt = type("SymInt", (), {})
 
@@ -219,6 +220,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             return []
 
     backend = types.SimpleNamespace(
+        vllm_config=types.SimpleNamespace(compute_hash=lambda: "cfg-hash"),
         collect_standalone_compile_artifacts=lambda: (
             artifacts,
             {"block0": (0,)},
@@ -262,5 +264,37 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         state["standalone_compile_artifact_store_identity"]
         == artifacts.store_identity()
     )
+    assert state["standalone_compile_artifact_compatibility"] == {
+        "schema_version": 1,
+        "hash_algorithm": "sha256",
+        "python_version": ".".join(str(part) for part in sys.version_info[:3]),
+        "torch_version": "2.9.0-light",
+        "mega_aot_enabled": False,
+        "env": {"schema_version": 1},
+        "vllm_config_hash": "cfg-hash",
+    }
     assert state["sym_shape_indices_map"] == {"block0": (0,)}
     assert state["returns_tuple_map"] == {"block0": True}
+
+
+def test_artifact_manifest_verification_detects_mismatch() -> None:
+    caching, _ = _load_caching_module()
+    artifacts = caching.StandaloneCompiledArtifacts()
+    artifacts.insert("block0", "shape0", b"payload-a")
+    artifacts.insert("block1", "shape0", b"payload-b")
+
+    manifest = artifacts.manifest_summary()
+    manifest["store_identity"] = artifacts.store_identity()
+    verified = artifacts.verify_manifest(manifest)
+
+    assert verified["ok"] is True
+    assert verified["expected_store_identity"] == artifacts.store_identity()
+    assert verified["actual_store_identity"] == artifacts.store_identity()
+
+    corrupted_manifest = json.loads(json.dumps(manifest))
+    corrupted_manifest["total_bytes"] = 1
+    corrupted = artifacts.verify_manifest(corrupted_manifest)
+
+    assert corrupted["ok"] is False
+    assert corrupted["expected_store_identity"] == artifacts.store_identity()
+    assert corrupted["actual_store_identity"] == artifacts.store_identity()

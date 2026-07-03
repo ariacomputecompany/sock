@@ -402,7 +402,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 ## 13. AOT Compile Artifact Improvements
 
-- [ ] Store explicit versioning and compatibility metadata.
 - [ ] Avoid opaque pickled state as the sole long-term artifact format where possible.
 - [ ] Track:
   - code hash
@@ -413,7 +412,6 @@ They should be executed according to the ranked lane order above, not by raw sec
   - shape envelope
 - [ ] Make artifact loading and cache-hit reasons explainable.
 - [ ] Make artifact invalidation reasons explainable.
-- [ ] Support independent verification of AOT artifact completeness.
 - [ ] Verify “no new compile” against recorded traces.
 - [ ] Reduce startup-time dependence on Python pickling and `GraphPickler` roundtrips where possible.
 - [ ] Reduce artifact-load overhead from Python object reconstruction during warm start.
