@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use sock_core::{
-    AbiFingerprint, AdapterError, AdapterSurvey, AdmissibilityVerdict, ArtifactAcquisition,
-    ArtifactAdmissibilityProof, ArtifactClass, ArtifactClosure, ArtifactManifestEntry,
-    ArtifactPortability, ArtifactRequirement, BackendAdmissibilityProof, BackendCandidate,
-    BackendCapability, BackendCapabilityRegistry, BackendExtensionFingerprint, BackendFamily,
-    BackendSelection, CanonicalError, CapabilityProvenance, CapabilityWitness, CompileRegion,
-    CompileRegionKind, CoveragePlane, CoverageState, CoverageWitness, EngineAdapter,
+    AbiFingerprint, AdapterBackendBinding, AdapterError, AdapterSurvey, AdmissibilityVerdict,
+    ArtifactAcquisition, ArtifactAdmissibilityProof, ArtifactClass, ArtifactClosure,
+    ArtifactManifestEntry, ArtifactPortability, ArtifactRequirement, BackendAdmissibilityProof,
+    BackendCandidate, BackendCapability, BackendCapabilityRegistry, BackendExtensionFingerprint,
+    BackendFamily, BackendSelection, CanonicalError, CapabilityProvenance, CapabilityWitness,
+    CompileRegion, CoveragePlane, CoverageState, CoverageWitness, EngineAdapter,
     ExecutionTopology, FanoutStrategy, GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence,
     GuaranteeLevel, HazardClass, LeaderAssignment, MaterializationGraph, MaterializationNode,
     MaterializationNodeKind, MaterializationWave, NodeExecutionContract, NormalizedRequest,
@@ -76,6 +76,7 @@ impl Planner {
             &shape_envelope,
             &selected_backends,
             &compile_regions,
+            &adapter_survey,
         )?;
         let warmup_obligations =
             self.warmup_obligations(&normalized, &shape_envelope, &compile_regions);
@@ -384,15 +385,15 @@ impl Planner {
             .iter()
             .filter(|region| region.regional_compile_candidate)
             .map(|region| CompileRegion {
-                name: canonical_region_name(region.kind),
+                name: region.canonical_name.clone(),
                 kind: region.kind,
-                family: region_family(region.kind, selected_backends.primary.family),
+                family: resolve_backend_binding(region.backend_binding, selected_backends),
                 reusable: region.repeated || region.regional_compile_candidate,
                 regional_compile_candidate: region.regional_compile_candidate,
                 boundaries: region.boundaries.clone(),
                 rationale: region.rationale.clone(),
-                invalidation_domain: region.name.clone(),
-                shape_planes: region_shape_planes(region.kind),
+                invalidation_domain: region.invalidation_domain.clone(),
+                shape_planes: region.shape_planes.clone(),
                 evidence: region.evidence.clone(),
             })
             .collect::<Vec<_>>();
@@ -590,6 +591,7 @@ impl Planner {
         shape_envelope: &ShapeEnvelope,
         selected_backends: &BackendSelection,
         compile_regions: &[CompileRegion],
+        adapter_survey: &AdapterSurvey,
     ) -> Result<Vec<ArtifactRequirement>, PlanError> {
         let abi_identity = canonical_hash(&AbiFingerprint {
             operating_system: normalized.environment.operating_system,
@@ -605,14 +607,17 @@ impl Planner {
         let mut requirements = compile_regions
             .iter()
             .flat_map(|region| {
+                let (graph_portability, graph_rank_disposition, graph_cache_namespace) =
+                    cache_traits(&region.name, adapter_survey);
+                let acquisition = region_acquisition(region.family, selected_backends);
                 [
                     ArtifactRequirement {
                         class: ArtifactClass::CompiledGraph,
                         backend: region.family,
-                        acquisition: selected_backends.primary.acquisition,
+                        acquisition,
                         scope: region.name.clone(),
-                        portability: ArtifactPortability::GpuArchitectureFamilyPortable,
-                        rank_disposition: RankDisposition::Shared,
+                        portability: graph_portability,
+                        rank_disposition: graph_rank_disposition,
                         expected_bytes: Some(24_000_000),
                         expected_compile_ms: Some(2_500),
                         expected_transfer_ms: Some(if total_rank_count(&normalized.topology) > 1 {
@@ -623,15 +628,18 @@ impl Planner {
                         admissibility: self.artifact_admissibility(
                             normalized,
                             witnesses,
-                            selected_backends.primary.family,
-                            selected_backends.primary.acquisition,
+                            region.family,
+                            acquisition,
                             ArtifactClass::CompiledGraph,
                             region.name.clone(),
-                            ArtifactPortability::GpuArchitectureFamilyPortable,
+                            graph_portability,
                             &abi_identity,
                             &shape_envelope_identity,
                             vec![
-                                "compiled graph is portable across the target SM family".to_owned(),
+                                format!(
+                                    "compiled graph ownership follows vLLM cache namespace {}",
+                                    graph_cache_namespace
+                                ),
                                 format!(
                                     "region {} is bounded by the selected shape envelope",
                                     region.name
@@ -642,10 +650,10 @@ impl Planner {
                     ArtifactRequirement {
                         class: ArtifactClass::TritonBinary,
                         backend: region.family,
-                        acquisition: selected_backends.primary.acquisition,
+                        acquisition,
                         scope: region.name.clone(),
-                        portability: ArtifactPortability::AbiClusterPortable,
-                        rank_disposition: RankDisposition::Shared,
+                        portability: graph_portability,
+                        rank_disposition: graph_rank_disposition,
                         expected_bytes: Some(4_000_000),
                         expected_compile_ms: Some(800),
                         expected_transfer_ms: Some(if total_rank_count(&normalized.topology) > 1 {
@@ -657,15 +665,17 @@ impl Planner {
                             normalized,
                             witnesses,
                             region.family,
-                            selected_backends.primary.acquisition,
+                            acquisition,
                             ArtifactClass::TritonBinary,
                             region.name.clone(),
-                            ArtifactPortability::AbiClusterPortable,
+                            graph_portability,
                             &abi_identity,
                             &shape_envelope_identity,
                             vec![
-                                "Triton binary reuse is bounded to an ABI-compatible cluster"
-                                    .to_owned(),
+                                format!(
+                                    "cache namespace {} shapes binary reuse and ownership",
+                                    graph_cache_namespace
+                                ),
                                 format!(
                                     "compile region {} is source-anchored in the adapter survey",
                                     region.name
@@ -806,6 +816,14 @@ impl Planner {
                 surface_name: surface.name.clone(),
                 backend_family: surface.backend_family.clone(),
                 trigger_shape_or_config: surface.trigger_shape_or_config.clone(),
+                trigger_inputs: surface.trigger_inputs.clone(),
+                affected_regions: surface.affected_regions.clone(),
+                required_artifacts: surface.required_artifacts.clone(),
+                required_warmup_proofs: surface
+                    .required_warmup_scopes
+                    .iter()
+                    .flat_map(|scope| warmup_proof_ids_for_scope(scope, warmup_obligations))
+                    .collect(),
                 topology_context: surface.topology_context.clone(),
                 bounded_by: bounded_by(
                     normalized,
@@ -813,7 +831,7 @@ impl Planner {
                     compile_regions,
                     warmup_obligations,
                     artifact_requirements,
-                    surface.backend_family.as_str(),
+                    surface,
                 ),
                 mitigation: surface.mitigation.clone(),
                 contradiction_reasons: contradiction_reasons(normalized, surface),
@@ -1348,44 +1366,13 @@ fn hot_shape_node(prefix: &str, shape: &ShapePoint, backend: BackendFamily) -> S
     }
 }
 
-fn canonical_region_name(kind: CompileRegionKind) -> String {
-    match kind {
-        CompileRegionKind::RepeatedTransformerBlockBody => "transformer_block_body".to_owned(),
-        CompileRegionKind::DecodeMicrograph => "decode_attention".to_owned(),
-        CompileRegionKind::PrefillMicrograph => "prefill_attention".to_owned(),
-        CompileRegionKind::AttentionKvBoundary => "kv_cache_update".to_owned(),
-        CompileRegionKind::MoeSpecialtyPath => "moe_specialty_path".to_owned(),
-    }
-}
-
-fn region_family(kind: CompileRegionKind, primary: BackendFamily) -> BackendFamily {
-    match kind {
-        CompileRegionKind::DecodeMicrograph => BackendFamily::CudaGraphs,
-        CompileRegionKind::MoeSpecialtyPath => BackendFamily::AotInductor,
-        CompileRegionKind::RepeatedTransformerBlockBody
-        | CompileRegionKind::PrefillMicrograph
-        | CompileRegionKind::AttentionKvBoundary => primary,
-    }
-}
-
-fn region_shape_planes(kind: CompileRegionKind) -> Vec<CoveragePlane> {
-    match kind {
-        CompileRegionKind::RepeatedTransformerBlockBody => {
-            vec![CoveragePlane::Correctness, CoveragePlane::Performance]
-        }
-        CompileRegionKind::DecodeMicrograph => vec![
-            CoveragePlane::Correctness,
-            CoveragePlane::Performance,
-            CoveragePlane::CudaGraph,
-        ],
-        CompileRegionKind::PrefillMicrograph => {
-            vec![CoveragePlane::Correctness, CoveragePlane::Performance]
-        }
-        CompileRegionKind::AttentionKvBoundary => vec![
-            CoveragePlane::Correctness,
-            CoveragePlane::BackendSpecialization,
-        ],
-        CompileRegionKind::MoeSpecialtyPath => vec![CoveragePlane::BackendSpecialization],
+fn resolve_backend_binding(
+    binding: AdapterBackendBinding,
+    selected_backends: &BackendSelection,
+) -> BackendFamily {
+    match binding {
+        AdapterBackendBinding::Primary => selected_backends.primary.family,
+        AdapterBackendBinding::Fixed(family) => family,
     }
 }
 
@@ -1417,25 +1404,49 @@ fn bounded_by(
     compile_regions: &[CompileRegion],
     warmup_obligations: &[WarmupObligation],
     artifact_requirements: &[ArtifactRequirement],
-    backend_family: &str,
+    surface: &sock_core::ResidualRuntimeJitSurface,
 ) -> Vec<String> {
+    let backend_family = surface.backend_family.as_str();
     let regions = compile_regions
         .iter()
-        .filter(|region| region.family.as_str() == backend_family)
+        .filter(|region| {
+            region.family.as_str() == backend_family
+                && surface
+                    .affected_regions
+                    .iter()
+                    .any(|name| name == &region.name)
+        })
         .map(|region| format!("region:{}", region.name));
     let warmups = warmup_obligations
         .iter()
         .filter(|obligation| {
-            compile_regions.iter().any(|region| {
-                region.name == obligation.region_name && region.family.as_str() == backend_family
-            })
+            surface
+                .required_warmup_scopes
+                .iter()
+                .any(|scope| scope == &obligation.region_name)
         })
         .map(|obligation| obligation.proof.proof_id.clone());
     let artifacts = artifact_requirements
         .iter()
-        .filter(|requirement| requirement.backend.as_str() == backend_family)
+        .filter(|requirement| {
+            requirement.backend.as_str() == backend_family
+                && surface
+                    .required_artifacts
+                    .iter()
+                    .any(|scope| scope == &requirement.scope)
+        })
         .map(|requirement| format!("artifact:{}", requirement.scope));
-    let mut bounded = regions.chain(warmups).chain(artifacts).collect::<Vec<_>>();
+    let mut bounded = regions
+        .chain(warmups)
+        .chain(artifacts)
+        .chain(
+            surface
+                .trigger_inputs
+                .iter()
+                .cloned()
+                .map(|input| format!("trigger:{input}")),
+        )
+        .collect::<Vec<_>>();
     if selected_backends.primary.family.as_str() == backend_family {
         bounded.push(format!(
             "selected_backend:primary:{}",
@@ -1471,10 +1482,66 @@ fn bounded_by(
 }
 
 fn contradiction_reasons(
-    _normalized: &NormalizedRequest,
-    _surface: &sock_core::ResidualRuntimeJitSurface,
+    normalized: &NormalizedRequest,
+    surface: &sock_core::ResidualRuntimeJitSurface,
 ) -> Vec<String> {
-    Vec::new()
+    let mut contradictions = Vec::new();
+    if surface.topology_sensitive
+        && normalized.topology.tensor_parallelism == 1
+        && surface.topology_context.contains("distributed")
+    {
+        contradictions.push(
+            "surface claims distributed-only topology sensitivity but planned topology is single-rank"
+                .to_owned(),
+        );
+    }
+    contradictions
+}
+
+fn region_acquisition(
+    region_family: BackendFamily,
+    selected_backends: &BackendSelection,
+) -> ArtifactAcquisition {
+    if selected_backends.primary.family == region_family {
+        selected_backends.primary.acquisition
+    } else {
+        selected_backends
+            .secondary
+            .iter()
+            .find(|candidate| candidate.family == region_family)
+            .map(|candidate| candidate.acquisition)
+            .unwrap_or(ArtifactAcquisition::LocalAotBuild)
+    }
+}
+
+fn cache_traits(
+    region_name: &str,
+    adapter_survey: &AdapterSurvey,
+) -> (ArtifactPortability, RankDisposition, String) {
+    adapter_survey
+        .compile_regions
+        .iter()
+        .find(|region| region.canonical_name == region_name)
+        .map(|region| {
+            (
+                region.artifact_portability,
+                region.rank_disposition,
+                region.cache_namespace.clone(),
+            )
+        })
+        .unwrap_or((
+            ArtifactPortability::AbiClusterPortable,
+            RankDisposition::Shared,
+            "compile-cache".to_owned(),
+        ))
+}
+
+fn warmup_proof_ids_for_scope(scope: &str, warmup_obligations: &[WarmupObligation]) -> Vec<String> {
+    warmup_obligations
+        .iter()
+        .filter(|obligation| obligation.region_name == scope)
+        .map(|obligation| obligation.proof.proof_id.clone())
+        .collect()
 }
 
 fn slug(value: &str) -> String {

@@ -725,6 +725,54 @@ impl ResolvedBuildPlan {
                     ),
                 });
             }
+            for region in &evidence.affected_regions {
+                if !self
+                    .compile_regions
+                    .iter()
+                    .any(|candidate| &candidate.name == region)
+                {
+                    issues.push(ValidationIssue {
+                        severity: ValidationSeverity::Error,
+                        code: "runtime_jit_region_unknown".to_owned(),
+                        message: format!(
+                            "Runtime-JIT surface {} references unknown compile region {}.",
+                            evidence.surface_name, region
+                        ),
+                    });
+                }
+            }
+            for artifact in &evidence.required_artifacts {
+                if !self
+                    .artifact_requirements
+                    .iter()
+                    .any(|candidate| &candidate.scope == artifact)
+                {
+                    issues.push(ValidationIssue {
+                        severity: ValidationSeverity::Error,
+                        code: "runtime_jit_artifact_unknown".to_owned(),
+                        message: format!(
+                            "Runtime-JIT surface {} references unknown artifact scope {}.",
+                            evidence.surface_name, artifact
+                        ),
+                    });
+                }
+            }
+            for proof in &evidence.required_warmup_proofs {
+                if !self
+                    .warmup_obligations
+                    .iter()
+                    .any(|obligation| &obligation.proof.proof_id == proof)
+                {
+                    issues.push(ValidationIssue {
+                        severity: ValidationSeverity::Error,
+                        code: "runtime_jit_warmup_unknown".to_owned(),
+                        message: format!(
+                            "Runtime-JIT surface {} references unknown warmup proof {}.",
+                            evidence.surface_name, proof
+                        ),
+                    });
+                }
+            }
         }
 
         for gate in &operator_gates {

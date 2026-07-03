@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::TargetEngine;
+use crate::{ArtifactPortability, BackendFamily, CoveragePlane, RankDisposition, TargetEngine};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -74,14 +74,30 @@ pub struct PreservedEngineAbstraction {
     pub evidence: SourceEvidence,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdapterBackendBinding {
+    Primary,
+    Fixed(BackendFamily),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterCompileRegion {
     pub name: String,
+    pub canonical_name: String,
     pub kind: CompileRegionKind,
+    pub backend_binding: AdapterBackendBinding,
     pub repeated: bool,
     pub regional_compile_candidate: bool,
     pub boundaries: Vec<String>,
     pub rationale: String,
+    pub invalidation_domain: String,
+    pub shape_planes: Vec<CoveragePlane>,
+    pub artifact_portability: ArtifactPortability,
+    pub rank_disposition: RankDisposition,
+    pub topology_sensitive: bool,
+    pub cache_namespace: String,
+    pub warmup_scope: String,
     pub evidence: SourceEvidence,
 }
 
@@ -94,6 +110,23 @@ pub struct ResidualRuntimeJitSurface {
     pub topology_context: String,
     pub warmup_gap: String,
     pub mitigation: String,
+    pub trigger_inputs: Vec<String>,
+    pub affected_regions: Vec<String>,
+    pub required_artifacts: Vec<String>,
+    pub required_warmup_scopes: Vec<String>,
+    pub topology_sensitive: bool,
+    pub evidence: SourceEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheOwnershipSurface {
+    pub name: String,
+    pub artifact_scopes: Vec<String>,
+    pub ownership_inputs: Vec<String>,
+    pub portability: ArtifactPortability,
+    pub rank_disposition: RankDisposition,
+    pub topology_sensitive: bool,
+    pub rationale: String,
     pub evidence: SourceEvidence,
 }
 
@@ -148,6 +181,7 @@ pub struct AdapterSurvey {
     pub compile_knobs: Vec<CompileAffectingKnob>,
     pub preserved_abstractions: Vec<PreservedEngineAbstraction>,
     pub compile_regions: Vec<AdapterCompileRegion>,
+    pub cache_ownership_surfaces: Vec<CacheOwnershipSurface>,
     pub residual_jit_surfaces: Vec<ResidualRuntimeJitSurface>,
     pub diagnostics: Vec<AdapterDiagnostic>,
 }

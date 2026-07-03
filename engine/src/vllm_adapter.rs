@@ -4,11 +4,12 @@ use std::fs;
 use std::path::PathBuf;
 
 use sock_core::{
-    AdapterBoundary, AdapterCompileRegion, AdapterDiagnostic, AdapterError, AdapterHook,
-    AdapterResult, AdapterSurvey, CompileAffectingKnob, CompileRegionKind, ConfigInputSource,
-    DiagnosticSeverity, EffectiveConfigInput, EngineAdapter, EngineAdapterContract, JitRiskLevel,
-    PreservedEngineAbstraction, ResidualRuntimeJitSurface, SourceAnchor, SourceEvidence,
-    TargetEngine,
+    AdapterBackendBinding, AdapterBoundary, AdapterCompileRegion, AdapterDiagnostic, AdapterError,
+    AdapterHook, AdapterResult, AdapterSurvey, ArtifactPortability, CacheOwnershipSurface,
+    CompileAffectingKnob, CompileRegionKind, ConfigInputSource, CoveragePlane, DiagnosticSeverity,
+    EffectiveConfigInput, EngineAdapter, EngineAdapterContract, JitRiskLevel,
+    PreservedEngineAbstraction, RankDisposition, ResidualRuntimeJitSurface, SourceAnchor,
+    SourceEvidence, TargetEngine,
 };
 
 use crate::vllm;
@@ -232,7 +233,9 @@ impl VllmAdapter {
         Ok(vec![
             self.region(
                 "repeated_transformer_block_pattern",
+                "transformer_block_body",
                 CompileRegionKind::RepeatedTransformerBlockBody,
+                AdapterBackendBinding::Primary,
                 true,
                 true,
                 vec![
@@ -240,12 +243,21 @@ impl VllmAdapter {
                     "Static forward-context naming can stabilize region identity.".to_owned(),
                 ],
                 "Repeated layer-pattern structure is strong evidence that transformer-body regions can be compiled once and reused across placements.",
+                "repeated_transformer_block_pattern",
+                vec![CoveragePlane::Correctness, CoveragePlane::Performance],
+                ArtifactPortability::GpuArchitectureFamilyPortable,
+                RankDisposition::Shared,
+                false,
+                "compile-cache",
+                "transformer_block_body",
                 "vllm/vllm/v1/core/kv_cache_utils.py",
                 &["The layers in the models are repeated with some patterns"],
             )?,
             self.region(
                 "decode_micrograph",
+                "decode_attention",
                 CompileRegionKind::DecodeMicrograph,
+                AdapterBackendBinding::Fixed(sock_core::BackendFamily::CudaGraphs),
                 true,
                 true,
                 vec![
@@ -253,12 +265,25 @@ impl VllmAdapter {
                     "Speculative decode deterministically expands the decode envelope.".to_owned(),
                 ],
                 "Decode metadata builders preallocate against a bounded capture size, making decode a natural regional compile target.",
+                "decode_micrograph",
+                vec![
+                    CoveragePlane::Correctness,
+                    CoveragePlane::Performance,
+                    CoveragePlane::CudaGraph,
+                ],
+                ArtifactPortability::TopologyScoped,
+                RankDisposition::RankLocal,
+                true,
+                "cuda-graph-cache",
+                "decode_attention",
                 "vllm/vllm/v1/attention/backends/gdn_attn.py",
                 &["self.decode_cudagraph_max_bs", "self.use_full_cuda_graph"],
             )?,
             self.region(
                 "prefill_micrograph",
+                "prefill_attention",
                 CompileRegionKind::PrefillMicrograph,
+                AdapterBackendBinding::Primary,
                 true,
                 true,
                 vec![
@@ -266,6 +291,13 @@ impl VllmAdapter {
                     "Chunked prefill metadata already exists as a distinct kernel surface.".to_owned(),
                 ],
                 "Sparse MLA warmup paths show that prefill has its own specialization surface and should remain a first-class compile region.",
+                "prefill_micrograph",
+                vec![CoveragePlane::Correctness, CoveragePlane::Performance],
+                ArtifactPortability::GpuArchitectureFamilyPortable,
+                RankDisposition::Shared,
+                false,
+                "compile-cache",
+                "prefill_attention",
                 "vllm/vllm/model_executor/warmup/sparse_mla_triton_warmup.py",
                 &[
                     "_warm_sparse_swa_prefill_metadata_kernel",
@@ -274,7 +306,9 @@ impl VllmAdapter {
             )?,
             self.region(
                 "attention_kv_update_boundary",
+                "kv_cache_update",
                 CompileRegionKind::AttentionKvBoundary,
+                AdapterBackendBinding::Primary,
                 true,
                 true,
                 vec![
@@ -282,6 +316,16 @@ impl VllmAdapter {
                     "KV update and attention setup are already surfaced as separate warmup obligations.".to_owned(),
                 ],
                 "Mixed-batch attention warmup shows a real execution seam between attention/KV setup and the broader model path.",
+                "attention_kv_update_boundary",
+                vec![
+                    CoveragePlane::Correctness,
+                    CoveragePlane::BackendSpecialization,
+                ],
+                ArtifactPortability::GpuArchitectureFamilyPortable,
+                RankDisposition::Shared,
+                true,
+                "flashinfer-autotune-cache",
+                "kv_cache_update",
                 "vllm/vllm/model_executor/warmup/flashinfer_sparse_mla_warmup.py",
                 &[
                     "Warm DSv4 sparse-MLA mixed prefill+decode attention",
@@ -290,7 +334,9 @@ impl VllmAdapter {
             )?,
             self.region(
                 "moe_specialty_path",
+                "moe_specialty_path",
                 CompileRegionKind::MoeSpecialtyPath,
+                AdapterBackendBinding::Fixed(sock_core::BackendFamily::AotInductor),
                 true,
                 true,
                 vec![
@@ -298,8 +344,69 @@ impl VllmAdapter {
                     "Deep MoE/TP graphs are already called out as compile-pathological.".to_owned(),
                 ],
                 "Deep MoE and TP graphs are handled as a special compile-risk class already, which makes them a distinct specialty region.",
+                "moe_specialty_path",
+                vec![CoveragePlane::BackendSpecialization],
+                ArtifactPortability::TopologyScoped,
+                RankDisposition::Shared,
+                true,
+                "compile-cache",
+                "moe_specialty_path",
                 "vllm/vllm/env_override.py",
                 &["deep MoE/TP graphs", "_VLLM_FALLBACK_NAMESPACE_PREFIXES"],
+            )?,
+        ])
+    }
+
+    fn cache_ownership_surfaces(&self) -> AdapterResult<Vec<CacheOwnershipSurface>> {
+        Ok(vec![
+            self.cache_surface(
+                "compile-cache",
+                vec![
+                    "transformer_block_body".to_owned(),
+                    "prefill_attention".to_owned(),
+                    "moe_specialty_path".to_owned(),
+                ],
+                vec![
+                    "VLLM_DISABLE_COMPILE_CACHE".to_owned(),
+                    "VLLM_COMPILE_CACHE_SAVE_FORMAT".to_owned(),
+                    "CompilationConfig".to_owned(),
+                ],
+                ArtifactPortability::AbiClusterPortable,
+                RankDisposition::Shared,
+                false,
+                "vLLM compile-cache ownership is explicit and must remain separate from warmup proofs.",
+                "vllm/vllm/envs.py",
+                &["compile_factors()", "VLLM_COMPILE_CACHE_SAVE_FORMAT"],
+            )?,
+            self.cache_surface(
+                "flashinfer-autotune-cache",
+                vec!["kv_cache_update".to_owned()],
+                vec![
+                    "--enable-flashinfer-autotune".to_owned(),
+                    "VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR".to_owned(),
+                    "VLLM_HAS_FLASHINFER_CUBIN".to_owned(),
+                ],
+                ArtifactPortability::TopologyScoped,
+                RankDisposition::Shared,
+                true,
+                "FlashInfer tactic ownership is rank-asymmetric and topology-scoped because rank 0 tunes and followers consume broadcast caches.",
+                "vllm/vllm/model_executor/warmup/kernel_warmup.py",
+                &["Tuning is performed only on rank 0.", "Broadcast autotune cache from rank 0"],
+            )?,
+            self.cache_surface(
+                "cuda-graph-cache",
+                vec!["decode_attention".to_owned()],
+                vec![
+                    "--cudagraph-capture-sizes".to_owned(),
+                    "--max-cudagraph-capture-size".to_owned(),
+                    "current_platform".to_owned(),
+                ],
+                ArtifactPortability::TopologyScoped,
+                RankDisposition::RankLocal,
+                true,
+                "CUDA-graph capture ownership is rank-local and topology-scoped because capture legality depends on the exact runtime topology.",
+                "vllm/vllm/config/compilation.py",
+                &["class CUDAGraphMode", "has_full_cudagraphs"],
             )?,
         ])
     }
@@ -314,6 +421,15 @@ impl VllmAdapter {
                 "Leader/follower distributed startup where rank 0 benchmarks and followers consume broadcast tactic caches.",
                 "Warmup only covers the dummy-run envelope, so untouched tactics can still appear later.",
                 "Persist the autotune cache as a first-class artifact and verify replay against the exact cache file.",
+                vec![
+                    "--enable-flashinfer-autotune".to_owned(),
+                    "VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR".to_owned(),
+                    "VLLM_HAS_FLASHINFER_CUBIN".to_owned(),
+                ],
+                vec!["kv_cache_update".to_owned(), "prefill_attention".to_owned()],
+                vec!["kv_cache_update".to_owned()],
+                vec!["kv_cache_update".to_owned()],
+                true,
                 "vllm/vllm/model_executor/warmup/kernel_warmup.py",
                 &["FlashInfer autotune for Hopper", "Tuning is performed only on rank 0."],
             )?,
@@ -325,6 +441,15 @@ impl VllmAdapter {
                 "Single-rank and distributed attention backends that rely on warmup dummy runs.",
                 "Warmup is intentionally selective and some hybrid attention backends are still excluded by current capture-path limits.",
                 "Promote region-scoped warmup obligations into the canonical plan instead of relying on one generic dummy run.",
+                vec![
+                    "--cudagraph-capture-sizes".to_owned(),
+                    "--max-cudagraph-capture-size".to_owned(),
+                    "CompilationConfig".to_owned(),
+                ],
+                vec!["decode_attention".to_owned(), "prefill_attention".to_owned()],
+                vec!["decode_attention".to_owned(), "prefill_attention".to_owned()],
+                vec!["decode_attention".to_owned(), "prefill_attention".to_owned()],
+                true,
                 "vllm/vllm/model_executor/warmup/kernel_warmup.py",
                 &[
                     "This should be `any` instead of `all`",
@@ -339,6 +464,11 @@ impl VllmAdapter {
                 "Topology-sensitive TP and MoE graphs where fallback logging becomes compile-pathological.",
                 "The first encounter of a custom op can still be expensive enough to require vLLM-side patching.",
                 "Track fallback namespace coverage as explicit guarantee evidence instead of assuming it is harmless.",
+                vec!["CompilationConfig".to_owned(), "current_platform".to_owned()],
+                vec!["moe_specialty_path".to_owned()],
+                vec!["moe_specialty_path".to_owned()],
+                vec!["moe_specialty_path".to_owned()],
+                true,
                 "vllm/vllm/env_override.py",
                 &[
                     "When Inductor encounters a custom op without a registered lowering",
@@ -353,6 +483,23 @@ impl VllmAdapter {
                 "All topologies; impact grows when real traffic escapes the planned shape envelope.",
                 "Dropped guards suppress recompilation triggers, so runtime specialization leakage must be detected through witnesses rather than assumed absent.",
                 "Treat guard policy as a guarantee-plane input and require contradiction evidence when evaluate-guards mode is requested.",
+                vec!["CompilationConfig".to_owned()],
+                vec![
+                    "transformer_block_body".to_owned(),
+                    "prefill_attention".to_owned(),
+                    "decode_attention".to_owned(),
+                ],
+                vec![
+                    "transformer_block_body".to_owned(),
+                    "prefill_attention".to_owned(),
+                    "decode_attention".to_owned(),
+                ],
+                vec![
+                    "transformer_block_body".to_owned(),
+                    "prefill_attention".to_owned(),
+                    "decode_attention".to_owned(),
+                ],
+                false,
                 "vllm/vllm/compilation/wrapper.py",
                 &[
                     "it ensures that all guards are dropped",
@@ -469,21 +616,39 @@ impl VllmAdapter {
     fn region(
         &self,
         name: &str,
+        canonical_name: &str,
         kind: CompileRegionKind,
+        backend_binding: AdapterBackendBinding,
         repeated: bool,
         regional_compile_candidate: bool,
         boundaries: Vec<String>,
         rationale: &str,
+        invalidation_domain: &str,
+        shape_planes: Vec<CoveragePlane>,
+        artifact_portability: ArtifactPortability,
+        rank_disposition: RankDisposition,
+        topology_sensitive: bool,
+        cache_namespace: &str,
+        warmup_scope: &str,
         file: &'static str,
         anchor_patterns: &[&'static str],
     ) -> AdapterResult<AdapterCompileRegion> {
         Ok(AdapterCompileRegion {
             name: name.to_owned(),
+            canonical_name: canonical_name.to_owned(),
             kind,
+            backend_binding,
             repeated,
             regional_compile_candidate,
             boundaries,
             rationale: rationale.to_owned(),
+            invalidation_domain: invalidation_domain.to_owned(),
+            shape_planes,
+            artifact_portability,
+            rank_disposition,
+            topology_sensitive,
+            cache_namespace: cache_namespace.to_owned(),
+            warmup_scope: warmup_scope.to_owned(),
             evidence: self.evidence(file, rationale, anchor_patterns)?,
         })
     }
@@ -498,6 +663,11 @@ impl VllmAdapter {
         topology_context: &str,
         warmup_gap: &str,
         mitigation: &str,
+        trigger_inputs: Vec<String>,
+        affected_regions: Vec<String>,
+        required_artifacts: Vec<String>,
+        required_warmup_scopes: Vec<String>,
+        topology_sensitive: bool,
         file: &'static str,
         anchor_patterns: &[&'static str],
     ) -> AdapterResult<ResidualRuntimeJitSurface> {
@@ -509,7 +679,37 @@ impl VllmAdapter {
             topology_context: topology_context.to_owned(),
             warmup_gap: warmup_gap.to_owned(),
             mitigation: mitigation.to_owned(),
+            trigger_inputs,
+            affected_regions,
+            required_artifacts,
+            required_warmup_scopes,
+            topology_sensitive,
             evidence: self.evidence(file, mitigation, anchor_patterns)?,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn cache_surface(
+        &self,
+        name: &str,
+        artifact_scopes: Vec<String>,
+        ownership_inputs: Vec<String>,
+        portability: ArtifactPortability,
+        rank_disposition: RankDisposition,
+        topology_sensitive: bool,
+        rationale: &str,
+        file: &'static str,
+        anchor_patterns: &[&'static str],
+    ) -> AdapterResult<CacheOwnershipSurface> {
+        Ok(CacheOwnershipSurface {
+            name: name.to_owned(),
+            artifact_scopes,
+            ownership_inputs,
+            portability,
+            rank_disposition,
+            topology_sensitive,
+            rationale: rationale.to_owned(),
+            evidence: self.evidence(file, rationale, anchor_patterns)?,
         })
     }
 
@@ -563,6 +763,7 @@ impl EngineAdapter for VllmAdapter {
             compile_knobs: self.compile_knobs()?,
             preserved_abstractions: self.preserved_abstractions()?,
             compile_regions: self.compile_regions()?,
+            cache_ownership_surfaces: self.cache_ownership_surfaces()?,
             residual_jit_surfaces: self.residual_jit_surfaces()?,
             diagnostics: self.diagnostics()?,
         })
@@ -578,14 +779,34 @@ impl EngineAdapter for VllmAdapter {
             survey.compile_regions.len()
         ));
         out.push_str(&format!(
+            "cache ownership surfaces: {}\n",
+            survey.cache_ownership_surfaces.len()
+        ));
+        out.push_str(&format!(
             "residual jit surfaces: {}\n",
             survey.residual_jit_surfaces.len()
         ));
         out.push_str("regions:\n");
         for region in &survey.compile_regions {
             out.push_str(&format!(
-                "- {} ({:?}) candidate={} repeated={}\n",
-                region.name, region.kind, region.regional_compile_candidate, region.repeated
+                "- {} -> {} ({:?}) candidate={} repeated={} cache={} topology_sensitive={}\n",
+                region.name,
+                region.canonical_name,
+                region.kind,
+                region.regional_compile_candidate,
+                region.repeated,
+                region.cache_namespace,
+                region.topology_sensitive
+            ));
+        }
+        out.push_str("cache surfaces:\n");
+        for surface in &survey.cache_ownership_surfaces {
+            out.push_str(&format!(
+                "- {} scopes={} portability={:?} rank_disposition={:?}\n",
+                surface.name,
+                surface.artifact_scopes.join(","),
+                surface.portability,
+                surface.rank_disposition
             ));
         }
         out.push_str("diagnostics:\n");
@@ -655,6 +876,7 @@ mod tests {
         assert_eq!(survey.engine, TargetEngine::Vllm);
         assert!(!survey.config_inputs.is_empty());
         assert!(!survey.compile_regions.is_empty());
+        assert!(!survey.cache_ownership_surfaces.is_empty());
         assert!(!survey.residual_jit_surfaces.is_empty());
 
         for evidence in survey
@@ -669,6 +891,12 @@ mod tests {
                     .map(|entry| &entry.evidence),
             )
             .chain(survey.compile_regions.iter().map(|entry| &entry.evidence))
+            .chain(
+                survey
+                    .cache_ownership_surfaces
+                    .iter()
+                    .map(|entry| &entry.evidence),
+            )
             .chain(
                 survey
                     .residual_jit_surfaces
