@@ -218,6 +218,9 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert manifest["categories"]["VLLM_CUDART_SO_PATH"] == "host_only"
     assert manifest["categories"]["VLLM_NCCL_INCLUDE_PATH"] == "host_only"
+    assert manifest["categories"]["VLLM_USE_PRECOMPILED"] == "host_only"
+    assert manifest["categories"]["VLLM_USE_PRECOMPILED_RUST"] == "host_only"
+    assert manifest["categories"]["CMAKE_BUILD_TYPE"] == "host_only"
     assert manifest["categories"]["VLLM_DOCKER_BUILD_CONTEXT"] == "host_only"
     assert manifest["categories"]["VLLM_SKIP_PRECOMPILED_VERSION_SUFFIX"] == "host_only"
     assert manifest["categories"]["VLLM_RUST_FRONTEND_PATH"] == "host_only"
@@ -313,6 +316,9 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_MULTI_STREAM_GEMM_TOKEN_THRESHOLD" in manifest["ignored_keys"]
     assert "VLLM_CUDART_SO_PATH" in manifest["ignored_keys"]
     assert "VLLM_NCCL_INCLUDE_PATH" in manifest["ignored_keys"]
+    assert "VLLM_USE_PRECOMPILED" in manifest["ignored_keys"]
+    assert "VLLM_USE_PRECOMPILED_RUST" in manifest["ignored_keys"]
+    assert "CMAKE_BUILD_TYPE" in manifest["ignored_keys"]
     assert "VLLM_DOCKER_BUILD_CONTEXT" in manifest["ignored_keys"]
     assert "VLLM_SKIP_PRECOMPILED_VERSION_SUFFIX" in manifest["ignored_keys"]
     assert "VLLM_RUST_FRONTEND_PATH" in manifest["ignored_keys"]
