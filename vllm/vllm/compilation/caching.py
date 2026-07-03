@@ -1647,6 +1647,123 @@ def load_compile_cache_key_factors(
         return None
 
 
+def build_graph_artifact_store_manifest(
+    *,
+    local_cache_dir: str | None,
+    cache_key_factors: dict[str, object] | None,
+    artifact_files: dict[str, str] | None = None,
+    backend_identity: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+
+    root = Path(local_cache_dir)
+    artifact_layout = artifact_files or {
+        "cache_key_factors": "cache_key_factors.json",
+        "compiler_cache": "vllm_compile_cache.py",
+        "computation_graph": "computation_graph.py",
+    }
+
+    artifacts = []
+    for artifact_kind, relative_path in sorted(artifact_layout.items()):
+        artifact_path = Path(relative_path)
+        if not artifact_path.is_absolute():
+            artifact_path = root / artifact_path
+        present = artifact_path.exists()
+        artifact_record: dict[str, object] = {
+            "artifact_kind": artifact_kind,
+            "relative_path": str(
+                artifact_path.relative_to(root) if present else Path(relative_path)
+            ),
+            "present": present,
+            "size_bytes": artifact_path.stat().st_size if present else None,
+            "sha256": None,
+        }
+        if present:
+            artifact_record["sha256"] = hashlib.sha256(
+                artifact_path.read_bytes()
+            ).hexdigest()
+        artifacts.append(artifact_record)
+
+    compile_hashes = {
+        "env_policy_hash": (
+            hash_factors(cache_key_factors["env"])
+            if cache_key_factors is not None and "env" in cache_key_factors
+            else hash_factors(envs.compile_factors())
+        ),
+        "config_hash": (
+            cache_key_factors.get("config_hash") if cache_key_factors is not None else None
+        ),
+        "code_hash": (
+            cache_key_factors.get("code_hash") if cache_key_factors is not None else None
+        ),
+        "compiler_hash": (
+            cache_key_factors.get("compiler_hash")
+            if cache_key_factors is not None
+            else None
+        ),
+    }
+
+    return {
+        "schema_version": 1,
+        "payload_kind": "vllm_graph_artifact_store",
+        "store_kind": "torch_compile_cache",
+        "local_cache_dir": str(root),
+        "compile_hashes": compile_hashes,
+        "cache_key_factors_source": (
+            "cache_key_factors_file" if cache_key_factors is not None else "live_fallback"
+        ),
+        "backend_identity": _json_ready(backend_identity),
+        "artifact_count": len(artifacts),
+        "present_artifact_count": sum(1 for item in artifacts if item["present"]),
+        "artifacts": artifacts,
+    }
+
+
+def write_graph_artifact_store_manifest(
+    *,
+    local_cache_dir: str | None,
+    cache_key_factors: dict[str, object] | None,
+    artifact_files: dict[str, str] | None = None,
+    backend_identity: dict[str, object] | None = None,
+) -> dict[str, object] | None:
+    manifest = build_graph_artifact_store_manifest(
+        local_cache_dir=local_cache_dir,
+        cache_key_factors=cache_key_factors,
+        artifact_files=artifact_files,
+        backend_identity=backend_identity,
+    )
+    if manifest is None:
+        return None
+
+    meta_path = Path(local_cache_dir) / "graph_artifact_store.json"
+    meta_path.write_text(
+        json.dumps(
+            manifest,
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return manifest
+
+
+def load_graph_artifact_store_manifest(
+    local_cache_dir: str | None,
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+    meta_path = Path(local_cache_dir) / "graph_artifact_store.json"
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text())
+    except Exception:
+        logger.warning(
+            "could not read graph artifact store manifest from %s", meta_path
+        )
+        return None
+
+
 def build_shape_envelope_summary(
     standalone_compile_artifacts: StandaloneCompiledArtifacts,
     sym_shape_indices_map: dict[str, list[int]] | None,
@@ -1688,9 +1805,26 @@ def build_standalone_artifact_proof_manifest(
     vllm_config = getattr(vllm_backend, "vllm_config", None)
     compilation_config = getattr(vllm_backend, "compilation_config", None)
     compiler_manager = getattr(vllm_backend, "compiler_manager", None)
+    local_cache_dir = getattr(compilation_config, "local_cache_dir", None)
     cache_key_factors = load_compile_cache_key_factors(
-        getattr(compilation_config, "local_cache_dir", None)
+        local_cache_dir
     )
+    graph_artifact_store = load_graph_artifact_store_manifest(local_cache_dir)
+    if graph_artifact_store is None:
+        graph_artifact_store = build_graph_artifact_store_manifest(
+            local_cache_dir=local_cache_dir,
+            cache_key_factors=cache_key_factors,
+            backend_identity={
+                "backend_class": type(vllm_backend).__name__,
+                "prefix": getattr(vllm_backend, "prefix", None),
+                "is_encoder": bool(getattr(vllm_backend, "is_encoder", False)),
+                "compiler_name": (
+                    getattr(getattr(compiler_manager, "compiler", None), "name", None)
+                    if compiler_manager is not None
+                    else None
+                ),
+            },
+        )
 
     compile_hashes = {
         "env_policy_hash": (
@@ -1735,6 +1869,7 @@ def build_standalone_artifact_proof_manifest(
             "python_version": ".".join(str(part) for part in sys.version_info[:3]),
             "torch_version": getattr(torch, "__version__", "<unknown>"),
         },
+        "graph_artifact_store": graph_artifact_store,
         "patch_profile": env_override.patch_profile_manifest(),
         "fallback_namespace_coverage": env_override.fallback_namespace_manifest(),
         "fallback_creation_evidence": env_override.fallback_creation_evidence_manifest(),

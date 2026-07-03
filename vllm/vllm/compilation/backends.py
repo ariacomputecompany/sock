@@ -1017,6 +1017,7 @@ class VllmBackend:
     def __call__(self, graph: fx.GraphModule, example_inputs: Sequence[Any]) -> Any:
         from .caching import (
             VllmSerializableFunction,
+            write_graph_artifact_store_manifest,
         )
 
         vllm_config = self.vllm_config
@@ -1109,6 +1110,12 @@ class VllmBackend:
         )
 
         # Persist and log only hash-relevant factors together.
+        cache_key_factors_payload = {
+            "env": env_factors,
+            "config_hash": config_hash,
+            "code_hash": code_hash,
+            "compiler_hash": compiler_hash,
+        }
         try:
             logger.debug(
                 "Compile env factors (raw):\n%s\nVllm config hash: %s",
@@ -1118,17 +1125,7 @@ class VllmBackend:
             meta_path = os.path.join(local_cache_dir, "cache_key_factors.json")
             if not os.path.exists(meta_path):
                 with open(meta_path, "w") as f:
-                    json.dump(
-                        {
-                            "env": env_factors,  # raw factors used for env_hash
-                            "config_hash": config_hash,
-                            "code_hash": code_hash,
-                            "compiler_hash": compiler_hash,
-                        },
-                        f,
-                        indent=2,
-                        sort_keys=True,
-                    )
+                    json.dump(cache_key_factors_payload, f, indent=2, sort_keys=True)
         except Exception:
             # Best-effort only; metadata write failures are non-fatal.
             logger.warning(
@@ -1264,6 +1261,34 @@ class VllmBackend:
                 f.write(src)
 
             logger.debug_once("Computation graph saved to %s", graph_path)
+        try:
+            write_graph_artifact_store_manifest(
+                local_cache_dir=local_cache_dir,
+                cache_key_factors=cache_key_factors_payload,
+                artifact_files={
+                    "cache_key_factors": "cache_key_factors.json",
+                    "compiler_cache": os.path.basename(
+                        self.compiler_manager.cache_file_path
+                    ),
+                    "computation_graph": os.path.basename(graph_path),
+                },
+                backend_identity={
+                    "backend_class": type(self).__name__,
+                    "prefix": self.prefix,
+                    "is_encoder": bool(self.is_encoder),
+                    "compiler_name": getattr(
+                        getattr(self.compiler_manager, "compiler", None),
+                        "name",
+                        None,
+                    ),
+                },
+            )
+        except Exception:
+            logger.warning(
+                "Could not write graph artifact store manifest at %s",
+                local_cache_dir,
+                exc_info=True,
+            )
 
         self._called = True
         graph_to_serialize = (

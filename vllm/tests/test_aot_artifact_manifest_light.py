@@ -381,6 +381,23 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             return []
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "vllm_compile_cache.py").write_text("# cache\n")
+        Path(tmpdir, "computation_graph.py").write_text("# graph\n")
+        expected_graph_artifact_store = caching.write_graph_artifact_store_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors=None,
+            artifact_files={
+                "cache_key_factors": "cache_key_factors.json",
+                "compiler_cache": "vllm_compile_cache.py",
+                "computation_graph": "computation_graph.py",
+            },
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": None,
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
         backend = types.SimpleNamespace(
             vllm_config=types.SimpleNamespace(compute_hash=lambda: "cfg-hash"),
             compilation_config=types.SimpleNamespace(local_cache_dir=tmpdir),
@@ -506,6 +523,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                 "python_version": ".".join(str(part) for part in sys.version_info[:3]),
                 "torch_version": "2.9.0-light",
             },
+            "graph_artifact_store": expected_graph_artifact_store,
             "patch_profile": {
                 "schema_version": 1,
                 "torch_version": "2.9.0-light",
@@ -718,6 +736,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             "python_version": ".".join(str(part) for part in sys.version_info[:3]),
             "torch_version": "2.9.0-light",
         },
+        "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
             "torch_version": "2.9.0-light",
@@ -1004,6 +1023,28 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                 }
             )
         )
+        Path(tmpdir, "vllm_compile_cache.py").write_text("# cache\n")
+        Path(tmpdir, "computation_graph.py").write_text("# graph\n")
+        expected_graph_artifact_store = caching.write_graph_artifact_store_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+            },
+            artifact_files={
+                "cache_key_factors": "cache_key_factors.json",
+                "compiler_cache": "vllm_compile_cache.py",
+                "computation_graph": "computation_graph.py",
+            },
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": True,
+                "compiler_name": "inductor-light",
+            },
+        )
         backend = types.SimpleNamespace(
             prefix="unit-prefix",
             is_encoder=True,
@@ -1045,6 +1086,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
             "python_version": ".".join(str(part) for part in sys.version_info[:3]),
             "torch_version": "2.9.0-light",
         },
+        "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
             "torch_version": "2.9.0-light",
@@ -1407,6 +1449,63 @@ def test_serialized_fn_state_bundle_can_delay_pickle_rehydration() -> None:
 
     assert restored["aot_autograd_config"] == {"bundled_autograd_cache": True}
     assert restored["consts"] == ["const0"]
+
+
+def test_graph_artifact_store_manifest_roundtrip() -> None:
+    caching, _ = _load_caching_module()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        Path(tmpdir, "cache_key_factors.json").write_text(
+            json.dumps(
+                {
+                    "env": {"A": "B"},
+                    "config_hash": "cfg-from-file",
+                    "code_hash": "code-from-file",
+                    "compiler_hash": "compiler-from-file",
+                }
+            )
+        )
+        Path(tmpdir, "vllm_compile_cache.py").write_text("# cache\n")
+        Path(tmpdir, "computation_graph.py").write_text("# graph\n")
+
+        manifest = caching.write_graph_artifact_store_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+            },
+            artifact_files={
+                "cache_key_factors": "cache_key_factors.json",
+                "compiler_cache": "vllm_compile_cache.py",
+                "computation_graph": "computation_graph.py",
+            },
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
+        reloaded = caching.load_graph_artifact_store_manifest(tmpdir)
+
+    assert reloaded == manifest
+    assert manifest["payload_kind"] == "vllm_graph_artifact_store"
+    assert manifest["artifact_count"] == 3
+    assert manifest["present_artifact_count"] == 3
+    assert manifest["compile_hashes"] == {
+        "env_policy_hash": "factors",
+        "config_hash": "cfg-from-file",
+        "code_hash": "code-from-file",
+        "compiler_hash": "compiler-from-file",
+    }
+    assert [item["artifact_kind"] for item in manifest["artifacts"]] == [
+        "cache_key_factors",
+        "compiler_cache",
+        "computation_graph",
+    ]
+    assert all(item["present"] for item in manifest["artifacts"])
 
 
 def test_artifact_load_topology_summary_tracks_data_parallel_estimate() -> None:

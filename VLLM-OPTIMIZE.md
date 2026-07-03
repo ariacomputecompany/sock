@@ -398,7 +398,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 ## 13. AOT Compile Artifact Improvements
 
-- [ ] Treat the torch.compile cache as a graph-artifact store with explicit proof metadata, not just as a directory of reusable byproducts.
 
 ## 14. Build System Simplification
 
