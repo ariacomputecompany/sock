@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "measure-prefill-path",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nmeasure_dir=$(mktemp -d)\nmeasure_out=$(cargo run --quiet --bin sock -- measure prefill-path --out \"$measure_dir\")\nprintf '%s' \"$measure_out\" | grep -q 'measurement intent=prefill_path'\ngrep -q '\"intent\":\"prefill_path\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"label\":\"broad_cold\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"label\":\"scoped_cold\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"label\":\"scoped_warm\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"reused_artifact_count\":' \"$measure_dir/scoped-warm/materialization_report.json\"\nprintf 'measured\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "measured\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nmeasure_dir=$(mktemp -d)\nmeasure_out=$(cargo run --quiet --bin sock -- measure prefill-path --out \"$measure_dir\")\nprintf '%s' \"$measure_out\" | grep -q 'measurement intent=prefill_path'\ngrep -q '\"intent\":\"prefill_path\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"label\":\"broad_cold\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"label\":\"scoped_cold\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"label\":\"scoped_warm\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"reused_artifact_count\":' \"$measure_dir/scoped-warm/materialization_report.json\"\nprintf 'measured\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "measured\n",
+      "expect_stderr": ""
+    }
+  ]
+}

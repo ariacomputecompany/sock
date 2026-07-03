@@ -100,6 +100,7 @@ impl MaterializationExecutor {
         scope: &BuildScope,
         roots: &StorageRoots,
     ) -> Result<MaterializationExecutionReport, MaterializationError> {
+        let started = Instant::now();
         let artifact_root = roots.bundle_root.join("artifacts");
         let cache_root = roots.cache_root.clone();
         let node_root = roots.bundle_root.join("materialization").join("nodes");
@@ -219,10 +220,15 @@ impl MaterializationExecutor {
             node_root: "materialization/nodes".to_owned(),
             wave_root: "materialization/waves".to_owned(),
             artifact_count: artifact_records.len() as u32,
+            executed_artifact_count: artifact_records
+                .iter()
+                .filter(|artifact| artifact.disposition == MaterializationDisposition::Executed)
+                .count() as u32,
             reused_artifact_count: artifact_records
                 .iter()
                 .filter(|artifact| artifact.disposition == MaterializationDisposition::Reused)
                 .count() as u32,
+            wall_clock_ms: elapsed_ms(started.elapsed()),
             total_bytes_written,
             total_compile_ms,
             total_transfer_ms,

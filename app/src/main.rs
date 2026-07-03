@@ -8,9 +8,10 @@ use sock_app::{
     rewrite_trace_for,
 };
 use sock_core::{
-    BackendFamily, DiagnosticsDocument, MaterializationExecutionReport, ReplayBundle,
-    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, canonical_json,
-    render_diagnostics, render_explain, render_plan_summary, render_verification_report,
+    BackendFamily, BuildMeasurementReport, DiagnosticsDocument, MaterializationExecutionReport,
+    MeasurementCaseReport, MeasurementComparisonReport, ReplayBundle, ReplayBundleMetadata,
+    ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json, render_diagnostics,
+    render_explain, render_plan_summary, render_verification_report,
 };
 use sock_engine::{
     BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, PlannerHostSnapshot,
@@ -56,6 +57,14 @@ enum Command {
         out: PathBuf,
         #[arg(long)]
         cache_root: Option<PathBuf>,
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
+    Measure {
+        #[arg(value_enum)]
+        intent: PrepareIntentArg,
+        #[arg(long)]
+        out: PathBuf,
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
         format: OutputMode,
     },
@@ -198,33 +207,26 @@ fn main() -> Result<()> {
             format,
         } => {
             let scope = intent_scope(intent);
-            let outcome = plan_with_scope(&scope)?;
-            let bundle = replay_bundle(&outcome);
-            let vllm_integration = build_vllm_integration_document(&outcome)?;
-            validate_scoped_vllm_subset(&scope, &vllm_integration)?;
-            let storage = StorageRoots {
-                bundle_root: out.clone(),
-                cache_root: cache_root.unwrap_or_else(|| out.join(".sock-cache")),
-            };
-            let materialization =
-                MaterializationExecutor::new().execute(&outcome, &scope, &storage)?;
-            std::fs::write(
-                out.join("vllm_integration.json"),
-                canonical_json(&vllm_integration)?.as_bytes(),
+            let build = materialize_bundle(
+                &scope,
+                &out,
+                &cache_root.unwrap_or_else(|| out.join(".sock-cache")),
             )?;
-            let vllm_entrypoints = build_vllm_entrypoint_document(&outcome, &vllm_integration)?;
-            emit_vllm_entrypoints(&out, &vllm_entrypoints)?;
-            let metadata = bundle.write_to(&out)?;
             emit_build(
                 &scope,
                 Some(intent_label(intent)),
                 &out,
-                &bundle,
-                &metadata,
-                &materialization,
+                &build.bundle,
+                &build.metadata,
+                &build.materialization,
                 format,
             )?;
         }
+        Command::Measure {
+            intent,
+            out,
+            format,
+        } => emit_measure(intent, &out, format)?,
         Command::Verify { bundle, format } => {
             emit_verify(&ReplayBundle::load_from(&bundle)?, format)?;
         }
@@ -385,12 +387,14 @@ fn emit_build(
     match format {
         OutputMode::Summary => {
             println!(
-                "bundle={} plan_identity={} replay_entrypoint={} artifacts={} reused={} bytes_written={} rebuild_ms={} readiness={:?}",
+                "bundle={} plan_identity={} replay_entrypoint={} artifacts={} executed={} reused={} wall_clock_ms={} bytes_written={} rebuild_ms={} readiness={:?}",
                 out.display(),
                 bundle.build_plan.structural_identity.plan_identity,
                 metadata.replay_entrypoint,
                 materialization.artifact_count,
+                materialization.executed_artifact_count,
                 materialization.reused_artifact_count,
+                materialization.wall_clock_ms,
                 materialization.total_bytes_written,
                 materialization.total_rebuild_ms,
                 materialization.readiness.achieved_readiness
@@ -412,6 +416,68 @@ fn emit_build(
             );
         }
     }
+    Ok(())
+}
+
+fn emit_measure(intent: PrepareIntentArg, out: &Path, format: OutputMode) -> Result<()> {
+    std::fs::create_dir_all(out)?;
+
+    let broad_out = out.join("broad-cold");
+    let scoped_cold_out = out.join("scoped-cold");
+    let scoped_warm_out = out.join("scoped-warm");
+
+    let broad_cache = out.join(".sock-cache-broad");
+    let scoped_cache = out.join(".sock-cache-scoped");
+
+    let broad_scope = BuildScope::default();
+    let scoped_scope = intent_scope(intent);
+
+    let broad = materialize_bundle(&broad_scope, &broad_out, &broad_cache)?;
+    let scoped_cold = materialize_bundle(&scoped_scope, &scoped_cold_out, &scoped_cache)?;
+    let scoped_warm = materialize_bundle(&scoped_scope, &scoped_warm_out, &scoped_cache)?;
+
+    let report = BuildMeasurementReport {
+        schema_version: SchemaVersion::current(),
+        intent: intent_label(intent).to_owned(),
+        broad_cold: measurement_case("broad_cold", &broad_scope, &broad.materialization),
+        scoped_cold: measurement_case("scoped_cold", &scoped_scope, &scoped_cold.materialization),
+        scoped_warm: measurement_case("scoped_warm", &scoped_scope, &scoped_warm.materialization),
+        scoped_vs_broad: MeasurementComparisonReport::between(
+            "broad_cold",
+            &measurement_case("broad_cold", &broad_scope, &broad.materialization),
+            "scoped_cold",
+            &measurement_case("scoped_cold", &scoped_scope, &scoped_cold.materialization),
+        ),
+        warm_vs_cold: MeasurementComparisonReport::between(
+            "scoped_cold",
+            &measurement_case("scoped_cold", &scoped_scope, &scoped_cold.materialization),
+            "scoped_warm",
+            &measurement_case("scoped_warm", &scoped_scope, &scoped_warm.materialization),
+        ),
+    };
+    std::fs::write(
+        out.join("measurement_report.json"),
+        canonical_json(&report)?.as_bytes(),
+    )?;
+
+    match format {
+        OutputMode::Summary => {
+            println!(
+                "measurement intent={} broad_wall_clock_ms={} scoped_wall_clock_ms={} warm_wall_clock_ms={} scoped_wall_clock_reduction_bps={} warm_wall_clock_reduction_bps={} broad_executed={} scoped_executed={} warm_reused={}",
+                report.intent,
+                report.broad_cold.wall_clock_ms,
+                report.scoped_cold.wall_clock_ms,
+                report.scoped_warm.wall_clock_ms,
+                report.scoped_vs_broad.wall_clock_reduction_bps,
+                report.warm_vs_cold.wall_clock_reduction_bps,
+                report.broad_cold.executed_artifact_count,
+                report.scoped_cold.executed_artifact_count,
+                report.scoped_warm.reused_artifact_count,
+            );
+        }
+        OutputMode::Json => println!("{}", canonical_json(&report)?),
+    }
+
     Ok(())
 }
 
@@ -637,6 +703,94 @@ fn render_vllm_native_contract(outcome: &PlanningOutcome) -> Result<String> {
         list_or_all(preserved_abstractions.iter().map(String::as_str))
     ));
     Ok(out)
+}
+
+struct BundleBuild {
+    bundle: ReplayBundle,
+    metadata: ReplayBundleMetadata,
+    materialization: MaterializationExecutionReport,
+}
+
+fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Result<BundleBuild> {
+    let outcome = plan_with_scope(scope)?;
+    let bundle = replay_bundle(&outcome);
+    let vllm_integration = build_vllm_integration_document(&outcome)?;
+    validate_scoped_vllm_subset(scope, &vllm_integration)?;
+    let storage = StorageRoots {
+        bundle_root: out.to_path_buf(),
+        cache_root: cache_root.to_path_buf(),
+    };
+    let materialization = MaterializationExecutor::new().execute(&outcome, scope, &storage)?;
+    std::fs::write(
+        out.join("vllm_integration.json"),
+        canonical_json(&vllm_integration)?.as_bytes(),
+    )?;
+    let vllm_entrypoints = build_vllm_entrypoint_document(&outcome, &vllm_integration)?;
+    emit_vllm_entrypoints(out, &vllm_entrypoints)?;
+    let metadata = bundle.write_to(out)?;
+
+    Ok(BundleBuild {
+        bundle,
+        metadata,
+        materialization,
+    })
+}
+
+fn measurement_case(
+    label: &str,
+    scope: &BuildScope,
+    report: &MaterializationExecutionReport,
+) -> MeasurementCaseReport {
+    let mut requested_backend_families = scope
+        .backend_families
+        .iter()
+        .map(|family| family.as_str().to_owned())
+        .collect::<Vec<_>>();
+    requested_backend_families.sort();
+
+    let mut requested_topology_scopes = scope
+        .topology_scopes
+        .iter()
+        .map(|scope| match scope {
+            BuildTopologyScope::Shared => "shared".to_owned(),
+            BuildTopologyScope::RankLocal => "rank_local".to_owned(),
+        })
+        .collect::<Vec<_>>();
+    requested_topology_scopes.sort();
+
+    let runtime_jit_contradiction_count = report
+        .runtime_jit_observations
+        .iter()
+        .filter(|observation| {
+            observation.status == sock_core::RuntimeJitObservationStatus::Contradicted
+        })
+        .count() as u32;
+
+    MeasurementCaseReport {
+        label: label.to_owned(),
+        requested_regions: scope.region_names.iter().cloned().collect(),
+        requested_artifact_scopes: scope.artifact_scopes.iter().cloned().collect(),
+        requested_backend_families,
+        requested_topology_scopes,
+        requested_cache_namespaces: scope.cache_namespaces.iter().cloned().collect(),
+        requested_warmup_scopes: scope.warmup_scopes.iter().cloned().collect(),
+        requested_readiness: match scope.readiness {
+            Some(BuildReadiness::EarlyServe) => "early_serve".to_owned(),
+            Some(BuildReadiness::Correctness) => "correctness".to_owned(),
+            Some(BuildReadiness::Performance) => "performance".to_owned(),
+            None => "default".to_owned(),
+        },
+        plan_identity: report.plan_identity.to_string(),
+        artifact_count: report.artifact_count,
+        executed_artifact_count: report.executed_artifact_count,
+        reused_artifact_count: report.reused_artifact_count,
+        wall_clock_ms: report.wall_clock_ms,
+        total_compile_ms: report.total_compile_ms,
+        total_transfer_ms: report.total_transfer_ms,
+        total_rebuild_ms: report.total_rebuild_ms,
+        total_bytes_written: report.total_bytes_written,
+        runtime_jit_contradiction_count,
+    }
 }
 
 fn list_or_all<'a>(items: impl IntoIterator<Item = &'a str>) -> String {

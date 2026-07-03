@@ -8,6 +8,7 @@ pub mod governance;
 pub mod identity;
 pub mod integration;
 pub mod materialization;
+pub mod measurement;
 pub mod model;
 pub mod operator;
 pub mod request;
@@ -29,6 +30,7 @@ pub use entrypoint::*;
 pub use identity::*;
 pub use integration::*;
 pub use materialization::*;
+pub use measurement::*;
 pub use model::*;
 pub use operator::{
     render_diagnostics, render_explain, render_plan_summary, render_verification_report,

@@ -149,6 +149,7 @@ The CLI surface is:
 
 - `cargo run --bin sock -- prepare prefill-path --out /tmp/sock-bundle`
 - `cargo run --bin sock -- prepare replay-safe-closure --out /tmp/sock-bundle`
+- `cargo run --bin sock -- measure prefill-path --out /tmp/sock-measure`
 - `cargo run --bin sock -- plan`
 - `cargo run --bin sock -- explain`
 - `cargo run --bin sock -- build --out /tmp/sock-bundle`
@@ -160,9 +161,18 @@ The workflow is:
 
 1. describe the serving intent
 2. inspect the requested scope, expanded closure, and estimated work
-3. build the required subset
-4. verify the emitted bundle
-5. replay the result without new compile work
+3. measure the scoped closure against a broad build on the live executor path
+4. build the required subset
+5. verify the emitted bundle
+6. replay the result without new compile work
+
+`measure` records three concrete executions:
+
+- a broad cold build
+- a scoped cold build for the requested intent
+- a scoped warm build that reuses the same cache root
+
+That report is written to `measurement_report.json` and proves, with the same executor used for production bundles, whether scoped closure and cache reuse are actually reducing work.
 
 ## Verification model
 
@@ -177,6 +187,8 @@ sock verifies:
 - runtime-JIT evidence bounds
 - observed runtime-JIT contradictions from the live build path
 - compile-free verify/replay operator gates
+- measured scoped-vs-broad materialization reduction on the live executor path
+- measured warm-cache reuse decisions on the same materialization path
 
 Replay bundles are content-digested, identity-checked, and verification-checked.
 Invalid reuse, stale artifacts, and mismatched plan state are rejected instead of being repaired implicitly.
@@ -199,5 +211,6 @@ It gives operators deterministic control over:
 - what gets warmed
 - what is safe to serve
 - what can still trigger runtime specialization
+- whether a narrower serving intent is measurably cheaper than a broad build before rollout
 
 The result is faster builds, smaller closures, cleaner cold starts, and a much better production DX for inference-engine deployment.

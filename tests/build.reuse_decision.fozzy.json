@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "build-reuse-decision",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\ncache_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness >/dev/null\nsecond_out=$(cargo run --quiet --bin sock -- build --out \"$bundle_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness)\nprintf '%s' \"$second_out\" | grep -q 'executed=0'\nprintf '%s' \"$second_out\" | grep -q 'reused=2'\ngrep -q '\"executed_artifact_count\":0' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"reused_artifact_count\":2' \"$bundle_dir/materialization_report.json\"\nprintf 'reuse-decision\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "reuse-decision\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}
