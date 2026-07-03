@@ -67,6 +67,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_DISABLE_LOG_LOGO"] == "debug_only"
     assert manifest["categories"]["VLLM_COMPUTE_NANS_IN_LOGITS"] == "debug_only"
     assert manifest["categories"]["VLLM_MM_HASHER_ALGORITHM"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_FASTSAFETENSORS_QUEUE_SIZE"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_MEDIA_CONNECTOR"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_CPU_KVCACHE_SPACE"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "runtime_non_compile"
@@ -76,6 +77,11 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_ALLREDUCE_USE_SYMM_MEM"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_ALLREDUCE_USE_FLASHINFER"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_MAX_N_SEQUENCES"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_LORA_RESOLVER_CACHE_DIR"] == "runtime_non_compile"
+    assert (
+        manifest["categories"]["VLLM_LORA_RESOLVER_HF_REPO_LIST"]
+        == "runtime_non_compile"
+    )
     assert (
         manifest["categories"]["VLLM_ALLOW_INSECURE_SERIALIZATION"]
         == "runtime_non_compile"
@@ -137,6 +143,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert manifest["categories"]["VLLM_LOOPBACK_IP"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_GC_DEBUG"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_PATTERN_MATCH_DEBUG"] == "runtime_non_compile"
     assert (
         manifest["categories"]["VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE"]
         == "runtime_non_compile"
@@ -176,6 +183,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_COMPUTE_NANS_IN_LOGITS" in manifest["ignored_keys"]
     assert "VLLM_SYSTEM_START_DATE" in manifest["ignored_keys"]
     assert "VLLM_MM_HASHER_ALGORITHM" in manifest["ignored_keys"]
+    assert "VLLM_FASTSAFETENSORS_QUEUE_SIZE" in manifest["ignored_keys"]
     assert "VLLM_MEDIA_CONNECTOR" in manifest["ignored_keys"]
     assert "VLLM_CPU_KVCACHE_SPACE" in manifest["ignored_keys"]
     assert "VLLM_USE_SIMPLE_KV_OFFLOAD" in manifest["ignored_keys"]
@@ -185,6 +193,8 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_ALLREDUCE_USE_SYMM_MEM" in manifest["ignored_keys"]
     assert "VLLM_ALLREDUCE_USE_FLASHINFER" in manifest["ignored_keys"]
     assert "VLLM_MAX_N_SEQUENCES" in manifest["ignored_keys"]
+    assert "VLLM_LORA_RESOLVER_CACHE_DIR" in manifest["ignored_keys"]
+    assert "VLLM_LORA_RESOLVER_HF_REPO_LIST" in manifest["ignored_keys"]
     assert "VLLM_ALLOW_INSECURE_SERIALIZATION" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_REQUEST_ID_RANDOMIZATION" in manifest["ignored_keys"]
     assert "VLLM_MQ_MAX_CHUNK_BYTES_MB" in manifest["ignored_keys"]
@@ -216,6 +226,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS" in manifest["ignored_keys"]
     assert "VLLM_LOOPBACK_IP" in manifest["ignored_keys"]
     assert "VLLM_GC_DEBUG" in manifest["ignored_keys"]
+    assert "VLLM_PATTERN_MATCH_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE" in manifest["ignored_keys"]
     assert "VLLM_ENABLE_CUDAGRAPH_GC" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_SHARED_EXPERTS_STREAM" in manifest["ignored_keys"]
@@ -326,12 +337,18 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_SYSTEM_START_DATE" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_MEDIA_CONNECTOR" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_MM_HASHER_ALGORITHM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_FASTSAFETENSORS_QUEUE_SIZE" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_USE_SPINLOOP_EXT" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_DISABLE_PYNCCL" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_USE_NCCL_SYMM_MEM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_ALLREDUCE_USE_SYMM_MEM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_ALLREDUCE_USE_FLASHINFER" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_MAX_N_SEQUENCES" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_LORA_RESOLVER_CACHE_DIR" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert (
+        "VLLM_LORA_RESOLVER_HF_REPO_LIST"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
     assert (
         "VLLM_ALLOW_INSECURE_SERIALIZATION"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
@@ -447,6 +464,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert "VLLM_LOOPBACK_IP" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_GC_DEBUG" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_PATTERN_MATCH_DEBUG" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert (
         "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
