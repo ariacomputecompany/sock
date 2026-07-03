@@ -2289,6 +2289,12 @@ def _normalize_compile_factor_value(factor: str, raw: object) -> object:
                 }
             )
         )
+    elif factor in _ambient_compile_factor_names() and isinstance(raw, str):
+        normalized_raw = raw.strip().lower()
+        if normalized_raw in {"1", "true"}:
+            raw = True
+        elif normalized_raw in {"0", "false", ""}:
+            raw = False
 
     return normalize_value(raw)
 

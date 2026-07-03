@@ -224,3 +224,38 @@ def test_disabled_kernels_compile_factor_is_set_canonicalized() -> None:
         identity["combined_factor_digest"]
         == equivalent_identity["combined_factor_digest"]
     )
+
+
+def test_ambient_boolean_compile_factors_are_canonicalized() -> None:
+    envs = _load_envs_module()
+
+    with patch.dict(
+        os.environ,
+        {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "TRUE"},
+        clear=False,
+    ):
+        factors = envs.compile_factors()
+        identity = envs.compile_factor_identity_manifest()
+
+    with patch.dict(
+        os.environ,
+        {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "1"},
+        clear=False,
+    ):
+        equivalent_factors = envs.compile_factors()
+        equivalent_identity = envs.compile_factor_identity_manifest()
+
+    with patch.dict(
+        os.environ,
+        {"RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": "false"},
+        clear=False,
+    ):
+        disabled_factors = envs.compile_factors()
+
+    assert factors["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] is True
+    assert equivalent_factors["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] is True
+    assert disabled_factors["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] is False
+    assert (
+        identity["combined_factor_digest"]
+        == equivalent_identity["combined_factor_digest"]
+    )
