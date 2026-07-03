@@ -62,6 +62,16 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert "VLLM_BUILD_PROFILE" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_COMPILE_CACHE" in manifest["included_keys"]
+    assert (
+        "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+        in manifest["ambient_included_keys"]
+    )
+    assert (
+        manifest["ambient_policies"]["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"][
+            "source"
+        ]
+        == "ambient_environment"
+    )
     assert manifest["validation"]["ok"] is True
     assert (
         manifest["validation"]["compile_affecting_key_digest"]
@@ -73,7 +83,9 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert reparsed["schema_version"] == manifest["schema_version"]
     assert reparsed["categories"] == manifest["categories"]
     assert reparsed["policies"] == manifest["policies"]
+    assert reparsed["ambient_policies"] == manifest["ambient_policies"]
     assert reparsed["included_keys"] == manifest["included_keys"]
+    assert reparsed["ambient_included_keys"] == manifest["ambient_included_keys"]
     assert reparsed["ignored_keys"] == manifest["ignored_keys"]
     assert reparsed["validation"] == manifest["validation"]
 

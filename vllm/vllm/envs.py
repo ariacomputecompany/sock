@@ -2096,8 +2096,47 @@ _COMPILE_FACTOR_REASON_OVERRIDES: dict[str, str] = {
     ),
 }
 
+_AMBIENT_COMPILE_FACTOR_REASONS: dict[str, str] = {
+    "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": (
+        "Ambient Ray accelerator isolation flag that changes whether device visibility is externally rewritten "
+        "before compile-time backend selection."
+    ),
+    "RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES": (
+        "Ambient Ray accelerator isolation flag that changes ROCm device-visibility rewriting before compile-time "
+        "backend selection."
+    ),
+    "RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES": (
+        "Ambient Ray accelerator isolation flag that changes HIP device-visibility rewriting before compile-time "
+        "backend selection."
+    ),
+    "RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES": (
+        "Ambient Ray accelerator isolation flag that changes Ascend device visibility presented to compile-time "
+        "backend discovery."
+    ),
+    "RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES": (
+        "Ambient Ray accelerator isolation flag that changes Habana device visibility presented to compile-time "
+        "backend discovery."
+    ),
+    "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES": (
+        "Ambient Ray accelerator isolation flag that changes Neuron core visibility presented to compile-time "
+        "backend discovery."
+    ),
+    "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS": (
+        "Ambient Ray accelerator isolation flag that changes TPU chip visibility presented to compile-time "
+        "backend discovery."
+    ),
+    "RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR": (
+        "Ambient Ray accelerator isolation flag that changes oneAPI device selection presented to compile-time "
+        "backend discovery."
+    ),
+    "RAY_EXPERIMENTAL_NOSET_RBLN_RT_VISIBLE_DEVICES": (
+        "Ambient Ray accelerator isolation flag that changes RBLN device visibility presented to compile-time "
+        "backend discovery."
+    ),
+}
+
 _EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST = (
-    "0fa45e31dd06a2aa7d7b68ecb626fdc5c1bc7209db3f5d81f0cc9dee77a66a5f"
+    "e9253646b54a56f9df44305b4c961b1a5222d2b70dcb5f4b803cf66413fb01cb"
 )
 
 
@@ -2202,7 +2241,7 @@ def compile_factors() -> dict[str, object]:
 
         factors[factor] = normalize_value(raw)
 
-    ray_noset_env_vars = [
+    ambient_compile_factors = [
         # Refer to
         # https://github.com/ray-project/ray/blob/c584b1ea97b00793d1def71eaf81537d70efba42/python/ray/_private/accelerators/nvidia_gpu.py#L11
         # https://github.com/ray-project/ray/blob/c584b1ea97b00793d1def71eaf81537d70efba42/python/ray/_private/accelerators/amd_gpu.py#L11
@@ -2224,7 +2263,7 @@ def compile_factors() -> dict[str, object]:
         "RAY_EXPERIMENTAL_NOSET_RBLN_RT_VISIBLE_DEVICES",
     ]
 
-    for var in ray_noset_env_vars:
+    for var in ambient_compile_factors:
         factors[var] = normalize_value(os.getenv(var))
 
     return factors
@@ -2254,6 +2293,18 @@ def compile_factor_categories() -> dict[str, str]:
     return categories
 
 
+def ambient_compile_factor_policies() -> dict[str, dict[str, object]]:
+    policies: dict[str, dict[str, object]] = {}
+    for factor, reason in sorted(_AMBIENT_COMPILE_FACTOR_REASONS.items()):
+        policies[factor] = {
+            "category": "compile_affecting",
+            "included_in_compile_key": True,
+            "reason": reason,
+            "source": "ambient_environment",
+        }
+    return policies
+
+
 def compile_factor_policies() -> dict[str, dict[str, object]]:
     categories = compile_factor_categories()
     policies: dict[str, dict[str, object]] = {}
@@ -2264,6 +2315,7 @@ def compile_factor_policies() -> dict[str, dict[str, object]]:
             "reason": _COMPILE_FACTOR_REASON_OVERRIDES.get(
                 factor, _COMPILE_FACTOR_CATEGORY_REASONS[category]
             ),
+            "source": "declared_environment_variable",
         }
     return policies
 
@@ -2271,9 +2323,12 @@ def compile_factor_policies() -> dict[str, dict[str, object]]:
 def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
     categories = compile_factor_categories()
     policies = compile_factor_policies()
+    ambient_policies = ambient_compile_factor_policies()
     compile_affecting_keys = sorted(
         factor for factor, category in categories.items() if category == "compile_affecting"
     )
+    compile_affecting_keys.extend(sorted(ambient_policies))
+    compile_affecting_keys = sorted(set(compile_affecting_keys))
     compile_affecting_key_digest = hashlib.sha256(
         json.dumps(
             compile_affecting_keys,
@@ -2315,18 +2370,30 @@ def compile_factor_manifest() -> dict[str, object]:
     factors = compile_factors()
     categories = compile_factor_categories()
     policies = compile_factor_policies()
+    ambient_policies = ambient_compile_factor_policies()
     included_keys = sorted(factors)
     ignored_keys = sorted(
         factor
         for factor, category in categories.items()
         if category != "compile_affecting"
     )
+    ambient_included_keys = sorted(
+        factor for factor in included_keys if factor in ambient_policies
+    )
     return {
         "schema_version": 1,
         "factors": {key: factors[key] for key in included_keys},
         "categories": {key: categories[key] for key in sorted(categories)},
-        "policies": {key: policies[key] for key in sorted(policies)},
+        "policies": {
+            key: policies[key]
+            for key in sorted(policies)
+        },
+        "ambient_policies": {
+            key: ambient_policies[key]
+            for key in sorted(ambient_policies)
+        },
         "included_keys": included_keys,
+        "ambient_included_keys": ambient_included_keys,
         "ignored_keys": ignored_keys,
         "validation": validate_compile_factor_policy(hard_fail=False),
     }
