@@ -421,7 +421,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 - [ ] Reduce reliance on runtime `exec` for stitching-graph execution code where a pre-emitted module, manifest-bound callable, or equivalent static representation would work.
 - [ ] Keep Python source generation and Python object rehydration off the common warm-start fast path wherever possible.
 - [ ] Treat the torch.compile cache as a graph-artifact store with explicit proof metadata, not just as a directory of reusable byproducts.
-- [ ] Record whether a startup achieved full compile closure, partial closure, or closure-by-assumption for the declared workload envelope.
 
 ## 14. Build System Simplification
 

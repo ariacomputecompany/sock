@@ -369,6 +369,63 @@ def test_compatibility_drift_explains_mismatches() -> None:
     }
 
 
+def test_startup_closure_summary_classifies_outcomes() -> None:
+    caching, _ = _load_caching_module()
+
+    full = caching.summarize_startup_closure(
+        manifest_verification={"ok": True, "reasons": []},
+        compatibility_drift={"ok": True, "reasons": [], "mismatches": []},
+        load_report={
+            "schema_version": 1,
+            "load_path": "fresh_deserialize",
+            "loaded_artifact_count": 2,
+            "deserialization_wall_time_ms": 1.25,
+        },
+        assumes_closure=False,
+    )
+    assert full == {
+        "schema_version": 1,
+        "status": "full_compile_closure",
+        "reasons": [],
+    }
+
+    partial = caching.summarize_startup_closure(
+        manifest_verification={"ok": True, "reasons": []},
+        compatibility_drift={
+            "ok": False,
+            "reasons": ["compatibility_env_mismatch"],
+            "mismatches": ["env"],
+        },
+        load_report={
+            "schema_version": 1,
+            "load_path": "already_loaded",
+            "loaded_artifact_count": 2,
+            "deserialization_wall_time_ms": 0.0,
+        },
+        assumes_closure=False,
+    )
+    assert partial == {
+        "schema_version": 1,
+        "status": "partial_compile_closure",
+        "reasons": [
+            "compatibility_env_mismatch",
+            "artifact_store_preloaded",
+        ],
+    }
+
+    assumed = caching.summarize_startup_closure(
+        manifest_verification=None,
+        compatibility_drift=None,
+        load_report=None,
+        assumes_closure=True,
+    )
+    assert assumed == {
+        "schema_version": 1,
+        "status": "closure_by_assumption",
+        "reasons": ["closure_not_proven_by_manifest"],
+    }
+
+
 def test_load_report_marks_already_loaded_fast_path() -> None:
     caching, _ = _load_caching_module()
     artifacts = caching.StandaloneCompiledArtifacts()

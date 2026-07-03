@@ -503,8 +503,14 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                         current_vllm_config
                     ),
                 )
+                startup_closure = summarize_startup_closure(
+                    manifest_verification=verification,
+                    compatibility_drift=compatibility_drift,
+                    load_report=None,
+                    assumes_closure=False,
+                )
                 logger.info(
-                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s reuse=%s compatibility=%s compatibility_drift=%s",
+                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s reuse=%s compatibility=%s compatibility_drift=%s startup_closure=%s",
                     standalone_compile_artifact_manifest.get("entry_count", 0),
                     standalone_compile_artifact_manifest.get(
                         "unique_artifact_count", 0
@@ -530,6 +536,11 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                     ),
                     json.dumps(
                         compatibility_drift,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    json.dumps(
+                        startup_closure,
                         sort_keys=True,
                         separators=(",", ":"),
                     ),
@@ -617,6 +628,19 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             self.optimized_call = result.optimized_call
             self.vllm_backend = vllm_backend
 
+        logger.info(
+            "finalized non-mega AOT loading. startup_closure=%s",
+            json.dumps(
+                summarize_startup_closure(
+                    manifest_verification=None,
+                    compatibility_drift=None,
+                    load_report=None,
+                    assumes_closure=True,
+                ),
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
         self._fake_mode = None
 
     @property
@@ -680,6 +704,19 @@ def reconstruct_serializable_fn_from_mega_artifact(
 
     standalone_compile_artifacts.load_all()
     load_report = standalone_compile_artifacts.last_load_report()
+    startup_closure = summarize_startup_closure(
+        manifest_verification={
+            "ok": True,
+            "reasons": [],
+        },
+        compatibility_drift={
+            "ok": True,
+            "reasons": [],
+            "mismatches": [],
+        },
+        load_report=load_report,
+        assumes_closure=False,
+    )
 
     piecewise_submod_names = standalone_compile_artifacts.submodule_names()
     compiled_callables: dict[str, dict[str, Callable[..., Any]]] = {}
@@ -746,10 +783,11 @@ def reconstruct_serializable_fn_from_mega_artifact(
 
     if load_report is not None:
         logger.info(
-            "standalone compile artifact load complete. loaded_artifacts=%d deserialization_wall_time_ms=%.6f load_path=%s",
+            "standalone compile artifact load complete. loaded_artifacts=%d deserialization_wall_time_ms=%.6f load_path=%s startup_closure=%s",
             load_report.get("loaded_artifact_count", 0),
             float(load_report.get("deserialization_wall_time_ms", 0.0)),
             load_report.get("load_path", "<unknown>"),
+            json.dumps(startup_closure, sort_keys=True, separators=(",", ":")),
         )
 
     # Use codegen'd execution code if available, fall back to split_gm
@@ -856,6 +894,42 @@ def explain_compatibility_drift(
         "ok": not mismatches,
         "reasons": reasons,
         "mismatches": mismatches,
+    }
+
+
+def summarize_startup_closure(
+    manifest_verification: dict[str, object] | None,
+    compatibility_drift: dict[str, object] | None,
+    load_report: dict[str, object] | None,
+    assumes_closure: bool,
+) -> dict[str, object]:
+    reasons = []
+    if assumes_closure:
+        reasons.append("closure_not_proven_by_manifest")
+        return {
+            "schema_version": 1,
+            "status": "closure_by_assumption",
+            "reasons": reasons,
+        }
+
+    if manifest_verification is None:
+        reasons.append("manifest_verification_missing")
+    elif not bool(manifest_verification.get("ok", False)):
+        reasons.extend(manifest_verification.get("reasons", []))
+
+    if compatibility_drift is None:
+        reasons.append("compatibility_verification_missing")
+    elif not bool(compatibility_drift.get("ok", False)):
+        reasons.extend(compatibility_drift.get("reasons", []))
+
+    if load_report is not None and load_report.get("load_path") == "already_loaded":
+        reasons.append("artifact_store_preloaded")
+
+    status = "full_compile_closure" if not reasons else "partial_compile_closure"
+    return {
+        "schema_version": 1,
+        "status": status,
+        "reasons": reasons,
     }
 
 
