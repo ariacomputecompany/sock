@@ -128,6 +128,18 @@ def test_compile_factor_manifest_lightweight() -> None:
         == "ordered_int_csv"
     )
     assert (
+        manifest["normalization"]["declared_factor_normalization"][
+            "VLLM_NIC_SELECTION_VARS"
+        ]["family"]
+        == "ordered_env_selection_list"
+    )
+    assert (
+        manifest["normalization"]["declared_factor_normalization"][
+            "VLLM_GPU_NIC_PCIE_MAPPING"
+        ]["family"]
+        == "pci_bdf_mapping"
+    )
+    assert (
         manifest["normalization"]["ambient_factor_normalization"][
             "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
         ]["family"]
@@ -445,6 +457,80 @@ def test_plugins_compile_factor_is_unordered_membership_canonicalized() -> None:
 
     assert factors["VLLM_PLUGINS"] == ("alpha", "beta")
     assert equivalent_factors["VLLM_PLUGINS"] == ("alpha", "beta")
+    assert (
+        identity["combined_factor_digest"]
+        == equivalent_identity["combined_factor_digest"]
+    )
+
+
+def test_nic_selection_vars_compile_factor_is_canonicalized() -> None:
+    envs = _load_envs_module()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_NIC_SELECTION_VARS": " UCX_NET_DEVICES:1 , NCCL_IB_HCA:1 "},
+        clear=False,
+    ):
+        factors = envs.compile_factors()
+        identity = envs.compile_factor_identity_manifest()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_NIC_SELECTION_VARS": "UCX_NET_DEVICES:1,NCCL_IB_HCA:1"},
+        clear=False,
+    ):
+        equivalent_factors = envs.compile_factors()
+        equivalent_identity = envs.compile_factor_identity_manifest()
+
+    assert factors["VLLM_NIC_SELECTION_VARS"] == (
+        ("UCX_NET_DEVICES", ":1"),
+        ("NCCL_IB_HCA", ":1"),
+    )
+    assert equivalent_factors["VLLM_NIC_SELECTION_VARS"] == (
+        ("UCX_NET_DEVICES", ":1"),
+        ("NCCL_IB_HCA", ":1"),
+    )
+    assert (
+        identity["combined_factor_digest"]
+        == equivalent_identity["combined_factor_digest"]
+    )
+
+
+def test_gpu_nic_mapping_compile_factor_is_canonicalized() -> None:
+    envs = _load_envs_module()
+
+    with patch.dict(
+        os.environ,
+        {
+            "VLLM_GPU_NIC_PCIE_MAPPING": (
+                "01:00.0=0000:41:00.0, 0000:02:00.0 = 0000:42:00.0"
+            )
+        },
+        clear=False,
+    ):
+        factors = envs.compile_factors()
+        identity = envs.compile_factor_identity_manifest()
+
+    with patch.dict(
+        os.environ,
+        {
+            "VLLM_GPU_NIC_PCIE_MAPPING": (
+                "0000:02:00.0=0000:42:00.0,0000:01:00.0=41:00.0"
+            )
+        },
+        clear=False,
+    ):
+        equivalent_factors = envs.compile_factors()
+        equivalent_identity = envs.compile_factor_identity_manifest()
+
+    assert factors["VLLM_GPU_NIC_PCIE_MAPPING"] == (
+        ((0, 1, 0, 0), (0, 65, 0, 0)),
+        ((0, 2, 0, 0), (0, 66, 0, 0)),
+    )
+    assert equivalent_factors["VLLM_GPU_NIC_PCIE_MAPPING"] == (
+        ((0, 1, 0, 0), (0, 65, 0, 0)),
+        ((0, 2, 0, 0), (0, 66, 0, 0)),
+    )
     assert (
         identity["combined_factor_digest"]
         == equivalent_identity["combined_factor_digest"]

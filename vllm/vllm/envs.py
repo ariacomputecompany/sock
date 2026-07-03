@@ -2336,6 +2336,76 @@ def _normalize_ordered_int_csv_compile_factor(raw: object) -> object:
         return raw
 
 
+def _normalize_ordered_env_selection_compile_factor(raw: object) -> object:
+    if not isinstance(raw, str):
+        return raw
+
+    normalized_entries: list[tuple[str, str]] = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if ":" in entry:
+            var_name, suffix = entry.split(":", 1)
+            normalized_entries.append((var_name.strip(), ":" + suffix))
+        else:
+            normalized_entries.append((entry, ""))
+    return tuple(normalized_entries)
+
+
+def _normalize_pci_bdf(addr: str) -> tuple[int, int, int, int]:
+    normalized = addr.strip().lower().replace(" ", "")
+    if normalized.startswith("0x"):
+        normalized = normalized[2:]
+    if "." not in normalized:
+        raise ValueError(f"invalid PCI BDF (missing function suffix): {addr!r}")
+    body, fn_s = normalized.rsplit(".", 1)
+    if not fn_s or any(c not in "0123456789abcdef" for c in fn_s):
+        raise ValueError(f"invalid PCI function in BDF: {addr!r}")
+    fn = int(fn_s, 16)
+    if fn > 0xFF:
+        raise ValueError(f"PCI function out of range: {addr!r}")
+
+    parts = body.split(":")
+    if len(parts) == 2:
+        domain = 0
+        bus = int(parts[0], 16)
+        device = int(parts[1], 16)
+    elif len(parts) == 3:
+        domain = int(parts[0], 16)
+        bus = int(parts[1], 16)
+        device = int(parts[2], 16)
+    else:
+        raise ValueError(
+            f"invalid PCI BDF (want domain:bus:dev.fn or bus:dev.fn): {addr!r}"
+        )
+
+    if bus > 0xFF or device > 0x1F:
+        raise ValueError(f"PCI bus or device out of range: {addr!r}")
+    return (domain, bus, device, fn)
+
+
+def _normalize_gpu_nic_mapping_compile_factor(raw: object) -> object:
+    if not isinstance(raw, str):
+        return raw
+
+    normalized_pairs: dict[
+        tuple[int, int, int, int], tuple[int, int, int, int]
+    ] = {}
+    for segment in raw.split(","):
+        segment = segment.strip()
+        if not segment:
+            continue
+        if "=" not in segment:
+            return raw
+        gpu_s, nic_s = segment.split("=", 1)
+        try:
+            normalized_pairs[_normalize_pci_bdf(gpu_s)] = _normalize_pci_bdf(nic_s)
+        except ValueError:
+            return raw
+    return tuple(sorted(normalized_pairs.items()))
+
+
 def _normalize_boolean_toggle_compile_factor(raw: object) -> object:
     if not isinstance(raw, str):
         return raw
@@ -2358,6 +2428,12 @@ def _compile_factor_normalizer_functions() -> dict[str, Callable[[object], objec
         ),
         "_normalize_ordered_int_csv_compile_factor": (
             _normalize_ordered_int_csv_compile_factor
+        ),
+        "_normalize_ordered_env_selection_compile_factor": (
+            _normalize_ordered_env_selection_compile_factor
+        ),
+        "_normalize_gpu_nic_mapping_compile_factor": (
+            _normalize_gpu_nic_mapping_compile_factor
         ),
         "_normalize_boolean_toggle_compile_factor": (
             _normalize_boolean_toggle_compile_factor
@@ -2386,6 +2462,20 @@ def _compile_factor_normalization_families() -> dict[str, dict[str, str]]:
             "description": (
                 "Comma-separated integer sequences where ordering is semantic but "
                 "incidental whitespace and integer spelling must not fragment keys."
+            ),
+        },
+        "ordered_env_selection_list": {
+            "strategy": "custom",
+            "description": (
+                "Comma-separated environment selection entries where ordering is "
+                "preserved but incidental entry whitespace must not fragment keys."
+            ),
+        },
+        "pci_bdf_mapping": {
+            "strategy": "custom",
+            "description": (
+                "GPU/NIC topology mappings whose semantic identity is the normalized "
+                "PCI mapping graph rather than the raw textual spelling."
             ),
         },
         "boolean_toggle": {
@@ -2486,6 +2576,24 @@ def _compile_factor_normalization_policy(factor: str) -> dict[str, str]:
             "reason": (
                 "Explicit Ray bundle placements are parsed as ordered integers, so "
                 "whitespace and integer spelling must not fragment identity."
+            ),
+        },
+        "VLLM_NIC_SELECTION_VARS": {
+            "strategy": "custom",
+            "family": "ordered_env_selection_list",
+            "normalizer": "_normalize_ordered_env_selection_compile_factor",
+            "reason": (
+                "NIC selection entries are parsed as ordered env-var directives, so "
+                "incidental entry whitespace must not fragment identity."
+            ),
+        },
+        "VLLM_GPU_NIC_PCIE_MAPPING": {
+            "strategy": "custom",
+            "family": "pci_bdf_mapping",
+            "normalizer": "_normalize_gpu_nic_mapping_compile_factor",
+            "reason": (
+                "GPU/NIC topology mappings are parsed into normalized PCI tuples, so "
+                "textual formatting and pair ordering must not fragment identity."
             ),
         },
     }
