@@ -161,6 +161,10 @@ def test_compile_factor_manifest_lightweight() -> None:
         manifest["categories"]["VLLM_MULTI_STREAM_GEMM_TOKEN_THRESHOLD"]
         == "runtime_non_compile"
     )
+    assert manifest["categories"]["VLLM_CUDART_SO_PATH"] == "host_only"
+    assert manifest["categories"]["VLLM_NCCL_INCLUDE_PATH"] == "host_only"
+    assert manifest["categories"]["VLLM_DOCKER_BUILD_CONTEXT"] == "host_only"
+    assert manifest["categories"]["VLLM_SKIP_PRECOMPILED_VERSION_SUFFIX"] == "host_only"
     assert manifest["categories"]["VLLM_CPU_OMP_THREADS_BIND"] == "host_only"
     assert manifest["categories"]["VLLM_PROCESS_NAME_PREFIX"] == "host_only"
     assert (
@@ -232,6 +236,10 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_DISABLE_SHARED_EXPERTS_STREAM" in manifest["ignored_keys"]
     assert "VLLM_SHARED_EXPERTS_STREAM_TOKEN_THRESHOLD" in manifest["ignored_keys"]
     assert "VLLM_MULTI_STREAM_GEMM_TOKEN_THRESHOLD" in manifest["ignored_keys"]
+    assert "VLLM_CUDART_SO_PATH" in manifest["ignored_keys"]
+    assert "VLLM_NCCL_INCLUDE_PATH" in manifest["ignored_keys"]
+    assert "VLLM_DOCKER_BUILD_CONTEXT" in manifest["ignored_keys"]
+    assert "VLLM_SKIP_PRECOMPILED_VERSION_SUFFIX" in manifest["ignored_keys"]
     assert "VLLM_CPU_OMP_THREADS_BIND" in manifest["ignored_keys"]
     assert "VLLM_PROCESS_NAME_PREFIX" in manifest["ignored_keys"]
     assert (
@@ -473,6 +481,13 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert (
         "VLLM_DISABLE_SHARED_EXPERTS_STREAM"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert "VLLM_CUDART_SO_PATH" in manifest["audit"]["category_keys"]["host_only"]
+    assert "VLLM_NCCL_INCLUDE_PATH" in manifest["audit"]["category_keys"]["host_only"]
+    assert "VLLM_DOCKER_BUILD_CONTEXT" in manifest["audit"]["category_keys"]["host_only"]
+    assert (
+        "VLLM_SKIP_PRECOMPILED_VERSION_SUFFIX"
+        in manifest["audit"]["category_keys"]["host_only"]
     )
     assert "VLLM_CPU_OMP_THREADS_BIND" in manifest["audit"]["category_keys"]["host_only"]
     assert "VLLM_LOG_MODEL_INSPECTION" in manifest["audit"]["category_keys"]["debug_only"]
