@@ -38,7 +38,7 @@ pub use model::*;
 pub use operator::{
     render_backend_decision, render_diagnostics, render_explain, render_optimization_explain,
     render_plan_summary, render_replay_bundle_explain, render_soc_explain,
-    render_verification_report,
+    render_structural_identity, render_verification_report,
 };
 pub use optimization::*;
 pub use replay::*;

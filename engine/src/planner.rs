@@ -2334,6 +2334,33 @@ mod tests {
     }
 
     #[test]
+    fn identical_requests_share_structural_identity_and_artifact_storage_keys() {
+        let planner = Planner::new(host());
+        let first = planner.resolve(request()).expect("first plan");
+        let second = planner.resolve(request()).expect("second plan");
+
+        assert_eq!(
+            first.plan.structural_identity,
+            second.plan.structural_identity
+        );
+
+        let first_storage_keys = first
+            .plan
+            .artifact_requirements
+            .iter()
+            .map(|requirement| canonical_hash(requirement).expect("storage key"))
+            .collect::<Vec<_>>();
+        let second_storage_keys = second
+            .plan
+            .artifact_requirements
+            .iter()
+            .map(|requirement| canonical_hash(requirement).expect("storage key"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(first_storage_keys, second_storage_keys);
+    }
+
+    #[test]
     fn rewrite_trace_contracts_validate() {
         let planner = Planner::new(host());
         let outcome = planner.resolve(request()).expect("plan");

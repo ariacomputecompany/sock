@@ -235,6 +235,7 @@ fn build_verify_and_replay_bundle_round_trip() {
     );
     let explain_text =
         std::fs::read_to_string(dir.path().join("explain.txt")).expect("read explain text");
+    assert!(explain_text.contains("identity lattice:"));
     assert!(explain_text.contains("replay proof:"));
     assert!(explain_text.contains("realization_mode="));
     assert!(explain_text.contains("backend decision:"));
@@ -280,6 +281,7 @@ fn build_verify_and_replay_bundle_round_trip() {
         .assert()
         .success()
         .stdout(predicate::str::contains("plan "))
+        .stdout(predicate::str::contains("identity lattice:"))
         .stdout(predicate::str::contains("replay proof:"))
         .stdout(predicate::str::contains("backend decision:"))
         .stdout(predicate::str::contains("realization_mode="))

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "canonical-identity",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nfirst_explain=$(mktemp)\nsecond_explain=$(mktemp)\nfirst_bundle=$(mktemp -d)\nsecond_bundle=$(mktemp -d)\ncargo run --quiet --bin sock -- explain --format json > \"$first_explain\"\ncargo run --quiet --bin sock -- explain --format json > \"$second_explain\"\ncargo run --quiet --bin sock -- build --out \"$first_bundle\" >/dev/null\ncargo run --quiet --bin sock -- build --out \"$second_bundle\" >/dev/null\npython3 - \"$first_explain\" \"$second_explain\" \"$first_bundle/buildplan.json\" \"$second_bundle/buildplan.json\" \"$first_bundle/replay_proof.json\" \"$second_bundle/replay_proof.json\" <<'PY'\nimport json, sys\nfirst_explain = json.load(open(sys.argv[1]))\nsecond_explain = json.load(open(sys.argv[2]))\nfirst_build = json.load(open(sys.argv[3]))\nsecond_build = json.load(open(sys.argv[4]))\nfirst_replay = json.load(open(sys.argv[5]))\nsecond_replay = json.load(open(sys.argv[6]))\nfirst_identity = first_explain['plan']['structural_identity']\nsecond_identity = second_explain['plan']['structural_identity']\nassert first_identity == second_identity\nassert first_identity == first_build['structural_identity']\nassert first_identity == second_build['structural_identity']\nassert first_replay['result_artifact_identity'] == second_replay['result_artifact_identity']\nassert first_replay['request_identity'] == second_replay['request_identity'] == first_identity['request_identity']\nPY\nprintf 'canonical-identity\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "canonical-identity\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

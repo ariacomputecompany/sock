@@ -1,7 +1,7 @@
 use crate::{
     BackendDecisionDocument, DiagnosticsDocument, HazardClass, MaterializationExecutionReport,
     OptimizationExplainDocument, ReplayProofDocument, ResolvedBuildPlan, RewriteTraceDocument,
-    SocPlanDocument, VerificationReport,
+    SocPlanDocument, StructuralIdentity, VerificationReport,
 };
 
 #[must_use]
@@ -25,6 +25,7 @@ pub fn render_explain(
 ) -> String {
     let mut out = String::new();
     out.push_str(&render_plan_summary(plan));
+    out.push_str(&render_structural_identity(&plan.structural_identity));
     out.push_str(&format!(
         "guarantee correctness {:?} performance {:?}\n",
         plan.guarantee_envelope.achieved_correctness, plan.guarantee_envelope.achieved_performance
@@ -93,6 +94,7 @@ pub fn render_replay_bundle_explain(
 ) -> String {
     let mut out = String::new();
     out.push_str(&render_plan_summary(plan));
+    out.push_str(&render_structural_identity(&plan.structural_identity));
     out.push_str(&render_optimization_explain(optimization_explain));
     out.push_str("replay proof:\n");
     out.push_str(&format!(
@@ -132,6 +134,34 @@ pub fn render_replay_bundle_explain(
     out.push_str(&render_verification_report(verification_report));
     out.push_str("diagnostics:\n");
     out.push_str(&render_diagnostics(diagnostics));
+    out
+}
+
+#[must_use]
+pub fn render_structural_identity(identity: &StructuralIdentity) -> String {
+    let mut out = String::new();
+    out.push_str("identity lattice:\n");
+    out.push_str(&format!("  - request={}\n", identity.request_identity));
+    out.push_str(&format!(
+        "  - optimization={} backend_decision={} backend_registry={}\n",
+        identity.optimization_identity,
+        identity.backend_decision_identity,
+        identity.backend_registry_identity
+    ));
+    out.push_str(&format!(
+        "  - shape_envelope={} compile_regions={} capability={}\n",
+        identity.shape_envelope_identity,
+        identity.compile_region_identity,
+        identity.capability_identity
+    ));
+    out.push_str(&format!(
+        "  - abi={} backend_extension={} portability={}\n",
+        identity.abi_identity, identity.backend_extension_identity, identity.portability_identity
+    ));
+    out.push_str(&format!(
+        "  - artifacts={} evidence={} plan={}\n",
+        identity.artifact_identity, identity.evidence_identity, identity.plan_identity
+    ));
     out
 }
 

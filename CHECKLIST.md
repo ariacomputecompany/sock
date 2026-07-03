@@ -17,10 +17,6 @@ Working rule:
 - remove completed items instead of annotating them
 - treat any runtime-adjacent drift as an escalation out of Lane A
 
-## 1. Canonical Compile Identity
-
-- [ ] Align this work with the tinygrad-inspired structural interning guidance in `/Users/deepsaint/Desktop/sock/TINYGRADREF.md`.
-
 ## 3. Compilation Policy Simplification
 
 - [ ] Reduce policy spread across `vllm/vllm/config/compilation.py`, `vllm/vllm/config/kernel.py`, `vllm/vllm/envs.py`, and `vllm/vllm/env_override.py`.
