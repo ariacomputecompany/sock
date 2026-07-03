@@ -1,10 +1,11 @@
 use sock_core::{
     AcceleratorVendor, BackendFamily, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer,
-    CoveragePlane, EngineSource, ExecutionTopology, FailureMode, GuaranteeLevel, GuaranteeTarget,
-    ModelRef, OperatingSystem, RawRequest, RequestedEnvironment, ShapePoint, ShapePolicy,
-    ShapeRange, TargetEngine, WarmupPolicy,
+    CoveragePlane, DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode,
+    GuaranteeLevel, GuaranteeTarget, ModelRef, OperatingSystem, RawRequest, ReplayBundle,
+    RequestedEnvironment, RewriteTraceDocument, ShapePoint, ShapePolicy, ShapeRange, TargetEngine,
+    WarmupPolicy,
 };
-use sock_engine::{PlannerHostSnapshot, vllm};
+use sock_engine::{PlanError, Planner, PlannerHostSnapshot, PlanningOutcome, vllm};
 
 #[must_use]
 pub fn default_host_snapshot() -> PlannerHostSnapshot {
@@ -123,5 +124,34 @@ pub fn default_request() -> RawRequest {
                 }],
             },
         ],
+    }
+}
+
+pub fn plan_outcome() -> Result<PlanningOutcome, PlanError> {
+    Planner::new(default_host_snapshot()).resolve(default_request())
+}
+
+#[must_use]
+pub fn diagnostics_for(outcome: &PlanningOutcome) -> DiagnosticsDocument {
+    DiagnosticsDocument::from_outcome(
+        &outcome.plan,
+        &outcome.verification,
+        &outcome.plan.rewrite_trace,
+    )
+}
+
+#[must_use]
+pub fn rewrite_trace_for(outcome: &PlanningOutcome) -> RewriteTraceDocument {
+    RewriteTraceDocument::new(&outcome.plan, outcome.plan.rewrite_trace.clone())
+}
+
+#[must_use]
+pub fn replay_bundle(outcome: &PlanningOutcome) -> ReplayBundle {
+    ReplayBundle {
+        build_plan: outcome.plan.clone(),
+        artifact_closure: outcome.closure.clone(),
+        verification_report: outcome.verification.clone(),
+        diagnostics: diagnostics_for(outcome),
+        rewrite_trace: rewrite_trace_for(outcome),
     }
 }

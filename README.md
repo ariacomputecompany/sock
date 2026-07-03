@@ -55,10 +55,12 @@ The Rust workspace is organized as:
 This project is early, but it already has:
 
 - a compiling Rust workspace
-- a canonical plan/closure/verification scaffold
-- a deterministic `vLLM` planning path for NVIDIA/Linux
+- a canonical `RawRequest -> NormalizedRequest -> ResolvedBuildPlan -> ArtifactClosure -> VerificationReport` contract
+- a deterministic `vLLM` planning path for NVIDIA/Linux with source-anchored compile regions
+- `vLLM` adapter truth for canonical region identity, cache ownership, topology-sensitive warmup surfaces, and machine-checkable residual JIT triggers
 - replay bundle emission and fail-closed bundle validation
 - CLI-visible explain, verify, replay, and doctor surfaces
+- compile-free `verify` and `replay` operator gates rendered in the verification surface
 - vendored `vLLM` source for source-aligned adapter work
 
 ## Operator workflow
@@ -77,7 +79,15 @@ Replay bundles are intentionally strict:
 - all emitted contract files are content-digested
 - plan identity must agree across the bundle
 - verification reports must exactly match the loaded build plan
+- invalid artifact reuse inside an otherwise well-formed bundle is rejected during verification
 - mismatches fail closed instead of being repaired implicitly
+
+`sock verify` and `sock replay` are currently contract-validation paths, not materialization paths:
+
+- they load an emitted bundle
+- they prove structural identity and verification consistency
+- they render bounded runtime-JIT evidence and compile-free operator gates
+- they do not perform new compile, warmup, or artifact materialization work
 
 ## Verification
 
@@ -86,6 +96,16 @@ Engineer-facing regression coverage lives in:
 - Rust unit and integration tests under the workspace crates
 - Fozzy scenarios under `tests/*.fozzy.json`
 - replay artifacts emitted by `sock build`, which are then verified and replayed without silent recompilation
+- host-backed Fozzy trace verify/replay/ci passes recorded from the real CLI workflow
+
+## Integration shape
+
+The binary and library defaults now share one path:
+
+- `app/src/lib.rs` owns the default production host snapshot, request, planning entrypoint, diagnostics, and replay-bundle construction
+- `app/src/main.rs` is only the CLI shell over that shared contract
+- `engine/` owns planner and `vLLM` integration
+- `core/` owns the canonical schemas, validation, bundle strictness, rendering, and identity logic
 
 ## Repository map
 
