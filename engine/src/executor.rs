@@ -11,7 +11,8 @@ use sock_core::{
     MaterializationNodeRecord, MaterializationSchedulingMode, MaterializationWave,
     MaterializationWaveRecord, MaterializedArtifactRecord, ObservedReadinessLevel, QueueDiscipline,
     RankDisposition, ReadinessObservation, RuntimeJitObservation, RuntimeJitObservationStatus,
-    SchemaVersion, SourceAnchor, WarmupObligation, canonical_hash, canonical_json,
+    SchemaVersion, SourceAnchor, StartupClosureOutcome, WarmupObligation, canonical_hash,
+    canonical_json,
 };
 use thiserror::Error;
 
@@ -33,6 +34,12 @@ pub enum MaterializationError {
 
 #[derive(Debug, Default)]
 pub struct MaterializationExecutor;
+
+#[derive(Debug, Clone)]
+struct ArtifactDeserialization {
+    document: MaterializedArtifactDocument,
+    duration_ms: u64,
+}
 
 #[derive(Debug, Clone)]
 pub struct StorageRoots {
@@ -145,6 +152,7 @@ impl MaterializationExecutor {
         let mut total_compile_ms = 0_u64;
         let mut total_transfer_ms = 0_u64;
         let mut total_rebuild_ms = 0_u64;
+        let mut artifact_deserialization_ms = 0_u64;
 
         for wave in &outcome.plan.materialization_graph.waves {
             let wave_started = Instant::now();
@@ -170,6 +178,8 @@ impl MaterializationExecutor {
                 total_transfer_ms = total_transfer_ms.saturating_add(result.transfer_ms);
                 if let Some(artifact) = result.artifact {
                     total_rebuild_ms = total_rebuild_ms.saturating_add(artifact.rebuild_ms);
+                    artifact_deserialization_ms = artifact_deserialization_ms
+                        .saturating_add(artifact_deserialization_ms_for(&artifact));
                     artifacts.insert(artifact.storage_key.clone(), artifact);
                 }
                 completed_nodes.insert(result.record.node_name.clone());
@@ -211,6 +221,26 @@ impl MaterializationExecutor {
         let readiness = observed_readiness(scope, outcome, &completed_nodes);
         let runtime_jit_observations =
             observed_runtime_jit(outcome, &artifact_records, &completed_nodes, &warmup_index);
+        let unique_artifact_count = artifact_records.len() as u32;
+        let duplicate_artifact_count = artifact_records
+            .iter()
+            .map(duplicate_instances_for_artifact)
+            .sum::<u32>();
+        let duplicate_artifact_bytes = artifact_records
+            .iter()
+            .map(duplicate_bytes_for_artifact)
+            .sum::<u64>();
+        let unique_artifact_bytes = artifact_records
+            .iter()
+            .map(|artifact| artifact.bytes_written)
+            .sum::<u64>();
+        let closure_expansion = closure_expansion(scope, outcome);
+        let verify_replay_compile_free = verify_replay_compile_free(outcome);
+        let closure_outcome = closure_outcome(
+            &closure_expansion,
+            &runtime_jit_observations,
+            verify_replay_compile_free,
+        );
 
         let report = MaterializationExecutionReport {
             schema_version: SchemaVersion::current(),
@@ -233,10 +263,25 @@ impl MaterializationExecutor {
             total_compile_ms,
             total_transfer_ms,
             total_rebuild_ms,
-            closure_expansion: closure_expansion(scope, outcome),
+            unique_artifact_count,
+            duplicate_artifact_count,
+            unique_artifact_bytes,
+            duplicate_artifact_bytes,
+            artifact_deserialization_ms,
+            duplicate_rank_local_compile_count: artifact_records
+                .iter()
+                .map(duplicate_instances_for_artifact)
+                .sum(),
+            duplicate_rank_local_load_count: artifact_records
+                .iter()
+                .filter(|artifact| artifact.disposition == MaterializationDisposition::Reused)
+                .map(duplicate_instances_for_artifact)
+                .sum(),
+            closure_expansion,
+            closure_outcome,
             readiness,
             runtime_jit_observations,
-            verify_replay_compile_free: verify_replay_compile_free(outcome),
+            verify_replay_compile_free,
             verify_replay_status: outcome.verification.status.clone(),
             artifacts: artifact_records,
             nodes: node_records,
@@ -305,19 +350,77 @@ impl MaterializationExecutor {
         let observed_compile_ms = if is_transfer { 0 } else { elapsed_ms_now };
         let observed_transfer_ms = if is_transfer { elapsed_ms_now } else { 0 };
         let observed_rebuild_ms = observed_compile_ms.saturating_add(observed_transfer_ms);
-        let (disposition, cache_bytes_written, rebuild_ms) = if cache_path.exists() {
-            let existing: MaterializedArtifactDocument =
-                serde_json::from_str(&fs::read_to_string(&cache_path)?)?;
-            if same_artifact_document_identity(&existing, &document) {
-                (
-                    MaterializationDisposition::Reused,
-                    0,
-                    existing.observed_rebuild_ms.max(
-                        existing
-                            .observed_compile_ms
-                            .saturating_add(existing.observed_transfer_ms),
-                    ),
-                )
+        let (disposition, cache_bytes_written, rebuild_ms, deserialization_ms) =
+            if cache_path.exists() {
+                let existing = load_existing_document(&cache_path)?;
+                if same_artifact_document_identity(&existing.document, &document) {
+                    (
+                        MaterializationDisposition::Reused,
+                        0,
+                        existing.document.observed_rebuild_ms.max(
+                            existing
+                                .document
+                                .observed_compile_ms
+                                .saturating_add(existing.document.observed_transfer_ms),
+                        ),
+                        existing.duration_ms,
+                    )
+                } else {
+                    evict_invalidated_siblings(
+                        cache_root,
+                        &cache_namespace,
+                        &invalidation_domain,
+                        requirement.class,
+                        &storage_key,
+                    )?;
+                    let mut document = document.clone();
+                    document.observed_compile_ms = observed_compile_ms;
+                    document.observed_transfer_ms = observed_transfer_ms;
+                    document.observed_rebuild_ms = observed_rebuild_ms;
+                    let content = canonical_json(&document)?;
+                    fs::write(&cache_path, content.as_bytes())?;
+                    (
+                        MaterializationDisposition::Executed,
+                        content.len() as u64,
+                        observed_rebuild_ms,
+                        0,
+                    )
+                }
+            } else if absolute_path.exists() {
+                let existing = load_existing_document(&absolute_path)?;
+                if same_artifact_document_identity(&existing.document, &document) {
+                    (
+                        MaterializationDisposition::Reused,
+                        0,
+                        existing.document.observed_rebuild_ms.max(
+                            existing
+                                .document
+                                .observed_compile_ms
+                                .saturating_add(existing.document.observed_transfer_ms),
+                        ),
+                        existing.duration_ms,
+                    )
+                } else {
+                    evict_invalidated_siblings(
+                        cache_root,
+                        &cache_namespace,
+                        &invalidation_domain,
+                        requirement.class,
+                        &storage_key,
+                    )?;
+                    let mut document = document.clone();
+                    document.observed_compile_ms = observed_compile_ms;
+                    document.observed_transfer_ms = observed_transfer_ms;
+                    document.observed_rebuild_ms = observed_rebuild_ms;
+                    let content = canonical_json(&document)?;
+                    fs::write(&cache_path, content.as_bytes())?;
+                    (
+                        MaterializationDisposition::Executed,
+                        content.len() as u64,
+                        observed_rebuild_ms,
+                        0,
+                    )
+                }
             } else {
                 evict_invalidated_siblings(
                     cache_root,
@@ -336,61 +439,9 @@ impl MaterializationExecutor {
                     MaterializationDisposition::Executed,
                     content.len() as u64,
                     observed_rebuild_ms,
-                )
-            }
-        } else if absolute_path.exists() {
-            let existing: MaterializedArtifactDocument =
-                serde_json::from_str(&fs::read_to_string(&absolute_path)?)?;
-            if same_artifact_document_identity(&existing, &document) {
-                (
-                    MaterializationDisposition::Reused,
                     0,
-                    existing.observed_rebuild_ms.max(
-                        existing
-                            .observed_compile_ms
-                            .saturating_add(existing.observed_transfer_ms),
-                    ),
                 )
-            } else {
-                evict_invalidated_siblings(
-                    cache_root,
-                    &cache_namespace,
-                    &invalidation_domain,
-                    requirement.class,
-                    &storage_key,
-                )?;
-                let mut document = document.clone();
-                document.observed_compile_ms = observed_compile_ms;
-                document.observed_transfer_ms = observed_transfer_ms;
-                document.observed_rebuild_ms = observed_rebuild_ms;
-                let content = canonical_json(&document)?;
-                fs::write(&cache_path, content.as_bytes())?;
-                (
-                    MaterializationDisposition::Executed,
-                    content.len() as u64,
-                    observed_rebuild_ms,
-                )
-            }
-        } else {
-            evict_invalidated_siblings(
-                cache_root,
-                &cache_namespace,
-                &invalidation_domain,
-                requirement.class,
-                &storage_key,
-            )?;
-            let mut document = document.clone();
-            document.observed_compile_ms = observed_compile_ms;
-            document.observed_transfer_ms = observed_transfer_ms;
-            document.observed_rebuild_ms = observed_rebuild_ms;
-            let content = canonical_json(&document)?;
-            fs::write(&cache_path, content.as_bytes())?;
-            (
-                MaterializationDisposition::Executed,
-                content.len() as u64,
-                observed_rebuild_ms,
-            )
-        };
+            };
         fs::copy(&cache_path, &absolute_path)?;
         let bundle_bytes_written = if disposition == MaterializationDisposition::Reused {
             file_size(&absolute_path)?
@@ -412,6 +463,8 @@ impl MaterializationExecutor {
             relative_path,
             cache_relative_path,
             bytes_written: bundle_bytes_written,
+            deserialization_ms,
+            rank_count: 1,
             compile_ms: if disposition == MaterializationDisposition::Executed {
                 observed_compile_ms
             } else {
@@ -551,8 +604,9 @@ impl MaterializationExecutor {
                         node: node.name.clone(),
                     }
                 })?;
-                let artifact =
+                let mut artifact =
                     self.materialize_artifact(outcome, requirement, artifact_root, cache_root)?;
+                artifact.rank_count = node.rank_scope.len() as u16;
                 let outputs = vec![artifact.relative_path.clone()];
                 let record = self.write_node_record(
                     node_root,
@@ -636,12 +690,13 @@ impl MaterializationExecutor {
                 })
             }
             MaterializationNodeKind::Assemble | MaterializationNodeKind::Verify => {
+                let started = Instant::now();
                 let record = self.write_node_record(
                     node_root,
                     node,
                     MaterializationDisposition::Executed,
                     Vec::new(),
-                    0,
+                    elapsed_ms(started.elapsed()),
                     0,
                 )?;
                 Ok(NodeExecutionResult {
@@ -923,6 +978,49 @@ fn verify_replay_compile_free(outcome: &PlanningOutcome) -> bool {
         .map(|gate| gate.compile_free)
         .unwrap_or(false);
     verify_gate && replay_gate
+}
+
+fn load_existing_document(path: &Path) -> Result<ArtifactDeserialization, MaterializationError> {
+    let started = Instant::now();
+    let document = serde_json::from_str(&fs::read_to_string(path)?)?;
+    Ok(ArtifactDeserialization {
+        document,
+        duration_ms: elapsed_ms(started.elapsed()),
+    })
+}
+
+fn duplicate_instances_for_artifact(artifact: &MaterializedArtifactRecord) -> u32 {
+    u32::from(artifact.rank_count.saturating_sub(1))
+}
+
+fn duplicate_bytes_for_artifact(artifact: &MaterializedArtifactRecord) -> u64 {
+    artifact
+        .bytes_written
+        .saturating_mul(u64::from(artifact.rank_count.saturating_sub(1)))
+}
+
+fn artifact_deserialization_ms_for(artifact: &MaterializedArtifactRecord) -> u64 {
+    artifact.deserialization_ms
+}
+
+fn closure_outcome(
+    closure_expansion: &ClosureExpansionRecord,
+    runtime_jit_observations: &[RuntimeJitObservation],
+    verify_replay_compile_free: bool,
+) -> StartupClosureOutcome {
+    let contradiction_count = runtime_jit_observations
+        .iter()
+        .filter(|observation| observation.status == RuntimeJitObservationStatus::Contradicted)
+        .count();
+    if contradiction_count > 0 {
+        StartupClosureOutcome::PartialCompileClosure
+    } else if closure_expansion.deterministically_closed && verify_replay_compile_free {
+        StartupClosureOutcome::FullCompileClosure
+    } else if closure_expansion.deterministically_closed {
+        StartupClosureOutcome::PartialCompileClosure
+    } else {
+        StartupClosureOutcome::ClosureByAssumption
+    }
 }
 
 fn artifact_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {

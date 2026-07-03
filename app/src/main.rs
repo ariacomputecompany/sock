@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -9,9 +10,9 @@ use sock_app::{
 };
 use sock_core::{
     BackendFamily, BuildMeasurementReport, DiagnosticsDocument, MaterializationExecutionReport,
-    MeasurementCaseReport, MeasurementComparisonReport, ReplayBundle, ReplayBundleMetadata,
-    ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json, render_diagnostics,
-    render_explain, render_plan_summary, render_verification_report,
+    MeasurementCaseReport, MeasurementComparisonReport, MeasurementPhaseTimings, ReplayBundle,
+    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
+    render_diagnostics, render_explain, render_plan_summary, render_verification_report,
 };
 use sock_engine::{
     BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, PlannerHostSnapshot,
@@ -442,20 +443,55 @@ fn emit_measure(intent: PrepareIntentArg, out: &Path, format: OutputMode) -> Res
     let report = BuildMeasurementReport {
         schema_version: SchemaVersion::current(),
         intent: intent_label(intent).to_owned(),
-        broad_cold: measurement_case("broad_cold", &broad_scope, &broad.materialization),
-        scoped_cold: measurement_case("scoped_cold", &scoped_scope, &scoped_cold.materialization),
-        scoped_warm: measurement_case("scoped_warm", &scoped_scope, &scoped_warm.materialization),
+        broad_cold: measurement_case(
+            "broad_cold",
+            &broad_scope,
+            &broad.materialization,
+            &broad.phase_timings,
+        ),
+        scoped_cold: measurement_case(
+            "scoped_cold",
+            &scoped_scope,
+            &scoped_cold.materialization,
+            &scoped_cold.phase_timings,
+        ),
+        scoped_warm: measurement_case(
+            "scoped_warm",
+            &scoped_scope,
+            &scoped_warm.materialization,
+            &scoped_warm.phase_timings,
+        ),
         scoped_vs_broad: MeasurementComparisonReport::between(
             "broad_cold",
-            &measurement_case("broad_cold", &broad_scope, &broad.materialization),
+            &measurement_case(
+                "broad_cold",
+                &broad_scope,
+                &broad.materialization,
+                &broad.phase_timings,
+            ),
             "scoped_cold",
-            &measurement_case("scoped_cold", &scoped_scope, &scoped_cold.materialization),
+            &measurement_case(
+                "scoped_cold",
+                &scoped_scope,
+                &scoped_cold.materialization,
+                &scoped_cold.phase_timings,
+            ),
         ),
         warm_vs_cold: MeasurementComparisonReport::between(
             "scoped_cold",
-            &measurement_case("scoped_cold", &scoped_scope, &scoped_cold.materialization),
+            &measurement_case(
+                "scoped_cold",
+                &scoped_scope,
+                &scoped_cold.materialization,
+                &scoped_cold.phase_timings,
+            ),
             "scoped_warm",
-            &measurement_case("scoped_warm", &scoped_scope, &scoped_warm.materialization),
+            &measurement_case(
+                "scoped_warm",
+                &scoped_scope,
+                &scoped_warm.materialization,
+                &scoped_warm.phase_timings,
+            ),
         ),
     };
     std::fs::write(
@@ -741,18 +777,24 @@ struct BundleBuild {
     bundle: ReplayBundle,
     metadata: ReplayBundleMetadata,
     materialization: MaterializationExecutionReport,
+    phase_timings: MeasurementPhaseTimings,
 }
 
 fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Result<BundleBuild> {
+    let configure_started = Instant::now();
     let outcome = plan_with_scope(scope)?;
     let bundle = replay_bundle(&outcome);
     let vllm_integration = build_vllm_integration_document(&outcome)?;
     validate_scoped_vllm_subset(scope, &vllm_integration)?;
+    let configure_ms = elapsed_ms(configure_started.elapsed());
+
     let storage = StorageRoots {
         bundle_root: out.to_path_buf(),
         cache_root: cache_root.to_path_buf(),
     };
     let materialization = MaterializationExecutor::new().execute(&outcome, scope, &storage)?;
+
+    let packaging_started = Instant::now();
     std::fs::write(
         out.join("vllm_integration.json"),
         canonical_json(&vllm_integration)?.as_bytes(),
@@ -760,11 +802,25 @@ fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Resu
     let vllm_entrypoints = build_vllm_entrypoint_document(&outcome, &vllm_integration)?;
     emit_vllm_entrypoints(out, &vllm_entrypoints)?;
     let metadata = bundle.write_to(out)?;
+    let packaging_ms = elapsed_ms(packaging_started.elapsed());
+
+    let verification_started = Instant::now();
+    let _verified_bundle = ReplayBundle::load_from(out)?;
+    let verification_ms = elapsed_ms(verification_started.elapsed());
+    let phase_timings = MeasurementPhaseTimings {
+        configure_ms,
+        compile_ms: materialization.total_compile_ms,
+        link_assemble_ms: link_assemble_ms(&materialization),
+        packaging_ms,
+        warmup_materialization_ms: warmup_materialization_ms(&materialization),
+        verification_ms: verification_ms.saturating_add(verification_phase_ms(&materialization)),
+    };
 
     Ok(BundleBuild {
         bundle,
         metadata,
         materialization,
+        phase_timings,
     })
 }
 
@@ -772,6 +828,7 @@ fn measurement_case(
     label: &str,
     scope: &BuildScope,
     report: &MaterializationExecutionReport,
+    phase_timings: &MeasurementPhaseTimings,
 ) -> MeasurementCaseReport {
     let mut requested_backend_families = scope
         .backend_families
@@ -813,16 +870,79 @@ fn measurement_case(
             None => "default".to_owned(),
         },
         plan_identity: report.plan_identity.to_string(),
+        replay_plan_identity: report.plan_identity.to_string(),
         artifact_count: report.artifact_count,
         executed_artifact_count: report.executed_artifact_count,
         reused_artifact_count: report.reused_artifact_count,
+        unique_artifact_count: report.unique_artifact_count,
+        duplicate_artifact_count: report.duplicate_artifact_count,
         wall_clock_ms: report.wall_clock_ms,
         total_compile_ms: report.total_compile_ms,
         total_transfer_ms: report.total_transfer_ms,
         total_rebuild_ms: report.total_rebuild_ms,
         total_bytes_written: report.total_bytes_written,
+        unique_artifact_bytes: report.unique_artifact_bytes,
+        duplicate_artifact_bytes: report.duplicate_artifact_bytes,
+        artifact_deserialization_ms: report.artifact_deserialization_ms,
+        duplicate_rank_local_compile_count: report.duplicate_rank_local_compile_count,
+        duplicate_rank_local_load_count: report.duplicate_rank_local_load_count,
         runtime_jit_contradiction_count,
+        closure_outcome: match report.closure_outcome {
+            sock_core::StartupClosureOutcome::FullCompileClosure => {
+                "full_compile_closure".to_owned()
+            }
+            sock_core::StartupClosureOutcome::PartialCompileClosure => {
+                "partial_compile_closure".to_owned()
+            }
+            sock_core::StartupClosureOutcome::ClosureByAssumption => {
+                "closure_by_assumption".to_owned()
+            }
+        },
+        phase_timings: phase_timings.clone(),
     }
+}
+
+fn elapsed_ms(duration: std::time::Duration) -> u64 {
+    duration.as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+fn link_assemble_ms(report: &MaterializationExecutionReport) -> u64 {
+    report
+        .nodes
+        .iter()
+        .filter(|node| {
+            matches!(
+                node.kind,
+                sock_core::MaterializationNodeKind::Transfer
+                    | sock_core::MaterializationNodeKind::Assemble
+            )
+        })
+        .map(|node| node.duration_ms)
+        .sum()
+}
+
+fn warmup_materialization_ms(report: &MaterializationExecutionReport) -> u64 {
+    report
+        .nodes
+        .iter()
+        .filter(|node| {
+            matches!(
+                node.kind,
+                sock_core::MaterializationNodeKind::Materialize
+                    | sock_core::MaterializationNodeKind::Warmup
+            )
+        })
+        .map(|node| node.duration_ms)
+        .sum()
+}
+
+fn verification_phase_ms(report: &MaterializationExecutionReport) -> u64 {
+    report
+        .nodes
+        .iter()
+        .filter(|node| node.kind == sock_core::MaterializationNodeKind::Verify)
+        .map(|node| node.duration_ms)
+        .sum()
 }
 
 fn list_or_all<'a>(items: impl IntoIterator<Item = &'a str>) -> String {

@@ -417,7 +417,12 @@ impl ResolvedBuildPlan {
     pub fn validate(&self) -> VerificationReport {
         let mut issues = Vec::new();
         let selected_backend_families = std::iter::once(self.selected_backends.primary.family)
-            .chain(self.selected_backends.secondary.iter().map(|candidate| candidate.family))
+            .chain(
+                self.selected_backends
+                    .secondary
+                    .iter()
+                    .map(|candidate| candidate.family),
+            )
             .collect::<BTreeSet<_>>();
         let expected_artifact_manifest = self
             .artifact_requirements

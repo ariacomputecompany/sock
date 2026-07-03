@@ -29,6 +29,8 @@ pub struct MaterializedArtifactRecord {
     pub relative_path: String,
     pub cache_relative_path: String,
     pub bytes_written: u64,
+    pub deserialization_ms: u64,
+    pub rank_count: u16,
     pub compile_ms: u64,
     pub transfer_ms: u64,
     pub rebuild_ms: u64,
@@ -106,6 +108,14 @@ pub enum RuntimeJitObservationStatus {
     Contradicted,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupClosureOutcome {
+    FullCompileClosure,
+    PartialCompileClosure,
+    ClosureByAssumption,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeJitObservation {
     pub surface_name: String,
@@ -131,7 +141,15 @@ pub struct MaterializationExecutionReport {
     pub total_compile_ms: u64,
     pub total_transfer_ms: u64,
     pub total_rebuild_ms: u64,
+    pub unique_artifact_count: u32,
+    pub duplicate_artifact_count: u32,
+    pub unique_artifact_bytes: u64,
+    pub duplicate_artifact_bytes: u64,
+    pub artifact_deserialization_ms: u64,
+    pub duplicate_rank_local_compile_count: u32,
+    pub duplicate_rank_local_load_count: u32,
     pub closure_expansion: ClosureExpansionRecord,
+    pub closure_outcome: StartupClosureOutcome,
     pub readiness: ReadinessObservation,
     pub runtime_jit_observations: Vec<RuntimeJitObservation>,
     pub verify_replay_compile_free: bool,

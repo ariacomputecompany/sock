@@ -82,6 +82,13 @@ impl Planner {
                 "scoped build request resolved to an empty compile-region closure".to_owned(),
             ));
         }
+        let selected_backends = self.expand_selected_backends(
+            &normalized,
+            &capability_witnesses,
+            &backend_registry,
+            selected_backends,
+            &compile_regions,
+        )?;
         let shape_envelope = scoped_shape_envelope(
             self.shape_envelope(&normalized, &selected_backends),
             &compile_regions,
@@ -435,6 +442,62 @@ impl Planner {
             .collect::<Vec<_>>();
         regions.sort();
         regions
+    }
+
+    fn expand_selected_backends(
+        &self,
+        normalized: &NormalizedRequest,
+        witnesses: &[CapabilityWitness],
+        registry: &BackendCapabilityRegistry,
+        selected_backends: BackendSelection,
+        compile_regions: &[CompileRegion],
+    ) -> Result<BackendSelection, PlanError> {
+        let mut candidates = std::iter::once(selected_backends.primary.clone())
+            .chain(selected_backends.secondary.iter().cloned())
+            .collect::<Vec<_>>();
+        for family in compile_regions.iter().map(|region| region.family) {
+            if candidates
+                .iter()
+                .any(|candidate| candidate.family == family)
+            {
+                continue;
+            }
+            let capability = registry
+                .entries
+                .iter()
+                .find(|entry| entry.family == family)
+                .ok_or_else(|| {
+                    PlanError::Validation(format!(
+                        "compile-region backend {} is absent from the registry",
+                        family.as_str()
+                    ))
+                })?;
+            let proof = self
+                .backend_proofs(normalized, witnesses, capability)
+                .into_iter()
+                .find(|proof| proof.verdict == AdmissibilityVerdict::Admissible)
+                .ok_or_else(|| {
+                    PlanError::Validation(format!(
+                        "compile-region backend {} is not admissible for this environment",
+                        family.as_str()
+                    ))
+                })?;
+            candidates.push(BackendCandidate {
+                family,
+                acquisition: proof.acquisition,
+                reason: backend_reason(&proof),
+                admissibility: proof,
+            });
+        }
+        let primary = candidates.first().cloned().ok_or_else(|| {
+            PlanError::Validation(
+                "no admissible backend remained after compile-region expansion".to_owned(),
+            )
+        })?;
+        Ok(BackendSelection {
+            primary,
+            secondary: candidates.into_iter().skip(1).collect(),
+        })
     }
 
     fn backend_proofs(

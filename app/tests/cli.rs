@@ -761,3 +761,65 @@ fn warmup_scope_selects_prefill_closure() {
     assert_eq!(compile_regions.len(), 1);
     assert_eq!(compile_regions[0]["name"], "prefill_attention");
 }
+
+#[test]
+fn measure_reports_phase_and_duplication_telemetry() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args([
+            "measure",
+            "prefill-path",
+            "--out",
+            dir.path().to_str().expect("utf8 path"),
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("measurement intent=prefill_path"));
+
+    let report: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("measurement_report.json"))
+            .expect("read measurement report"),
+    )
+    .expect("parse measurement report");
+    for case_name in ["broad_cold", "scoped_cold", "scoped_warm"] {
+        let case = &report[case_name];
+        assert!(case.get("plan_identity").is_some(), "missing plan_identity");
+        assert!(
+            case.get("replay_plan_identity").is_some(),
+            "missing replay_plan_identity"
+        );
+        assert!(
+            case.get("phase_timings").is_some(),
+            "missing phase timings object"
+        );
+        assert!(case["phase_timings"].get("configure_ms").is_some());
+        assert!(case["phase_timings"].get("compile_ms").is_some());
+        assert!(case["phase_timings"].get("link_assemble_ms").is_some());
+        assert!(case["phase_timings"].get("packaging_ms").is_some());
+        assert!(
+            case["phase_timings"]
+                .get("warmup_materialization_ms")
+                .is_some()
+        );
+        assert!(case["phase_timings"].get("verification_ms").is_some());
+        assert!(case.get("unique_artifact_count").is_some());
+        assert!(case.get("duplicate_artifact_count").is_some());
+        assert!(case.get("artifact_deserialization_ms").is_some());
+        assert!(case.get("duplicate_rank_local_compile_count").is_some());
+        assert!(case.get("duplicate_rank_local_load_count").is_some());
+        assert!(case.get("closure_outcome").is_some());
+    }
+    assert!(
+        report["scoped_vs_broad"]
+            .get("baseline_plan_identity")
+            .is_some()
+    );
+    assert!(
+        report["scoped_vs_broad"]
+            .get("candidate_plan_identity")
+            .is_some()
+    );
+    assert!(report["scoped_vs_broad"].get("changed_phases").is_some());
+}

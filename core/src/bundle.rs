@@ -995,8 +995,7 @@ mod tests {
         )
         .expect("write metadata");
 
-        let err =
-            ReplayBundle::load_from(dir.path()).expect_err("backend widening should fail");
+        let err = ReplayBundle::load_from(dir.path()).expect_err("backend widening should fail");
         assert!(matches!(err, ReplayBundleError::VerificationMismatch));
     }
 }
