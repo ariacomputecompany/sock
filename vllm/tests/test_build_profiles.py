@@ -40,9 +40,12 @@ def test_minimal_dev_profile_disables_optional_cuda_packs() -> None:
     assert "flash_attn" in resolution.disabled_components
     assert resolution.optional_backend_packs == ("triton_kernels",)
     assert resolution.experimental_packs == ()
+    assert resolution.enabled_native_families == ("base_runtime",)
+    assert "marlin" in resolution.disabled_native_families
     assert resolution.editable_sync_roots == ("vllm/third_party/triton_kernels",)
     assert "-DVLLM_BUILD_TRITON_KERNELS=ON" in resolution.cmake_defines
     assert "-DVLLM_BUILD_DEEPGEMM=OFF" in resolution.cmake_defines
+    assert "-DVLLM_BUILD_FAMILY_MARLIN=OFF" in resolution.cmake_defines
 
 
 def test_build_profile_normalization_accepts_underscores() -> None:
@@ -58,6 +61,14 @@ def test_targeted_profiles_select_only_requested_backend_targets() -> None:
     assert resolution.profile_family == "targeted"
     assert resolution.cuda_arches == ("9.0", "10.0")
     assert resolution.enabled_components == ("triton_kernels", "deepgemm")
+    assert resolution.enabled_native_families == (
+        "base_runtime",
+        "model_fused_ops",
+        "cutlass_scaled_mm",
+        "cutlass_moe",
+        "fp4",
+        "hadamard",
+    )
     assert resolution.extension_targets == (
         "vllm.triton_kernels",
         "vllm._deep_gemm_C",
@@ -83,6 +94,8 @@ def test_editable_sync_and_component_helpers_follow_profile() -> None:
 
     assert build_profiles.component_enabled(resolution, "flash_attn") is True
     assert build_profiles.component_enabled(resolution, "deepgemm") is False
+    assert build_profiles.native_family_enabled(resolution, "base_runtime") is True
+    assert build_profiles.native_family_enabled(resolution, "marlin") is False
     assert build_profiles.editable_sync_enabled(
         resolution, "vllm/vllm_flash_attn"
     ) is True

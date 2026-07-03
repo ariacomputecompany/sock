@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import sysconfig
+import time
 from pathlib import Path
 from shutil import which
 
@@ -56,6 +57,17 @@ USE_PRECOMPILED_RUST_FRONTEND = (
     envs.VLLM_USE_PRECOMPILED or envs.VLLM_USE_PRECOMPILED_RUST
 )
 BUILD_PROFILE = build_profiles.resolve_build_profile(envs.VLLM_BUILD_PROFILE)
+_EXTERNAL_DEPENDENCY_TARGETS = {
+    "triton_kernels",
+    "_deep_gemm_C",
+    "_qutlass_C",
+    "_flashmla_C",
+    "_flashmla_extension_C",
+    "_vllm_fa2_C",
+    "_vllm_fa3_C",
+    "_vllm_fa4_cutedsl_C",
+    "fmha_sm100",
+}
 
 
 def should_require_rust_frontend() -> bool:
@@ -230,6 +242,68 @@ def select_profile_cuda_arches() -> tuple[str, ...]:
     return ()
 
 
+def write_ninja_build_metrics(
+    build_temp: str, targets: list[str], build_duration_ms: int
+) -> None:
+    ninja_log = Path(build_temp) / ".ninja_log"
+    report_path = Path(build_temp) / "vllm-build-metrics.json"
+    report = {
+        "build_profile": BUILD_PROFILE.profile,
+        "selected_targets": targets,
+        "build_duration_ms": build_duration_ms,
+        "targets": [],
+        "external_dependencies": [],
+        "ninja_log_present": ninja_log.exists(),
+    }
+    if not ninja_log.exists():
+        report_path.write_text(json.dumps(report, indent=2, sort_keys=True))
+        logger.info("Wrote build metrics report without ninja timings to %s", report_path)
+        return
+
+    target_durations: dict[str, int] = {}
+    with ninja_log.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if not line or line.startswith("#"):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 4:
+                continue
+            try:
+                start_ms = int(parts[0])
+                end_ms = int(parts[1])
+            except ValueError:
+                continue
+            output = parts[3]
+            match = re.search(r"CMakeFiles/([^/]+)\.dir/", output)
+            if not match:
+                continue
+            target = match.group(1)
+            target_durations[target] = target_durations.get(target, 0) + max(
+                0, end_ms - start_ms
+            )
+
+    target_rows = [
+        {
+            "target": target,
+            "compile_ms": duration_ms,
+            "kind": (
+                "external_dependency"
+                if target in _EXTERNAL_DEPENDENCY_TARGETS
+                else "native_extension"
+            ),
+        }
+        for target, duration_ms in sorted(
+            target_durations.items(), key=lambda item: (-item[1], item[0])
+        )
+    ]
+    report["targets"] = target_rows
+    report["external_dependencies"] = [
+        row for row in target_rows if row["kind"] == "external_dependency"
+    ]
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True))
+    logger.info("Wrote build metrics report to %s", report_path)
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, cmake_lists_dir: str = ".", **kwa) -> None:
         super().__init__(name, sources=[], py_limited_api=not is_freethreaded(), **kwa)
@@ -303,11 +377,12 @@ class cmake_build_ext(build_ext):
             "-DVLLM_TARGET_DEVICE={}".format(VLLM_TARGET_DEVICE),
         ]
         logger.info(
-            "Using VLLM_BUILD_PROFILE=%s family=%s enabled=%s disabled=%s",
+            "Using VLLM_BUILD_PROFILE=%s family=%s enabled=%s disabled=%s native_families=%s",
             BUILD_PROFILE.profile,
             BUILD_PROFILE.profile_family,
             ",".join(BUILD_PROFILE.enabled_components) or "<none>",
             ",".join(BUILD_PROFILE.disabled_components) or "<none>",
+            ",".join(BUILD_PROFILE.enabled_native_families) or "<none>",
         )
         cmake_args += [f"-DVLLM_BUILD_PROFILE={BUILD_PROFILE.profile}"]
         cmake_args += list(BUILD_PROFILE.cmake_defines)
@@ -422,7 +497,13 @@ class cmake_build_ext(build_ext):
             *[f"--target={name}" for name in targets],
         ]
 
+        build_started = time.monotonic()
         subprocess.check_call(["cmake", *build_args], cwd=self.build_temp)
+        write_ninja_build_metrics(
+            self.build_temp,
+            targets,
+            int((time.monotonic() - build_started) * 1000),
+        )
 
         # Install the libraries
         for ext in self.extensions:

@@ -42,6 +42,38 @@ _COMPONENT_EDITABLE_SYNC_ROOTS = {
     "flash_attn": ("vllm/vllm_flash_attn",),
 }
 
+_NATIVE_FAMILY_FLAGS = {
+    "VLLM_BUILD_FAMILY_MODEL_FUSED_OPS": "model_fused_ops",
+    "VLLM_BUILD_FAMILY_MACHETE": "machete",
+    "VLLM_BUILD_FAMILY_MARLIN": "marlin",
+    "VLLM_BUILD_FAMILY_ALLSPARK": "allspark",
+    "VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM": "cutlass_scaled_mm",
+    "VLLM_BUILD_FAMILY_CUTLASS_MOE": "cutlass_moe",
+    "VLLM_BUILD_FAMILY_FP4": "fp4",
+    "VLLM_BUILD_FAMILY_W4A8": "w4a8",
+    "VLLM_BUILD_FAMILY_ATTENTION_MLA": "attention_mla",
+    "VLLM_BUILD_FAMILY_HADAMARD": "hadamard",
+    "VLLM_BUILD_FAMILY_MOE_MARLIN": "moe_marlin",
+}
+
+_NATIVE_FAMILY_CATEGORIES = {
+    "always_needed": ("base_runtime",),
+    "model_specific": ("model_fused_ops",),
+    "backend_specific": (
+        "machete",
+        "marlin",
+        "cutlass_scaled_mm",
+        "cutlass_moe",
+        "fp4",
+        "w4a8",
+        "attention_mla",
+        "hadamard",
+        "moe_marlin",
+    ),
+    "legacy_compatibility": ("allspark",),
+    "test_benchmark_only": (),
+}
+
 _PROFILE_SPECS = {
     "full": {
         "profile_family": "production",
@@ -55,6 +87,20 @@ _PROFILE_SPECS = {
             "VLLM_BUILD_QUTLASS": True,
             "VLLM_BUILD_FLASH_ATTN": True,
         },
+        "native_families": (
+            "base_runtime",
+            "model_fused_ops",
+            "machete",
+            "marlin",
+            "allspark",
+            "cutlass_scaled_mm",
+            "cutlass_moe",
+            "fp4",
+            "w4a8",
+            "attention_mla",
+            "hadamard",
+            "moe_marlin",
+        ),
     },
     "core": {
         "profile_family": "production",
@@ -68,6 +114,7 @@ _PROFILE_SPECS = {
             "VLLM_BUILD_QUTLASS": False,
             "VLLM_BUILD_FLASH_ATTN": False,
         },
+        "native_families": ("base_runtime",),
     },
     "minimal-dev": {
         "profile_family": "developer",
@@ -81,6 +128,7 @@ _PROFILE_SPECS = {
             "VLLM_BUILD_QUTLASS": False,
             "VLLM_BUILD_FLASH_ATTN": False,
         },
+        "native_families": ("base_runtime",),
     },
     "flashattn": {
         "profile_family": "targeted",
@@ -94,6 +142,7 @@ _PROFILE_SPECS = {
             "VLLM_BUILD_QUTLASS": False,
             "VLLM_BUILD_FLASH_ATTN": True,
         },
+        "native_families": ("base_runtime",),
     },
     "deepgemm": {
         "profile_family": "targeted",
@@ -107,6 +156,14 @@ _PROFILE_SPECS = {
             "VLLM_BUILD_QUTLASS": False,
             "VLLM_BUILD_FLASH_ATTN": False,
         },
+        "native_families": (
+            "base_runtime",
+            "model_fused_ops",
+            "cutlass_scaled_mm",
+            "cutlass_moe",
+            "fp4",
+            "hadamard",
+        ),
     },
     "flashmla": {
         "profile_family": "targeted",
@@ -120,6 +177,11 @@ _PROFILE_SPECS = {
             "VLLM_BUILD_QUTLASS": False,
             "VLLM_BUILD_FLASH_ATTN": False,
         },
+        "native_families": (
+            "base_runtime",
+            "model_fused_ops",
+            "attention_mla",
+        ),
     },
     "qutlass": {
         "profile_family": "targeted",
@@ -133,6 +195,12 @@ _PROFILE_SPECS = {
             "VLLM_BUILD_QUTLASS": True,
             "VLLM_BUILD_FLASH_ATTN": False,
         },
+        "native_families": (
+            "base_runtime",
+            "cutlass_scaled_mm",
+            "fp4",
+            "hadamard",
+        ),
     },
     "hopper-flashinfer": {
         "profile_family": "targeted",
@@ -146,6 +214,7 @@ _PROFILE_SPECS = {
             "VLLM_BUILD_QUTLASS": False,
             "VLLM_BUILD_FLASH_ATTN": True,
         },
+        "native_families": ("base_runtime",),
     },
     "blackwell-fa3": {
         "profile_family": "targeted",
@@ -159,6 +228,7 @@ _PROFILE_SPECS = {
             "VLLM_BUILD_QUTLASS": False,
             "VLLM_BUILD_FLASH_ATTN": True,
         },
+        "native_families": ("base_runtime",),
     },
 }
 
@@ -174,6 +244,8 @@ class BuildProfileResolution:
     optional_backend_packs: tuple[str, ...]
     experimental_packs: tuple[str, ...]
     benchmark_only_packs: tuple[str, ...]
+    enabled_native_families: tuple[str, ...]
+    disabled_native_families: tuple[str, ...]
     extension_targets: tuple[str, ...]
     editable_sync_roots: tuple[str, ...]
     cmake_defines: tuple[str, ...]
@@ -209,6 +281,12 @@ def editable_sync_enabled(
     return root in resolution.editable_sync_roots
 
 
+def native_family_enabled(
+    resolution: BuildProfileResolution, family: str
+) -> bool:
+    return family in resolution.enabled_native_families
+
+
 def resolve_build_profile(value: str | None) -> BuildProfileResolution:
     profile = normalize_build_profile(value)
     spec = _PROFILE_SPECS[profile]
@@ -232,6 +310,12 @@ def resolve_build_profile(value: str | None) -> BuildProfileResolution:
     benchmark_only_packs = tuple(
         component for component in enabled if component in _BENCHMARK_ONLY_COMPONENTS
     )
+    enabled_native_families = tuple(spec["native_families"])
+    disabled_native_families = tuple(
+        family
+        for family in ("base_runtime", *tuple(_NATIVE_FAMILY_FLAGS.values()))
+        if family not in enabled_native_families
+    )
     extension_targets = tuple(
         target
         for component in enabled
@@ -245,6 +329,9 @@ def resolve_build_profile(value: str | None) -> BuildProfileResolution:
     defines = tuple(
         f"-D{flag}={'ON' if enabled else 'OFF'}"
         for flag, enabled in flags.items()
+    ) + tuple(
+        f"-D{flag}={'ON' if family in enabled_native_families else 'OFF'}"
+        for flag, family in _NATIVE_FAMILY_FLAGS.items()
     )
     return BuildProfileResolution(
         profile=profile,
@@ -256,6 +343,8 @@ def resolve_build_profile(value: str | None) -> BuildProfileResolution:
         optional_backend_packs=optional_backend_packs,
         experimental_packs=experimental_packs,
         benchmark_only_packs=benchmark_only_packs,
+        enabled_native_families=enabled_native_families,
+        disabled_native_families=disabled_native_families,
         extension_targets=extension_targets,
         editable_sync_roots=editable_sync_roots,
         cmake_defines=defines,

@@ -53,6 +53,17 @@ option(VLLM_BUILD_FMHA_SM100 "Build fmha_sm100 external package" ON)
 option(VLLM_BUILD_FLASHMLA "Build FlashMLA external package" ON)
 option(VLLM_BUILD_QUTLASS "Build Qutlass external package" ON)
 option(VLLM_BUILD_FLASH_ATTN "Build vllm-flash-attn external package" ON)
+option(VLLM_BUILD_FAMILY_MODEL_FUSED_OPS "Build model-specific fused CUDA kernels" ON)
+option(VLLM_BUILD_FAMILY_MACHETE "Build Machete quantization kernels" ON)
+option(VLLM_BUILD_FAMILY_MARLIN "Build Marlin quantization kernels" ON)
+option(VLLM_BUILD_FAMILY_ALLSPARK "Build AllSpark compatibility kernels" ON)
+option(VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM "Build CUTLASS scaled_mm kernels" ON)
+option(VLLM_BUILD_FAMILY_CUTLASS_MOE "Build CUTLASS MoE kernels" ON)
+option(VLLM_BUILD_FAMILY_FP4 "Build FP4 and NVFP4 kernels" ON)
+option(VLLM_BUILD_FAMILY_W4A8 "Build W4A8 kernels" ON)
+option(VLLM_BUILD_FAMILY_ATTENTION_MLA "Build MLA-specific native kernels" ON)
+option(VLLM_BUILD_FAMILY_HADAMARD "Build Hadamard transform kernels" ON)
+option(VLLM_BUILD_FAMILY_MOE_MARLIN "Build Marlin MoE kernels" ON)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/utils.cmake)
 
@@ -414,7 +425,6 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     "csrc/libtorch_stable/quantization/gptq/q_gemm.cu"
     "csrc/libtorch_stable/pos_encoding_kernels.cu"
     "csrc/libtorch_stable/fused_qknorm_rope_kernel.cu"
-    "csrc/libtorch_stable/fused_minimax_m3_qknorm_rope_kv_insert_kernel.cu"
     "csrc/libtorch_stable/layernorm_kernels.cu"
     "csrc/libtorch_stable/layernorm_quant_kernels.cu"
     "csrc/libtorch_stable/quantization/fused_kernels/fused_layernorm_dynamic_per_token_quant.cu"
@@ -426,8 +436,13 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     "csrc/libtorch_stable/cache_kernels.cu"
     "csrc/libtorch_stable/cache_kernels.cu"
     "csrc/libtorch_stable/cache_kernels_fused.cu"
-    "csrc/libtorch_stable/custom_all_reduce.cu"
-    "csrc/libtorch_stable/fused_deepseek_v4_qnorm_rope_kv_insert_kernel.cu")
+    "csrc/libtorch_stable/custom_all_reduce.cu")
+
+  if(VLLM_BUILD_FAMILY_MODEL_FUSED_OPS)
+    list(APPEND VLLM_STABLE_EXT_SRC
+      "csrc/libtorch_stable/fused_minimax_m3_qknorm_rope_kv_insert_kernel.cu"
+      "csrc/libtorch_stable/fused_deepseek_v4_qnorm_rope_kv_insert_kernel.cu")
+  endif()
 
   if(VLLM_GPU_LANG STREQUAL "CUDA" AND
      DEFINED CMAKE_CUDA_COMPILER_VERSION AND
@@ -494,7 +509,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     # The machete kernels only work on hopper and require CUDA 12.0 or later.
     # Only build Machete kernels if we are building for something compatible with sm90a
     cuda_archs_loose_intersection(MACHETE_ARCHS "9.0a" "${CUDA_ARCHS}")
-    if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND MACHETE_ARCHS)
+    if(VLLM_BUILD_FAMILY_MACHETE AND
+       ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND MACHETE_ARCHS)
       #
       # For the Machete kernels we automatically generate sources for various
       # preselected input type pairs and schedules.
@@ -545,7 +561,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
         csrc/libtorch_stable/quantization/machete/machete_pytorch.cu)
       message(STATUS "Building Machete kernels for archs: ${MACHETE_ARCHS}")
     else()
-      if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0
+      if (NOT VLLM_BUILD_FAMILY_MACHETE)
+        message(STATUS "Not building Machete kernels because the active build profile disabled them.")
+      elseif (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0
           AND MACHETE_ARCHS)
         message(STATUS "Not building Machete kernels as CUDA Compiler version is "
                        "not >= 12.0, we recommend upgrading to CUDA 12.0 or "
@@ -601,7 +619,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     # marlin arches for other files
     cuda_archs_loose_intersection(MARLIN_OTHER_ARCHS "7.5;8.0+PTX" "${CUDA_ARCHS}")
 
-    if (MARLIN_OTHER_ARCHS)
+    if (VLLM_BUILD_FAMILY_MARLIN AND MARLIN_OTHER_ARCHS)
 
       #
       # For the Marlin kernels we automatically generate sources for various
@@ -704,8 +722,12 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
 
       message(STATUS "Building Marlin kernels for archs: ${MARLIN_OTHER_ARCHS}")
     else()
-      message(STATUS "Not building Marlin kernels as no compatible archs found"
+      if (NOT VLLM_BUILD_FAMILY_MARLIN)
+        message(STATUS "Not building Marlin kernels because the active build profile disabled them.")
+      else()
+        message(STATUS "Not building Marlin kernels as no compatible archs found"
                      " in CUDA target architectures")
+      endif()
     endif()
 
   # DeepSeek V3 fused A GEMM kernel (requires SM 9.0+, Hopper and later)
@@ -714,7 +736,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   else()
     cuda_archs_loose_intersection(DSV3_FUSED_A_GEMM_ARCHS "9.0a;10.0a;10.1a;10.3a;12.0a;12.1a" "${CUDA_ARCHS}")
   endif()
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND DSV3_FUSED_A_GEMM_ARCHS)
+  if(VLLM_BUILD_FAMILY_MODEL_FUSED_OPS AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND DSV3_FUSED_A_GEMM_ARCHS)
     set(DSV3_FUSED_A_GEMM_SRCS "csrc/libtorch_stable/dsv3_fused_a_gemm.cu")
     set_gencode_flags_for_srcs(
       SRCS "${DSV3_FUSED_A_GEMM_SRCS}"
@@ -722,13 +745,18 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND VLLM_STABLE_EXT_SRC "${DSV3_FUSED_A_GEMM_SRCS}")
     message(STATUS "Building dsv3_fused_a_gemm for archs: ${DSV3_FUSED_A_GEMM_ARCHS}")
   else()
-    message(STATUS "Not building dsv3_fused_a_gemm as no compatible archs found "
-                   "in CUDA target architectures.")
+    if(NOT VLLM_BUILD_FAMILY_MODEL_FUSED_OPS)
+      message(STATUS "Not building dsv3_fused_a_gemm because the active build profile disabled model-specific fused ops.")
+    else()
+      message(STATUS "Not building dsv3_fused_a_gemm as no compatible archs found "
+                     "in CUDA target architectures.")
+    endif()
   endif()
 
   # FP32 router GEMM (H=3072, E=256, M<=32). Requires SM90+ and CUDA >= 12.0.
   cuda_archs_sm90plus(FP32_ROUTER_GEMM_ARCHS "${CUDA_ARCHS}")
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND FP32_ROUTER_GEMM_ARCHS)
+  if(VLLM_BUILD_FAMILY_MODEL_FUSED_OPS AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND FP32_ROUTER_GEMM_ARCHS)
     set(FP32_ROUTER_GEMM_SRCS
       "csrc/libtorch_stable/fp32_router_gemm_entry.cu"
       "csrc/libtorch_stable/fp32_router_gemm.cu")
@@ -738,13 +766,17 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND VLLM_STABLE_EXT_SRC "${FP32_ROUTER_GEMM_SRCS}")
     message(STATUS "Building fp32_router_gemm for archs: ${FP32_ROUTER_GEMM_ARCHS}")
   else()
-    message(STATUS "Not building fp32_router_gemm as no compatible archs found "
-                   "(requires SM90+ and CUDA >= 12.0).")
+    if(NOT VLLM_BUILD_FAMILY_MODEL_FUSED_OPS)
+      message(STATUS "Not building fp32_router_gemm because the active build profile disabled model-specific fused ops.")
+    else()
+      message(STATUS "Not building fp32_router_gemm as no compatible archs found "
+                     "(requires SM90+ and CUDA >= 12.0).")
+    endif()
   endif()
 
   # Only build AllSpark kernels if we are building for at least some compatible archs.
   cuda_archs_loose_intersection(ALLSPARK_ARCHS "8.0;8.6;8.7;8.9" "${CUDA_ARCHS}")
-  if (ALLSPARK_ARCHS)
+  if (VLLM_BUILD_FAMILY_ALLSPARK AND ALLSPARK_ARCHS)
     set(ALLSPARK_SRCS
        "csrc/libtorch_stable/quantization/gptq_allspark/allspark_repack.cu"
        "csrc/libtorch_stable/quantization/gptq_allspark/allspark_qgemm_w8a16.cu")
@@ -754,8 +786,12 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND VLLM_STABLE_EXT_SRC "${ALLSPARK_SRCS}")
     message(STATUS "Building AllSpark kernels for archs: ${ALLSPARK_ARCHS}")
   else()
-    message(STATUS "Not building AllSpark kernels as no compatible archs found"
-                   " in CUDA target architectures")
+    if(NOT VLLM_BUILD_FAMILY_ALLSPARK)
+      message(STATUS "Not building AllSpark kernels because the active build profile disabled them.")
+    else()
+      message(STATUS "Not building AllSpark kernels as no compatible archs found"
+                     " in CUDA target architectures")
+    endif()
   endif()
 
   #
@@ -765,7 +801,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   # The cutlass_scaled_mm kernels for Hopper (c3x, i.e. CUTLASS 3.x) require
   # CUDA 12.0 or later
   cuda_archs_loose_intersection(SCALED_MM_ARCHS "9.0a;" "${CUDA_ARCHS}")
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND SCALED_MM_ARCHS)
+  if(VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND SCALED_MM_ARCHS)
     set(SCALED_MM_SM90_SRCS
        "csrc/libtorch_stable/quantization/w8a8/cutlass/scaled_mm_c3x_sm90.cu"
        "csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_sm90_fp8.cu"
@@ -781,7 +818,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND SCALED_MM_3X_ARCHS "${SCALED_MM_ARCHS}")
     message(STATUS "Building scaled_mm_c3x_sm90 for archs: ${SCALED_MM_ARCHS}")
   else()
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND SCALED_MM_ARCHS)
+    if (NOT VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM)
+      message(STATUS "Not building scaled_mm_c3x_sm90 because the active build profile disabled CUTLASS scaled_mm kernels.")
+    elseif (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND SCALED_MM_ARCHS)
       message(STATUS "Not building scaled_mm_c3x_sm90 as CUDA Compiler version is "
                      "not >= 12.0, we recommend upgrading to CUDA 12.0 or "
                      "later if you intend on running FP8 quantized models on "
@@ -800,7 +839,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   else()
     cuda_archs_loose_intersection(SCALED_MM_ARCHS "12.0a;12.1a" "${CUDA_ARCHS}")
   endif()
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
+  if(VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
     set(SCALED_MM_SM120_SRCS
       "csrc/libtorch_stable/quantization/w8a8/cutlass/scaled_mm_c3x_sm120.cu"
       "csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_sm120_fp8.cu"
@@ -815,7 +855,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND SCALED_MM_3X_ARCHS "${SCALED_MM_ARCHS}")
     message(STATUS "Building scaled_mm_c3x_sm120 for archs: ${SCALED_MM_ARCHS}")
   else()
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
+    if (NOT VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM)
+      message(STATUS "Not building scaled_mm_c3x_sm120 because the active build profile disabled CUTLASS scaled_mm kernels.")
+    elseif (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
       message(STATUS "Not building scaled_mm_c3x_sm120 as CUDA Compiler version is "
                      "not >= 12.8, we recommend upgrading to CUDA 12.8 or "
                      "later if you intend on running FP8 quantized models on "
@@ -834,7 +876,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   else()
     cuda_archs_loose_intersection(SCALED_MM_ARCHS "10.0a;10.1a;10.3a" "${CUDA_ARCHS}")
   endif()
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
+  if(VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
     set(SCALED_MM_SM100_SRCS
       "csrc/libtorch_stable/quantization/w8a8/cutlass/scaled_mm_c3x_sm100.cu"
       "csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_sm100_fp8.cu"
@@ -849,7 +892,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND SCALED_MM_3X_ARCHS "${SCALED_MM_ARCHS}")
     message(STATUS "Building scaled_mm_c3x_sm100 for archs: ${SCALED_MM_ARCHS}")
   else()
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
+    if (NOT VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM)
+      message(STATUS "Not building scaled_mm_c3x_sm100 because the active build profile disabled CUTLASS scaled_mm kernels.")
+    elseif (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
       message(STATUS "Not building scaled_mm_c3x_sm100 as CUDA Compiler version is "
                      "not >= 12.8, we recommend upgrading to CUDA 12.8 or "
                      "later if you intend on running FP8 quantized models on "
@@ -868,7 +913,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     "7.5;8.0;8.7;8.9+PTX" "${CUDA_ARCHS}")
   # subtract out the archs that are already built for 3x
   list(REMOVE_ITEM SCALED_MM_2X_ARCHS ${SCALED_MM_3X_ARCHS})
-  if (SCALED_MM_2X_ARCHS)
+  if (VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM AND SCALED_MM_2X_ARCHS)
     set(SCALED_MM_C2X_SRCS "csrc/libtorch_stable/quantization/w8a8/cutlass/scaled_mm_c2x.cu")
     set_gencode_flags_for_srcs(
       SRCS "${SCALED_MM_C2X_SRCS}"
@@ -877,7 +922,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND VLLM_GPU_FLAGS "-DENABLE_SCALED_MM_C2X=1")
     message(STATUS "Building scaled_mm_c2x for archs: ${SCALED_MM_2X_ARCHS}")
   else()
-    if (SCALED_MM_3X_ARCHS)
+    if (NOT VLLM_BUILD_FAMILY_CUTLASS_SCALED_MM)
+      message(STATUS "Not building scaled_mm_c2x because the active build profile disabled CUTLASS scaled_mm kernels.")
+    elseif (SCALED_MM_3X_ARCHS)
       message(STATUS "Not building scaled_mm_c2x as all archs are already built"
                      " for and covered by scaled_mm_c3x")
     else()
@@ -894,7 +941,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   # on Hopper). get_cutlass_(batched_)moe_mm_data should only be compiled
   # if it's possible to compile MoE kernels that use its output.
   cuda_archs_loose_intersection(SCALED_MM_ARCHS "9.0a" "${CUDA_ARCHS}")
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.3 AND SCALED_MM_ARCHS)
+  if(VLLM_BUILD_FAMILY_CUTLASS_MOE AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.3 AND SCALED_MM_ARCHS)
     set(CUTLASS_MOE_SM90_SRCS "csrc/libtorch_stable/quantization/w8a8/cutlass/moe/grouped_mm_c3x_sm90.cu")
     set_gencode_flags_for_srcs(
       SRCS "${CUTLASS_MOE_SM90_SRCS}"
@@ -903,7 +951,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND VLLM_GPU_FLAGS "-DENABLE_CUTLASS_MOE_SM90=1")
     message(STATUS "Building grouped_mm_c3x for archs: ${SCALED_MM_ARCHS}")
   else()
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.3 AND SCALED_MM_ARCHS)
+    if (NOT VLLM_BUILD_FAMILY_CUTLASS_MOE)
+      message(STATUS "Not building grouped_mm_c3x kernels because the active build profile disabled CUTLASS MoE kernels.")
+    elseif (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.3 AND SCALED_MM_ARCHS)
       message(STATUS "Not building grouped_mm_c3x kernels as CUDA Compiler version is "
                      "not >= 12.3, we recommend upgrading to CUDA 12.3 or later "
                      "if you intend on running FP8 quantized MoE models on Hopper.")
@@ -918,7 +968,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   else()
     cuda_archs_loose_intersection(SCALED_MM_ARCHS "10.0a;10.1a;10.3a" "${CUDA_ARCHS}")
   endif()
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
+  if(VLLM_BUILD_FAMILY_CUTLASS_MOE AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
     set(CUTLASS_MOE_SM100_SRCS "csrc/libtorch_stable/quantization/w8a8/cutlass/moe/grouped_mm_c3x_sm100.cu")
     set_gencode_flags_for_srcs(
       SRCS "${CUTLASS_MOE_SM100_SRCS}"
@@ -927,7 +978,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND VLLM_GPU_FLAGS "-DENABLE_CUTLASS_MOE_SM100=1")
     message(STATUS "Building grouped_mm_c3x for archs: ${SCALED_MM_ARCHS}")
   else()
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
+    if (NOT VLLM_BUILD_FAMILY_CUTLASS_MOE)
+      message(STATUS "Not building grouped_mm_c3x kernels because the active build profile disabled CUTLASS MoE kernels.")
+    elseif (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND SCALED_MM_ARCHS)
       message(STATUS "Not building grouped_mm_c3x kernels as CUDA Compiler version is "
                      "not >= 12.8, we recommend upgrading to CUDA 12.8 or later "
                      "if you intend on running FP8 quantized MoE models on Blackwell.")
@@ -943,7 +996,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   else()
     cuda_archs_loose_intersection(CUTLASS_MOE_DATA_ARCHS "9.0a;10.0a;10.1a;10.3a;12.0a;12.1a" "${CUDA_ARCHS}")
   endif()
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.3 AND CUTLASS_MOE_DATA_ARCHS)
+  if(VLLM_BUILD_FAMILY_CUTLASS_MOE AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.3 AND CUTLASS_MOE_DATA_ARCHS)
     set(CUTLASS_MOE_DATA_SRCS "csrc/libtorch_stable/quantization/w8a8/cutlass/moe/moe_data.cu")
     set_gencode_flags_for_srcs(
       SRCS "${CUTLASS_MOE_DATA_SRCS}"
@@ -951,7 +1005,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND VLLM_STABLE_EXT_SRC "${CUTLASS_MOE_DATA_SRCS}")
     message(STATUS "Building moe_data for archs: ${CUTLASS_MOE_DATA_ARCHS}")
   else()
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.3 AND CUTLASS_MOE_DATA_ARCHS)
+    if (NOT VLLM_BUILD_FAMILY_CUTLASS_MOE)
+      message(STATUS "Not building moe_data because the active build profile disabled CUTLASS MoE kernels.")
+    elseif (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.3 AND CUTLASS_MOE_DATA_ARCHS)
       message(STATUS "Not building moe_data as CUDA Compiler version is "
                      "not >= 12.3, we recommend upgrading to CUDA 12.3 or later "
                      "if you intend on running FP8 quantized MoE models on Hopper or Blackwell.")
@@ -974,7 +1030,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   else()
     cuda_archs_loose_intersection(FP4_SM120_ARCHS "12.0a;12.1a" "${CUDA_ARCHS}")
   endif()
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND FP4_SM120_ARCHS)
+  if(VLLM_BUILD_FAMILY_FP4 AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND FP4_SM120_ARCHS)
     set(FP4_SM120_SRCS
       "csrc/libtorch_stable/quantization/fp4/nvfp4_quant_kernels.cu"
       "csrc/libtorch_stable/quantization/fp4/activation_nvfp4_quant_fusion_kernels.cu"
@@ -990,7 +1047,11 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND VLLM_GPU_FLAGS "-DENABLE_CUTLASS_MOE_SM120=1")
     message(STATUS "Building SM12x NVFP4 for archs: ${FP4_SM120_ARCHS}")
   else()
-    message(STATUS "Not building SM12x NVFP4 as no compatible archs were found.")
+    if(NOT VLLM_BUILD_FAMILY_FP4)
+      message(STATUS "Not building SM12x NVFP4 because the active build profile disabled FP4 kernels.")
+    else()
+      message(STATUS "Not building SM12x NVFP4 as no compatible archs were found.")
+    endif()
   endif()
 
   # SM10x/11x FP4 kernels. MXFP4 experts quantization is currently compiled
@@ -1000,7 +1061,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   else()
     cuda_archs_loose_intersection(FP4_SM100_ARCHS "10.0a;10.1a;10.3a" "${CUDA_ARCHS}")
   endif()
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND FP4_SM100_ARCHS)
+  if(VLLM_BUILD_FAMILY_FP4 AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND FP4_SM100_ARCHS)
     set(FP4_SM100_SRCS
       "csrc/libtorch_stable/quantization/fp4/nvfp4_quant_kernels.cu"
       "csrc/libtorch_stable/quantization/fp4/activation_nvfp4_quant_fusion_kernels.cu"
@@ -1022,7 +1084,11 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     list(APPEND VLLM_GPU_FLAGS "-DENABLE_CUTLASS_MOE_SM100=1")
     message(STATUS "Building SM10x/11x NVFP4/MXFP4 for archs: ${FP4_SM100_ARCHS}")
   else()
-    message(STATUS "Not building SM10x/11x NVFP4/MXFP4 as no compatible archs were found.")
+    if(NOT VLLM_BUILD_FAMILY_FP4)
+      message(STATUS "Not building SM10x/11x NVFP4/MXFP4 because the active build profile disabled FP4 kernels.")
+    else()
+      message(STATUS "Not building SM10x/11x NVFP4/MXFP4 as no compatible archs were found.")
+    endif()
   endif()
 
   #
@@ -1031,7 +1097,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
 
   # Only build W4A8 kernels if we are building for something compatible with sm90a
   cuda_archs_loose_intersection(W4A8_ARCHS "9.0a" "${CUDA_ARCHS}")
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND W4A8_ARCHS)
+  if(VLLM_BUILD_FAMILY_W4A8 AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND W4A8_ARCHS)
     set(W4A8_SRCS
        "csrc/libtorch_stable/quantization/cutlass_w4a8/w4a8_mm_entry.cu"
        "csrc/libtorch_stable/quantization/cutlass_w4a8/w4a8_grouped_mm_entry.cu"
@@ -1046,7 +1113,9 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
 
     message(STATUS "Building W4A8 kernels for archs: ${W4A8_ARCHS}")
   else()
-    if (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0
+    if (NOT VLLM_BUILD_FAMILY_W4A8)
+      message(STATUS "Not building W4A8 kernels because the active build profile disabled them.")
+    elseif (NOT ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0
         AND W4A8_ARCHS)
       message(STATUS "Not building W4A8 kernels as CUDA Compiler version is "
                      "not >= 12.0, we recommend upgrading to CUDA 12.0 or "
@@ -1066,7 +1135,8 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   else()
     cuda_archs_loose_intersection(MLA_ARCHS "10.0a;10.1a;10.3a" "${CUDA_ARCHS}")
   endif()
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND MLA_ARCHS)
+  if(VLLM_BUILD_FAMILY_ATTENTION_MLA AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.8 AND MLA_ARCHS)
     set(CUTLASS_MLA_SRCS
       "csrc/libtorch_stable/attention/mla/sm100_cutlass_mla_kernel.cu")
     set_gencode_flags_for_srcs(
@@ -1079,20 +1149,26 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
       PROPERTIES INCLUDE_DIRECTORIES "${CUTLASS_DIR}/examples/77_blackwell_fmha;${CUTLASS_DIR}/examples/common")
     message(STATUS "Building CUTLASS MLA for archs: ${MLA_ARCHS}")
   else()
-    message(STATUS "Not building CUTLASS MLA as no compatible archs were found.")
+    if(NOT VLLM_BUILD_FAMILY_ATTENTION_MLA)
+      message(STATUS "Not building CUTLASS MLA because the active build profile disabled MLA kernels.")
+    else()
+      message(STATUS "Not building CUTLASS MLA as no compatible archs were found.")
+    endif()
     # clear MLA_ARCHS
     set(MLA_ARCHS)
   endif()
 
   # Hadacore kernels
   cuda_archs_loose_intersection(HADACORE_ARCHS "8.0+PTX;9.0+PTX" "${CUDA_ARCHS}")
-  if(HADACORE_ARCHS)
+  if(VLLM_BUILD_FAMILY_HADAMARD AND HADACORE_ARCHS)
     set(HADACORE_SRCS "csrc/libtorch_stable/quantization/hadamard/hadacore/hadamard_transform_cuda.cu")
     set_gencode_flags_for_srcs(
       SRCS "${HADACORE_SRCS}"
       CUDA_ARCHS "${HADACORE_ARCHS}")
     list(APPEND VLLM_STABLE_EXT_SRC "${HADACORE_SRCS}")
     message(STATUS "Building hadacore")
+  elseif(NOT VLLM_BUILD_FAMILY_HADAMARD)
+    message(STATUS "Not building hadacore because the active build profile disabled Hadamard kernels.")
   endif()
 
   # if CUDA endif
@@ -1210,7 +1286,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
   endif()
   # moe marlin arches for other files
   cuda_archs_loose_intersection(MARLIN_MOE_OTHER_ARCHS "7.5;8.0+PTX" "${CUDA_ARCHS}")
-  if (MARLIN_MOE_OTHER_ARCHS)
+  if (VLLM_BUILD_FAMILY_MOE_MARLIN AND MARLIN_MOE_OTHER_ARCHS)
 
     #
     # For the Marlin MOE kernels we automatically generate sources for various
@@ -1299,14 +1375,19 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
 
     message(STATUS "Building Marlin MOE kernels for archs: ${MARLIN_MOE_OTHER_ARCHS}")
   else()
-    message(STATUS "Not building Marlin MOE kernels as no compatible archs found"
-                   " in CUDA target architectures")
+    if(NOT VLLM_BUILD_FAMILY_MOE_MARLIN)
+      message(STATUS "Not building Marlin MOE kernels because the active build profile disabled them.")
+    else()
+      message(STATUS "Not building Marlin MOE kernels as no compatible archs found"
+                     " in CUDA target architectures")
+    endif()
   endif()
 
   # DeepSeek V3 router GEMM kernel requires SM90+ and CUDA >= 12.0.
   # (fp32_router_gemm has been migrated to _C_stable_libtorch above.)
   cuda_archs_sm90plus(SM90PLUS_ROUTER_GEMM_ARCHS "${CUDA_ARCHS}")
-  if(${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND SM90PLUS_ROUTER_GEMM_ARCHS)
+  if(VLLM_BUILD_FAMILY_MODEL_FUSED_OPS AND
+     ${CMAKE_CUDA_COMPILER_VERSION} VERSION_GREATER_EQUAL 12.0 AND SM90PLUS_ROUTER_GEMM_ARCHS)
     set(DSV3_ROUTER_GEMM_SRC
       "csrc/libtorch_stable/moe/dsv3_router_gemm_entry.cu"
       "csrc/libtorch_stable/moe/dsv3_router_gemm_float_out.cu"
@@ -1318,8 +1399,12 @@ if(VLLM_GPU_LANG STREQUAL "CUDA")
 
     message(STATUS "Building DSV3 router GEMM kernels for archs: ${SM90PLUS_ROUTER_GEMM_ARCHS}")
   else()
-    message(STATUS "Not building DSV3 router GEMM kernels as no compatible archs found"
-                   " (requires SM90+ and CUDA >= 12.0)")
+    if(NOT VLLM_BUILD_FAMILY_MODEL_FUSED_OPS)
+      message(STATUS "Not building DSV3 router GEMM kernels because the active build profile disabled model-specific fused ops.")
+    else()
+      message(STATUS "Not building DSV3 router GEMM kernels as no compatible archs found"
+                     " (requires SM90+ and CUDA >= 12.0)")
+    endif()
   endif()
 endif()
 

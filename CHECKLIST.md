@@ -17,20 +17,6 @@ Working rule:
 - remove completed items instead of annotating them
 - treat any runtime-adjacent drift as an escalation out of Lane A
 
-## 15. Native Extension Surface Reduction
-
-- [ ] Audit `vllm/csrc/` and identify:
-  - always-needed files
-  - model-specific files
-  - backend-specific files
-  - legacy compatibility files
-  - test/benchmark-only files
-- [ ] Remove or isolate legacy code paths that are no longer performance-competitive.
-- [ ] Avoid building kernels that are not reachable under the selected SOC deployment profile.
-- [ ] Add a “build only what this deployment needs” flow.
-- [ ] Prefer explicit capability manifests to scattered compile-time conditionals.
-- [ ] Track compile time per extension target and per external dependency.
-
 ## 16. External Dependency and FetchContent Optimization
 
 - [ ] Audit every external project and fetched dependency in the vendored `vllm` build.
