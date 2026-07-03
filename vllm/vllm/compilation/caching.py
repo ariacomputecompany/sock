@@ -40,6 +40,7 @@ logger = init_logger(__name__)
 
 _COMPILE_ARTIFACT_BUNDLE_MAGIC = b"VLLM_AOT_BUNDLE_V1\n"
 _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES = 8
+_STANDALONE_ARTIFACT_STORE_BUNDLE_MAGIC = b"VLLM_STANDALONE_AOT_STORE_V1\n"
 _SHARED_LOADED_ARTIFACT_STORES: dict[str, dict[str, Any]] = {}
 
 
@@ -180,6 +181,94 @@ def unpack_serialized_compile_artifact_bundle(
     sidecar_bytes = data[offset : offset + sidecar_size]
     payload = data[offset + sidecar_size :]
     return json.loads(sidecar_bytes), payload
+
+
+def pack_standalone_artifact_store_bundle(
+    artifacts: "StandaloneCompiledArtifacts",
+) -> bytes:
+    offset = 0
+    payload_parts = []
+    artifacts_index = []
+    for digest, entry_bytes in sorted(artifacts.submodule_bytes_store.items()):
+        entry_size = len(entry_bytes)
+        artifacts_index.append(
+            {
+                "artifact_hash": digest,
+                "offset": offset,
+                "size": entry_size,
+            }
+        )
+        payload_parts.append(entry_bytes)
+        offset += entry_size
+
+    header = {
+        "schema_version": 1,
+        "payload_kind": "vllm_standalone_artifact_store_bundle",
+        "store_identity": artifacts.store_identity(),
+        "submodule_bytes": dict(sorted(artifacts.submodule_bytes.items())),
+        "artifacts": artifacts_index,
+    }
+    header_bytes = json.dumps(
+        header,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return b"".join(
+        (
+            _STANDALONE_ARTIFACT_STORE_BUNDLE_MAGIC,
+            len(header_bytes).to_bytes(
+                _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES,
+                byteorder="big",
+                signed=False,
+            ),
+            header_bytes,
+            b"".join(payload_parts),
+        )
+    )
+
+
+def unpack_standalone_artifact_store_bundle(
+    data: bytes,
+) -> "StandaloneCompiledArtifacts":
+    if not data.startswith(_STANDALONE_ARTIFACT_STORE_BUNDLE_MAGIC):
+        raise ValueError("invalid standalone artifact store bundle header")
+
+    offset = len(_STANDALONE_ARTIFACT_STORE_BUNDLE_MAGIC)
+    header_size = int.from_bytes(
+        data[offset : offset + _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES],
+        byteorder="big",
+        signed=False,
+    )
+    offset += _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES
+    header = json.loads(data[offset : offset + header_size])
+    payload = data[offset + header_size :]
+
+    artifacts = StandaloneCompiledArtifacts()
+    artifacts.submodule_bytes = {
+        str(key): str(digest)
+        for key, digest in dict(header["submodule_bytes"]).items()
+    }
+    for item in header["artifacts"]:
+        entry_offset = int(item["offset"])
+        entry_size = int(item["size"])
+        entry_bytes = payload[entry_offset : entry_offset + entry_size]
+        digest = str(item["artifact_hash"])
+        if artifact_bytes_hash(entry_bytes) != digest:
+            raise ValueError(
+                "standalone artifact store bundle hash verification failed "
+                f"for digest={digest}"
+            )
+        artifacts.submodule_bytes_store[digest] = entry_bytes
+
+    expected_store_identity = header.get("store_identity")
+    if expected_store_identity is not None:
+        actual_store_identity = artifacts.store_identity()
+        if actual_store_identity != expected_store_identity:
+            raise ValueError(
+                "standalone artifact store identity verification failed "
+                f"expected={expected_store_identity} actual={actual_store_identity}"
+            )
+    return artifacts
 
 
 class StandaloneCompiledArtifacts:
@@ -692,7 +781,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 returns_tuple_map,
             ) = compiled_fn.vllm_backend.collect_standalone_compile_artifacts()
             vllm_config = getattr(compiled_fn.vllm_backend, "vllm_config", None)
-            state["standalone_compile_artifacts"] = standalone_compile_artifacts
+            state["standalone_compile_artifact_store_bundle"] = (
+                pack_standalone_artifact_store_bundle(standalone_compile_artifacts)
+            )
             standalone_compile_artifact_manifest = (
                 standalone_compile_artifacts.manifest_summary()
             )
@@ -744,7 +835,16 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         state = pickle.loads(payload)
         fake_mode = FakeTensorMode(shape_env=ShapeEnv())
 
-        standalone_compile_artifacts = state.pop("standalone_compile_artifacts", None)
+        standalone_compile_artifact_store_bundle = state.pop(
+            "standalone_compile_artifact_store_bundle", None
+        )
+        standalone_compile_artifacts = (
+            unpack_standalone_artifact_store_bundle(
+                standalone_compile_artifact_store_bundle
+            )
+            if standalone_compile_artifact_store_bundle is not None
+            else None
+        )
         sidecar_metadata = sidecar or {}
         standalone_compile_artifact_manifest = sidecar_metadata.get(
             "artifact_manifest"

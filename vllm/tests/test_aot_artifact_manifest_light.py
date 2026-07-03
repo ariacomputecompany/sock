@@ -585,9 +585,12 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         },
     }
     assert (
-        state["standalone_compile_artifacts"].manifest_summary()
+        caching.unpack_standalone_artifact_store_bundle(
+            state["standalone_compile_artifact_store_bundle"]
+        ).manifest_summary()
         == artifacts.manifest_summary()
     )
+    assert "standalone_compile_artifacts" not in state
     assert "standalone_compile_artifact_manifest" not in state
     assert "standalone_compile_artifact_store_identity" not in state
     assert "standalone_compile_artifact_compatibility" not in state
@@ -1203,6 +1206,21 @@ def test_compile_artifact_bundle_passthrough_without_sidecar() -> None:
 
     assert caching.pack_serialized_compile_artifact_bundle(payload, None) == payload
     assert caching.unpack_serialized_compile_artifact_bundle(payload) == (None, payload)
+
+
+def test_standalone_artifact_store_bundle_roundtrip() -> None:
+    caching, _ = _load_caching_module()
+    artifacts = caching.StandaloneCompiledArtifacts()
+    artifacts.insert("block0", "shape0", b"payload0")
+    artifacts.insert("block1", "shape1", b"payload1")
+
+    bundle = caching.pack_standalone_artifact_store_bundle(artifacts)
+    restored = caching.unpack_standalone_artifact_store_bundle(bundle)
+
+    assert restored.manifest_summary() == artifacts.manifest_summary()
+    assert restored.store_identity() == artifacts.store_identity()
+    assert restored.get("block0", "shape0") == b"payload0"
+    assert restored.get("block1", "shape1") == b"payload1"
 
 
 def test_no_new_compile_verification_tracks_counter_deltas() -> None:

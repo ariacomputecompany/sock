@@ -398,7 +398,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 ## 13. AOT Compile Artifact Improvements
 
-- [ ] Evaluate a more mmap-friendly or streaming-friendly payload format for compiled artifacts.
 - [ ] Keep opaque pickled Python state off the critical path for the common cache-hit case.
 - [ ] Measure duplicate-load cost across ranks and processes, not just duplicate artifact bytes on disk.
 - [ ] Distinguish artifact-store identity from rank-local placement so one compiled payload can back multiple rank-local manifests.
