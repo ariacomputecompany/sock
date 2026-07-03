@@ -410,7 +410,6 @@ They should be executed according to the ranked lane order above, not by raw sec
   - backend/toolchain identity
   - patch profile
   - shape envelope
-- [ ] Make artifact invalidation reasons explainable.
 - [ ] Verify “no new compile” against recorded traces.
 - [ ] Reduce startup-time dependence on Python pickling and `GraphPickler` roundtrips where possible.
 - [ ] Reduce artifact-load overhead from Python object reconstruction during warm start.

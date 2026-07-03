@@ -315,6 +315,7 @@ def test_artifact_manifest_verification_detects_mismatch() -> None:
     verified = artifacts.verify_manifest(manifest)
 
     assert verified["ok"] is True
+    assert verified["reasons"] == []
     assert verified["expected_store_identity"] == artifacts.store_identity()
     assert verified["actual_store_identity"] == artifacts.store_identity()
 
@@ -323,8 +324,49 @@ def test_artifact_manifest_verification_detects_mismatch() -> None:
     corrupted = artifacts.verify_manifest(corrupted_manifest)
 
     assert corrupted["ok"] is False
+    assert corrupted["reasons"] == ["total_bytes_mismatch"]
     assert corrupted["expected_store_identity"] == artifacts.store_identity()
     assert corrupted["actual_store_identity"] == artifacts.store_identity()
+
+
+def test_compatibility_drift_explains_mismatches() -> None:
+    caching, _ = _load_caching_module()
+
+    expected = {
+        "schema_version": 1,
+        "hash_algorithm": "sha256",
+        "python_version": "3.13.0",
+        "torch_version": "2.9.0-light",
+        "mega_aot_enabled": False,
+        "env": {"schema_version": 1},
+        "vllm_config_hash": "cfg-a",
+    }
+    actual = {
+        "schema_version": 1,
+        "hash_algorithm": "sha256",
+        "python_version": "3.13.1",
+        "torch_version": "2.9.0-light",
+        "mega_aot_enabled": True,
+        "env": {"schema_version": 2},
+        "vllm_config_hash": "cfg-b",
+    }
+
+    drift = caching.explain_compatibility_drift(expected, actual)
+    assert drift == {
+        "ok": False,
+        "reasons": [
+            "compatibility_env_mismatch",
+            "compatibility_mega_aot_enabled_mismatch",
+            "compatibility_python_version_mismatch",
+            "compatibility_vllm_config_hash_mismatch",
+        ],
+        "mismatches": [
+            "env",
+            "mega_aot_enabled",
+            "python_version",
+            "vllm_config_hash",
+        ],
+    }
 
 
 def test_load_report_marks_already_loaded_fast_path() -> None:

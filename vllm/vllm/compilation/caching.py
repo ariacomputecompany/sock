@@ -181,16 +181,22 @@ class StandaloneCompiledArtifacts:
         actual_entries = actual.get("entries")
         expected_stores = expected.get("stores")
         actual_stores = actual.get("stores")
+        reasons = []
+        if expected.get("schema_version") != actual.get("schema_version"):
+            reasons.append("schema_version_mismatch")
+        if expected.get("entry_count") != actual.get("entry_count"):
+            reasons.append("entry_count_mismatch")
+        if expected.get("unique_artifact_count") != actual.get("unique_artifact_count"):
+            reasons.append("unique_artifact_count_mismatch")
+        if expected.get("total_bytes") != actual.get("total_bytes"):
+            reasons.append("total_bytes_mismatch")
+        if expected_entries != actual_entries:
+            reasons.append("entry_manifest_mismatch")
+        if expected_stores != actual_stores:
+            reasons.append("artifact_store_mismatch")
         result = {
-            "ok": (
-                expected.get("schema_version") == actual.get("schema_version")
-                and expected.get("entry_count") == actual.get("entry_count")
-                and expected.get("unique_artifact_count")
-                == actual.get("unique_artifact_count")
-                and expected.get("total_bytes") == actual.get("total_bytes")
-                and expected_entries == actual_entries
-                and expected_stores == actual_stores
-            ),
+            "ok": not reasons,
+            "reasons": reasons,
             "expected_store_identity": expected.get("store_identity"),
             "actual_store_identity": self.store_identity(),
             "entry_count": actual.get("entry_count"),
@@ -472,6 +478,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
 
         if envs.VLLM_USE_MEGA_AOT_ARTIFACT:
             assert standalone_compile_artifacts is not None
+            current_vllm_config = get_current_vllm_config()
             submod_names = standalone_compile_artifacts.submodule_names()
             num_submods = len(submod_names)
             num_artifacts = standalone_compile_artifacts.num_artifacts()
@@ -486,11 +493,18 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 if not verification["ok"]:
                     raise ValueError(
                         "Standalone compile artifact manifest verification failed: "
+                        f"reasons={verification['reasons']} "
                         f"expected_store_identity={verification['expected_store_identity']} "
                         f"actual_store_identity={verification['actual_store_identity']}"
                     )
+                compatibility_drift = explain_compatibility_drift(
+                    standalone_compile_artifact_compatibility,
+                    build_standalone_artifact_compatibility_manifest(
+                        current_vllm_config
+                    ),
+                )
                 logger.info(
-                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s reuse=%s compatibility=%s",
+                    "loading standalone compile artifacts. entries=%d unique_artifacts=%d store_identity=%s reuse=%s compatibility=%s compatibility_drift=%s",
                     standalone_compile_artifact_manifest.get("entry_count", 0),
                     standalone_compile_artifact_manifest.get(
                         "unique_artifact_count", 0
@@ -514,13 +528,24 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                         if standalone_compile_artifact_compatibility is not None
                         else "<unknown>"
                     ),
+                    json.dumps(
+                        compatibility_drift,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
                 )
+                if not compatibility_drift["ok"]:
+                    logger.warning(
+                        "standalone compile artifact compatibility drift detected. reasons=%s mismatches=%s",
+                        compatibility_drift["reasons"],
+                        compatibility_drift["mismatches"],
+                    )
 
             with functorch_ctx:
                 fn = reconstruct_serializable_fn_from_mega_artifact(
                     state=state,
                     standalone_compile_artifacts=standalone_compile_artifacts,
-                    vllm_config=get_current_vllm_config(),
+                    vllm_config=current_vllm_config,
                     sym_shape_indices_map=sym_shape_indices_map,
                     returns_tuple_map=returns_tuple_map,
                     fake_mode=fake_mode,
@@ -807,6 +832,30 @@ def build_standalone_artifact_compatibility_manifest(
         "vllm_config_hash": (
             vllm_config.compute_hash() if vllm_config is not None else None
         ),
+    }
+
+
+def explain_compatibility_drift(
+    expected: dict[str, object] | None,
+    actual: dict[str, object] | None,
+) -> dict[str, object]:
+    if expected is None or actual is None:
+        return {
+            "ok": False,
+            "reasons": ["compatibility_metadata_missing"],
+            "mismatches": [],
+        }
+
+    mismatches = []
+    for key in sorted(set(expected) | set(actual)):
+        if expected.get(key) != actual.get(key):
+            mismatches.append(key)
+
+    reasons = [f"compatibility_{key}_mismatch" for key in mismatches]
+    return {
+        "ok": not mismatches,
+        "reasons": reasons,
+        "mismatches": mismatches,
     }
 
 
