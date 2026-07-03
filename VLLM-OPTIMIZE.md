@@ -184,7 +184,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 ## 1. Canonical Compile Identity
 
-- [ ] Ensure every compile artifact, warmup artifact, cudagraph artifact, and autotune artifact derives from this canonical plan identity.
 - [ ] Align this work with the tinygrad-inspired structural interning guidance in `/Users/deepsaint/Desktop/sock/TINYGRADREF.md`.
 
 ## 2. Compile-Affecting Input Cleanup

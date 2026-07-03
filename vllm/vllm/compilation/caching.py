@@ -2155,6 +2155,44 @@ def build_autotune_cache_manifest(
     }
 
 
+def build_warmup_materialization_manifest(
+    *,
+    local_cache_dir: str | None,
+    compile_replay_manifest: dict[str, object] | None,
+    worker_execution_mode: str,
+    warmup_sizes: list[int] | None,
+    cudagraph_capture_sizes: list[int] | None,
+    cuda_graph_memory_bytes: int | None,
+    stages: list[dict[str, object]],
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+    provenance = build_derived_compile_artifact_provenance(compile_replay_manifest)
+    normalized_stages = _json_ready(stages)
+    executed_stage_count = sum(
+        1
+        for item in normalized_stages
+        if isinstance(item, dict) and item.get("status") == "executed"
+    )
+    return {
+        "schema_version": 1,
+        "payload_kind": "vllm_warmup_materialization_manifest",
+        "owning_local_cache_dir": local_cache_dir,
+        "worker_execution_mode": worker_execution_mode,
+        "root_identity": provenance["root_identity"],
+        "replay_plan": provenance["replay_plan"],
+        "env_identity": provenance["env_identity"],
+        "canonical_compile_plan": provenance["canonical_compile_plan"],
+        "canonical_compile_plan_id": provenance["canonical_compile_plan_id"],
+        "warmup_sizes": list(warmup_sizes or []),
+        "cudagraph_capture_sizes": list(cudagraph_capture_sizes or []),
+        "cuda_graph_memory_bytes": cuda_graph_memory_bytes,
+        "stage_count": len(normalized_stages),
+        "executed_stage_count": executed_stage_count,
+        "stages": normalized_stages,
+    }
+
+
 def write_autotune_cache_manifest(
     *,
     local_cache_dir: str | None,
@@ -2186,6 +2224,38 @@ def write_autotune_cache_manifest(
     return manifest
 
 
+def write_warmup_materialization_manifest(
+    *,
+    local_cache_dir: str | None,
+    compile_replay_manifest: dict[str, object] | None,
+    worker_execution_mode: str,
+    warmup_sizes: list[int] | None,
+    cudagraph_capture_sizes: list[int] | None,
+    cuda_graph_memory_bytes: int | None,
+    stages: list[dict[str, object]],
+) -> dict[str, object] | None:
+    manifest = build_warmup_materialization_manifest(
+        local_cache_dir=local_cache_dir,
+        compile_replay_manifest=compile_replay_manifest,
+        worker_execution_mode=worker_execution_mode,
+        warmup_sizes=warmup_sizes,
+        cudagraph_capture_sizes=cudagraph_capture_sizes,
+        cuda_graph_memory_bytes=cuda_graph_memory_bytes,
+        stages=stages,
+    )
+    if manifest is None:
+        return None
+    meta_path = Path(local_cache_dir) / "warmup_materialization_manifest.json"
+    meta_path.write_text(
+        json.dumps(
+            manifest,
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return manifest
+
+
 def load_autotune_cache_manifest(
     base_cache_dir: str | None,
 ) -> dict[str, object] | None:
@@ -2198,6 +2268,23 @@ def load_autotune_cache_manifest(
         return json.loads(meta_path.read_text())
     except Exception:
         logger.warning("could not read autotune cache manifest from %s", meta_path)
+        return None
+
+
+def load_warmup_materialization_manifest(
+    local_cache_dir: str | None,
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+    meta_path = Path(local_cache_dir) / "warmup_materialization_manifest.json"
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text())
+    except Exception:
+        logger.warning(
+            "could not read warmup materialization manifest from %s", meta_path
+        )
         return None
 
 

@@ -723,6 +723,7 @@ class Worker(WorkerBase):
     @instrument(span_name="Warmup (GPU)")
     def compile_or_warm_up_model(self) -> CompilationTimes:
         warmup_sizes: list[int] = []
+        warmup_stages: list[dict[str, object]] = []
 
         if self.vllm_config.compilation_config.mode == CompilationMode.VLLM_COMPILE:
             # warm up sizes that are not in cudagraph capture sizes,
@@ -751,15 +752,37 @@ class Worker(WorkerBase):
         for size in sorted(warmup_sizes, reverse=True):
             logger.info("Compile and warming up model for size %d", size)
             self.model_runner._dummy_run(size, skip_eplb=True, remove_lora=False)
+        warmup_stages.append(
+            {
+                "stage_kind": "compile_warmup",
+                "status": "executed" if warmup_sizes else "skipped",
+                "warmup_size_count": len(warmup_sizes),
+                "warmup_sizes": list(sorted(warmup_sizes, reverse=True)),
+            }
+        )
         self.model_runner.maybe_remove_all_loras(self.model_runner.lora_config)
 
         # Warmup and tune the kernels used during model execution before
         # cuda graph capture.
         kernel_warmup(self)
+        warmup_stages.append(
+            {
+                "stage_kind": "kernel_warmup",
+                "status": "executed",
+            }
+        )
 
         cuda_graph_memory_bytes = 0
         if not self.model_config.enforce_eager:
             cuda_graph_memory_bytes = self.model_runner.capture_model()
+        warmup_stages.append(
+            {
+                "stage_kind": "cudagraph_capture",
+                "status": "skipped" if self.model_config.enforce_eager else "executed",
+                "runtime_mode": self.vllm_config.compilation_config.cudagraph_mode.name,
+                "cuda_graph_memory_bytes": cuda_graph_memory_bytes,
+            }
+        )
 
         # Compare actual vs estimated CUDA graph memory (if we did profiling)
         if (
@@ -837,6 +860,13 @@ class Worker(WorkerBase):
         if self.use_v2_model_runner:
             # V2: Run full execute_model + sample_tokens to JIT compile triton kernels.
             warmup_kernels(self.model_runner, self.execute_model, self.sample_tokens)
+            warmup_stages.append(
+                {
+                    "stage_kind": "runtime_kernel_materialization",
+                    "status": "executed",
+                    "worker_execution_mode": "v2",
+                }
+            )
         elif get_pp_group().is_last_rank:
             # V1: Warm up sampler and preallocate memory buffer for logits and other
             # sampling related tensors of max possible shape to avoid memory
@@ -858,6 +888,22 @@ class Worker(WorkerBase):
                 self.model_runner._dummy_pooler_run(hidden_states)
             else:
                 self.model_runner._dummy_sampler_run(hidden_states=last_hidden_states)
+            warmup_stages.append(
+                {
+                    "stage_kind": "runtime_kernel_materialization",
+                    "status": "executed",
+                    "worker_execution_mode": "v1_last_pp_rank",
+                    "max_num_reqs": max_num_reqs,
+                }
+            )
+        else:
+            warmup_stages.append(
+                {
+                    "stage_kind": "runtime_kernel_materialization",
+                    "status": "skipped",
+                    "worker_execution_mode": "v1_non_last_pp_rank",
+                }
+            )
 
         # Reset the seed to ensure that the random state is not affected by
         # the model initialization and profiling.
@@ -872,6 +918,51 @@ class Worker(WorkerBase):
             )
 
             trigger_inductor_lazy_init(self.device)
+            warmup_stages.append(
+                {
+                    "stage_kind": "inductor_lazy_init",
+                    "status": "executed",
+                    "backend": c_config.backend,
+                }
+            )
+        else:
+            warmup_stages.append(
+                {
+                    "stage_kind": "inductor_lazy_init",
+                    "status": "skipped",
+                    "backend": c_config.backend,
+                }
+            )
+
+        local_cache_dir = getattr(c_config, "local_cache_dir", None)
+        if local_cache_dir:
+            try:
+                from vllm.compilation.caching import (
+                    load_compile_replay_manifest,
+                    write_warmup_materialization_manifest,
+                )
+
+                write_warmup_materialization_manifest(
+                    local_cache_dir=local_cache_dir,
+                    compile_replay_manifest=load_compile_replay_manifest(
+                        local_cache_dir
+                    ),
+                    worker_execution_mode=(
+                        "v2" if self.use_v2_model_runner else "v1"
+                    ),
+                    warmup_sizes=warmup_sizes,
+                    cudagraph_capture_sizes=(
+                        c_config.cudagraph_capture_sizes or []
+                    ),
+                    cuda_graph_memory_bytes=cuda_graph_memory_bytes,
+                    stages=warmup_stages,
+                )
+            except Exception:
+                logger.warning(
+                    "Could not write warmup materialization manifest at %s",
+                    local_cache_dir,
+                    exc_info=True,
+                )
 
         # All warmup is done — start monitoring for unexpected JIT
         # compilations that would cause latency spikes during inference.

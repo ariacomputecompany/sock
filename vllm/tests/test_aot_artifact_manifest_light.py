@@ -2108,6 +2108,168 @@ def test_autotune_cache_manifest_roundtrip() -> None:
         manifest["replay_plan"]["replay_plan_id"]
         == canonical_compile_plan["verification_plan_id"]
     )
+    assert manifest["env_identity"] == env_identity
+    assert manifest["canonical_compile_plan"] == canonical_compile_plan
+    assert (
+        manifest["canonical_compile_plan_id"]
+        == canonical_compile_plan["canonical_compile_plan_id"]
+    )
+
+
+def test_warmup_materialization_manifest_roundtrip() -> None:
+    caching, _ = _load_caching_module()
+    source_fingerprint = caching.build_compile_source_fingerprint_from_content(
+        {
+            "computation_graph.py": "def forward(x):\n    return x + 1\n",
+            "vllm_compile_cache.py": "compiled = True\n",
+        }
+    )
+    compile_surface_fingerprint = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x) -> add",
+        placeholder_names=["x"],
+        node_targets=["placeholder:x", "call_function:add", "output:output"],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
+    env_identity = {
+        "schema_version": 1,
+        "declared_compile_factors": {"A": "B"},
+        "ambient_compile_factors": {
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES": None,
+        },
+        "declared_factor_count": 1,
+        "ambient_factor_count": 1,
+        "declared_factor_digest": "declared-digest",
+        "ambient_factor_digest": "ambient-digest",
+        "combined_factor_digest": "combined-digest",
+    }
+    canonical_compile_plan = caching.build_canonical_compile_plan(
+        env_factors={"A": "B"},
+        env_identity=env_identity,
+        config_hash="cfg-from-file",
+        compiler_hash="compiler-from-file",
+        source_fingerprint=source_fingerprint,
+        compile_surface_fingerprint=compile_surface_fingerprint,
+        backend_identity={
+            "backend_class": "SimpleNamespace",
+            "prefix": "unit-prefix",
+            "is_encoder": False,
+            "compiler_name": "inductor-light",
+        },
+        cache_enabled=True,
+        cache_namespace_prefix="unit-prefix",
+        rank=0,
+        data_parallel_rank=0,
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        graph_artifact_store = caching.build_graph_artifact_store_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
+                "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
+            },
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
+        compile_replay_manifest = caching.build_compile_replay_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+                "env_identity": env_identity,
+                "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
+            },
+            graph_artifact_store=graph_artifact_store,
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
+        manifest = caching.write_warmup_materialization_manifest(
+            local_cache_dir=tmpdir,
+            compile_replay_manifest=compile_replay_manifest,
+            worker_execution_mode="v2",
+            warmup_sizes=[64, 16],
+            cudagraph_capture_sizes=[1, 8],
+            cuda_graph_memory_bytes=4096,
+            stages=[
+                {
+                    "stage_kind": "compile_warmup",
+                    "status": "executed",
+                    "warmup_size_count": 2,
+                    "warmup_sizes": [64, 16],
+                },
+                {
+                    "stage_kind": "kernel_warmup",
+                    "status": "executed",
+                },
+                {
+                    "stage_kind": "cudagraph_capture",
+                    "status": "executed",
+                    "runtime_mode": "FULL",
+                    "cuda_graph_memory_bytes": 4096,
+                },
+                {
+                    "stage_kind": "runtime_kernel_materialization",
+                    "status": "executed",
+                    "worker_execution_mode": "v2",
+                },
+                {
+                    "stage_kind": "inductor_lazy_init",
+                    "status": "executed",
+                    "backend": "inductor",
+                },
+            ],
+        )
+        reloaded = caching.load_warmup_materialization_manifest(tmpdir)
+
+    assert reloaded == manifest
+    assert manifest["payload_kind"] == "vllm_warmup_materialization_manifest"
+    assert manifest["worker_execution_mode"] == "v2"
+    assert manifest["warmup_sizes"] == [64, 16]
+    assert manifest["cudagraph_capture_sizes"] == [1, 8]
+    assert manifest["cuda_graph_memory_bytes"] == 4096
+    assert manifest["stage_count"] == 5
+    assert manifest["executed_stage_count"] == 5
+    assert manifest["env_identity"] == env_identity
+    assert manifest["canonical_compile_plan"] == canonical_compile_plan
+    assert (
+        manifest["canonical_compile_plan_id"]
+        == canonical_compile_plan["canonical_compile_plan_id"]
+    )
+    assert (
+        manifest["root_identity"]["root_plan_id"]
+        == canonical_compile_plan["canonical_compile_plan_id"]
+    )
+    assert (
+        manifest["replay_plan"]["replay_plan_id"]
+        == canonical_compile_plan["verification_plan_id"]
+    )
 
 
 def test_canonical_compile_plan_is_structural_and_renderable() -> None:
