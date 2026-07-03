@@ -1,9 +1,10 @@
 use sock_core::{
     AcceleratorVendor, BackendFamily, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer,
     CoveragePlane, DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode,
-    GuaranteeLevel, GuaranteeTarget, ModelRef, OperatingSystem, OptimizationLevel,
-    OptimizationPolicy, RawRequest, ReplayBundle, RequestedEnvironment, RewriteTraceDocument,
-    ShapePoint, ShapePolicy, ShapeRange, TargetEngine, WarmupPolicy,
+    GuaranteeLevel, GuaranteeTarget, MaterializationExecutionReport, ModelRef, OperatingSystem,
+    OptimizationExplainDocument, OptimizationLevel, OptimizationPolicy, RawRequest, ReplayBundle,
+    ReplayProofDocument, RequestedEnvironment, RewriteTraceDocument, ShapePoint, ShapePolicy,
+    ShapeRange, TargetEngine, WarmupPolicy,
 };
 use sock_engine::{
     BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome, build_soc_plan_document,
@@ -163,11 +164,18 @@ pub fn rewrite_trace_for(outcome: &PlanningOutcome) -> RewriteTraceDocument {
 }
 
 #[must_use]
-pub fn replay_bundle(outcome: &PlanningOutcome, scope: &BuildScope) -> ReplayBundle {
+pub fn replay_bundle(
+    outcome: &PlanningOutcome,
+    scope: &BuildScope,
+    materialization_report: MaterializationExecutionReport,
+) -> ReplayBundle {
     let vllm_integration =
         build_vllm_integration_document(outcome).expect("vllm integration document");
     let soc_plan = build_soc_plan_document(outcome, scope, &vllm_integration);
-    let optimization_explain = sock_core::OptimizationExplainDocument::from_plan(&outcome.plan);
+    let optimization_explain = OptimizationExplainDocument::from_plan(&outcome.plan);
+    let replay_proof =
+        ReplayProofDocument::from_plan_and_materialization(&outcome.plan, &materialization_report)
+            .expect("replay proof");
     let vllm_entrypoints = build_vllm_entrypoint_document(outcome, &vllm_integration)
         .expect("vllm entrypoint document");
     ReplayBundle {
@@ -177,6 +185,8 @@ pub fn replay_bundle(outcome: &PlanningOutcome, scope: &BuildScope) -> ReplayBun
         diagnostics: diagnostics_for(outcome),
         rewrite_trace: rewrite_trace_for(outcome),
         optimization_explain,
+        materialization_report,
+        replay_proof,
         vllm_integration,
         soc_plan,
         vllm_entrypoints,

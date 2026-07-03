@@ -1,6 +1,7 @@
 use crate::{
-    DiagnosticsDocument, HazardClass, OptimizationExplainDocument, ResolvedBuildPlan,
-    RewriteTraceDocument, SocPlanDocument, VerificationReport,
+    DiagnosticsDocument, HazardClass, MaterializationExecutionReport, OptimizationExplainDocument,
+    ReplayProofDocument, ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument,
+    VerificationReport,
 };
 
 #[must_use]
@@ -78,6 +79,59 @@ pub fn render_optimization_explain(document: &OptimizationExplainDocument) -> St
             action.category, action.effect, action.reason
         ));
     }
+    out
+}
+
+#[must_use]
+pub fn render_replay_bundle_explain(
+    plan: &ResolvedBuildPlan,
+    optimization_explain: &OptimizationExplainDocument,
+    verification_report: &VerificationReport,
+    diagnostics: &DiagnosticsDocument,
+    materialization: &MaterializationExecutionReport,
+    replay_proof: &ReplayProofDocument,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&render_plan_summary(plan));
+    out.push_str(&render_optimization_explain(optimization_explain));
+    out.push_str("replay proof:\n");
+    out.push_str(&format!(
+        "  - compile_closure={} warmup_closure={} autotune_closure={} cache_compatibility={} topology_reuse={}\n",
+        replay_proof.compile_closure_verified,
+        replay_proof.warmup_closure_verified,
+        replay_proof.autotune_closure_verified,
+        replay_proof.cache_artifact_compatibility_verified,
+        replay_proof.topology_scoped_reuse_verified
+    ));
+    out.push_str(&format!(
+        "  - realization_mode={} result_artifact_identity={} realization_identity={}\n",
+        replay_proof.realization_mode.as_str(),
+        replay_proof.result_artifact_identity,
+        replay_proof.realization_identity
+    ));
+    out.push_str(&format!(
+        "  - compile_artifacts={} warmup_proofs={} autotune_proofs={}\n",
+        replay_proof.compile_closure_artifacts.join("|"),
+        replay_proof.warmup_closure_proofs.join("|"),
+        if replay_proof.autotune_closure_proofs.is_empty() {
+            "none".to_owned()
+        } else {
+            replay_proof.autotune_closure_proofs.join("|")
+        }
+    ));
+    out.push_str(&format!(
+        "  - materialization executed={} reused={} closure_outcome={:?}\n",
+        materialization.executed_artifact_count,
+        materialization.reused_artifact_count,
+        materialization.closure_outcome
+    ));
+    out.push_str(&format!(
+        "  - contradiction_contract={}\n",
+        replay_proof.contradiction_contract
+    ));
+    out.push_str(&render_verification_report(verification_report));
+    out.push_str("diagnostics:\n");
+    out.push_str(&render_diagnostics(diagnostics));
     out
 }
 

@@ -9,8 +9,9 @@ use thiserror::Error;
 
 use crate::{
     ArtifactClosure, ArtifactManifestEntry, CanonicalError, CanonicalHash, DiagnosticsDocument,
-    OptimizationExplainDocument, ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument,
-    VerificationReport, VllmEntrypointDocument, VllmIntegrationDocument, canonical_json,
+    MaterializationExecutionReport, OptimizationExplainDocument, ReplayProofDocument,
+    ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument, VerificationReport,
+    VllmEntrypointDocument, VllmIntegrationDocument, canonical_json, render_replay_bundle_explain,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +37,8 @@ pub struct ReplayBundle {
     pub diagnostics: DiagnosticsDocument,
     pub rewrite_trace: RewriteTraceDocument,
     pub optimization_explain: OptimizationExplainDocument,
+    pub materialization_report: MaterializationExecutionReport,
+    pub replay_proof: ReplayProofDocument,
     pub vllm_integration: VllmIntegrationDocument,
     pub soc_plan: SocPlanDocument,
     pub vllm_entrypoints: VllmEntrypointDocument,
@@ -55,6 +58,8 @@ pub enum ReplayBundleError {
     IdentityMismatch { document: String },
     #[error("verification report does not match the loaded build plan")]
     VerificationMismatch,
+    #[error("replay proof does not match the loaded build plan and materialization report")]
+    ReplayProofMismatch,
 }
 
 impl ArtifactManifestDocument {
@@ -96,6 +101,11 @@ impl ReplayBundle {
                 canonical_json(&self.optimization_explain)?,
             ),
             (
+                "materialization_report.json",
+                canonical_json(&self.materialization_report)?,
+            ),
+            ("replay_proof.json", canonical_json(&self.replay_proof)?),
+            (
                 "vllm_integration.json",
                 canonical_json(&self.vllm_integration)?,
             ),
@@ -110,6 +120,16 @@ impl ReplayBundle {
             fs::write(dir.join(name), content.as_bytes())?;
             file_digests.insert(name.to_owned(), digest(content.as_bytes()));
         }
+        let explain_text = render_replay_bundle_explain(
+            &self.build_plan,
+            &self.optimization_explain,
+            &self.verification_report,
+            &self.diagnostics,
+            &self.materialization_report,
+            &self.replay_proof,
+        );
+        fs::write(dir.join("explain.txt"), explain_text.as_bytes())?;
+        file_digests.insert("explain.txt".to_owned(), digest(explain_text.as_bytes()));
         let replay_script = self.replay_script();
         fs::write(dir.join("replay.sh"), replay_script.as_bytes())?;
         file_digests.insert("replay.sh".to_owned(), digest(replay_script.as_bytes()));
@@ -155,6 +175,11 @@ impl ReplayBundle {
             serde_json::from_str(&fs::read_to_string(dir.join("rewrite_trace.json"))?)?;
         let optimization_explain: OptimizationExplainDocument =
             serde_json::from_str(&fs::read_to_string(dir.join("optimization_explain.json"))?)?;
+        let materialization_report: MaterializationExecutionReport = serde_json::from_str(
+            &fs::read_to_string(dir.join("materialization_report.json"))?,
+        )?;
+        let replay_proof: ReplayProofDocument =
+            serde_json::from_str(&fs::read_to_string(dir.join("replay_proof.json"))?)?;
         let vllm_integration: VllmIntegrationDocument =
             serde_json::from_str(&fs::read_to_string(dir.join("vllm_integration.json"))?)?;
         let soc_plan: SocPlanDocument =
@@ -188,6 +213,16 @@ impl ReplayBundle {
                 document: "optimization_explain.json".to_owned(),
             });
         }
+        if materialization_report.plan_identity != plan_identity {
+            return Err(ReplayBundleError::IdentityMismatch {
+                document: "materialization_report.json".to_owned(),
+            });
+        }
+        if replay_proof.plan_identity != plan_identity {
+            return Err(ReplayBundleError::IdentityMismatch {
+                document: "replay_proof.json".to_owned(),
+            });
+        }
         if vllm_integration.plan_identity != plan_identity {
             return Err(ReplayBundleError::IdentityMismatch {
                 document: "vllm_integration.json".to_owned(),
@@ -206,6 +241,11 @@ impl ReplayBundle {
         if build_plan.validate() != verification_report {
             return Err(ReplayBundleError::VerificationMismatch);
         }
+        if ReplayProofDocument::from_plan_and_materialization(&build_plan, &materialization_report)?
+            != replay_proof
+        {
+            return Err(ReplayBundleError::ReplayProofMismatch);
+        }
 
         Ok(Self {
             build_plan,
@@ -221,6 +261,8 @@ impl ReplayBundle {
             diagnostics,
             rewrite_trace,
             optimization_explain,
+            materialization_report,
+            replay_proof,
             vllm_integration,
             soc_plan,
             vllm_entrypoints,
@@ -245,14 +287,18 @@ mod tests {
         ConfigEntry, ConfigLayer, CoveragePlane, CoverageState, CoverageWitness,
         DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode, FanoutStrategy,
         GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel, GuaranteeTarget,
-        MaterializationGraph, MaterializationNode, MaterializationNodeKind, MaterializationWave,
-        ModelRef, NodeExecutionContract, OptimizationEnvelope, OptimizationLevel,
+        MaterializationDisposition, MaterializationExecutionReport, MaterializationGraph,
+        MaterializationNode, MaterializationNodeKind, MaterializationNodeRecord,
+        MaterializationWave, MaterializationWaveRecord, MaterializedArtifactRecord, ModelRef,
+        NodeExecutionContract, ObservedReadinessLevel, OptimizationEnvelope, OptimizationLevel,
         OptimizationPolicy, PortabilityFingerprint, QueueDiscipline, QueueKind, RangeIntent,
-        RankDisposition, RawRequest, RequestedEnvironment, RewritePassContract, RewritePhase,
-        RewriteTraceDocument, RuntimeJitEvidence, RuntimeRoi, SchemaVersion, ServePhase,
-        ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapePolicy, ShapeRange, SourceEvidence,
-        StructuralIdentity, TargetEngine, WarmupContradiction, WarmupCoverageProof,
-        WarmupObligation, WarmupPolicy, WaveEstimate, WaveExecutionContract, canonical_hash,
+        RankDisposition, RawRequest, ReadinessObservation, ReplayProofDocument,
+        RequestedEnvironment, RewritePassContract, RewritePhase, RewriteTraceDocument,
+        RuntimeJitEvidence, RuntimeJitObservation, RuntimeJitObservationStatus, RuntimeRoi,
+        SchemaVersion, ServePhase, ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapePolicy,
+        ShapeRange, SourceAnchor, SourceEvidence, StartupClosureOutcome, StructuralIdentity,
+        TargetEngine, WarmupContradiction, WarmupCoverageProof, WarmupObligation, WarmupPolicy,
+        WaveEstimate, WaveExecutionContract, canonical_hash,
     };
 
     use super::{ReplayBundle, ReplayBundleError, ReplayBundleMetadata, digest};
@@ -775,6 +821,113 @@ mod tests {
             passes: rewrite_trace,
         };
         let optimization_explain = crate::OptimizationExplainDocument::from_plan(&plan);
+        let materialization_report = MaterializationExecutionReport {
+            schema_version: SchemaVersion::current(),
+            plan_identity: plan.structural_identity.plan_identity.clone(),
+            artifact_root: "artifacts".to_owned(),
+            cache_root: "/tmp/cache".to_owned(),
+            node_root: "materialization/nodes".to_owned(),
+            wave_root: "materialization/waves".to_owned(),
+            artifact_count: 1,
+            executed_artifact_count: 1,
+            reused_artifact_count: 0,
+            wall_clock_ms: 2500,
+            total_bytes_written: 24_000_000,
+            total_compile_ms: 2500,
+            total_transfer_ms: 0,
+            total_rebuild_ms: 2500,
+            unique_artifact_count: 1,
+            duplicate_artifact_count: 0,
+            unique_artifact_bytes: 24_000_000,
+            duplicate_artifact_bytes: 0,
+            artifact_deserialization_ms: 0,
+            duplicate_rank_local_compile_count: 0,
+            duplicate_rank_local_load_count: 0,
+            closure_expansion: crate::ClosureExpansionRecord {
+                requested_regions: vec!["prefill_attention".to_owned()],
+                requested_artifact_scopes: vec!["prefill_attention".to_owned()],
+                requested_backend_families: vec!["flashinfer".to_owned()],
+                requested_cache_namespaces: vec!["compile-cache".to_owned()],
+                requested_warmup_scopes: vec!["prefill_attention".to_owned()],
+                expanded_regions: vec!["prefill_attention".to_owned()],
+                expanded_artifact_scopes: vec!["prefill_attention".to_owned()],
+                expanded_warmup_scopes: vec![
+                    "warmup:correctness-range:prefill_attention".to_owned(),
+                    "warmup:performance-range:decode_attention".to_owned(),
+                ],
+                deterministically_closed: true,
+            },
+            closure_outcome: StartupClosureOutcome::FullCompileClosure,
+            readiness: ReadinessObservation {
+                requested_readiness: ObservedReadinessLevel::Correctness,
+                achieved_readiness: ObservedReadinessLevel::Correctness,
+                blocking_warmups_complete: true,
+                early_serve_frontier_complete: true,
+                deferred_warmups_complete: true,
+            },
+            runtime_jit_observations: vec![RuntimeJitObservation {
+                surface_name: "fixture".to_owned(),
+                status: RuntimeJitObservationStatus::Bounded,
+                observed_artifacts: vec!["prefill_attention".to_owned()],
+                observed_warmup_proofs: vec![
+                    "warmup:correctness-range:prefill_attention".to_owned(),
+                ],
+                contradiction_reasons: Vec::new(),
+            }],
+            verify_replay_compile_free: true,
+            verify_replay_status: crate::ValidationStatus::Passed,
+            artifacts: vec![MaterializedArtifactRecord {
+                storage_key: "fixture-storage-key".to_owned(),
+                manifest_identity: "flashinfer:CompiledGraph:prefill_attention".to_owned(),
+                scope: "prefill_attention".to_owned(),
+                class: ArtifactClass::CompiledGraph,
+                backend: BackendFamily::FlashInfer,
+                cache_namespace: "compile-cache".to_owned(),
+                invalidation_domain: "prefill_attention".to_owned(),
+                acquisition: ArtifactAcquisition::VendorPrebuilt,
+                rank_disposition: RankDisposition::Shared,
+                preferred_fanout_strategy: FanoutStrategy::BroadcastFromLeader,
+                disposition: MaterializationDisposition::Executed,
+                relative_path: "artifacts/fixture-storage-key/artifact.json".to_owned(),
+                cache_relative_path: "compile-cache/fixture-storage-key/artifact.json".to_owned(),
+                bytes_written: 24_000_000,
+                deserialization_ms: 0,
+                rank_count: 2,
+                compile_ms: 2500,
+                transfer_ms: 0,
+                rebuild_ms: 2500,
+                source_anchors: vec![SourceAnchor {
+                    file: "fixture.py".to_owned(),
+                    line: 1,
+                }],
+            }],
+            nodes: vec![MaterializationNodeRecord {
+                node_name: "warmup:correctness-range:prefill_attention".to_owned(),
+                wave: 3,
+                kind: crate::MaterializationNodeKind::Warmup,
+                queue: QueueKind::Warmup,
+                disposition: MaterializationDisposition::Executed,
+                dependency_nodes: vec!["artifact:compiled-graph:fixture".to_owned()],
+                outputs: vec!["coverage:correctness-range:prefill_attention".to_owned()],
+                relative_path: "materialization/nodes/warmup-correctness.json".to_owned(),
+                duration_ms: 10,
+                bytes_written: 0,
+            }],
+            waves: vec![MaterializationWaveRecord {
+                wave_name: "wave-3".to_owned(),
+                queue: QueueKind::Warmup,
+                discipline: QueueDiscipline::ParallelPerRank,
+                scheduling_mode: crate::MaterializationSchedulingMode::Parallel,
+                max_parallelism: 2,
+                node_names: vec!["warmup:correctness-range:prefill_attention".to_owned()],
+                relative_path: "materialization/waves/wave-3.json".to_owned(),
+                duration_ms: 10,
+                bytes_written: 0,
+            }],
+        };
+        let replay_proof =
+            ReplayProofDocument::from_plan_and_materialization(&plan, &materialization_report)
+                .expect("replay proof");
         let vllm_integration = crate::VllmIntegrationDocument {
             schema_version: SchemaVersion::current(),
             plan_identity: plan.structural_identity.plan_identity.clone(),
@@ -914,6 +1067,8 @@ mod tests {
             diagnostics,
             rewrite_trace,
             optimization_explain,
+            materialization_report,
+            replay_proof,
             vllm_integration,
             soc_plan,
             vllm_entrypoints,
@@ -931,6 +1086,8 @@ mod tests {
         assert_eq!(loaded.verification_report, bundle.verification_report);
         assert_eq!(loaded.diagnostics, bundle.diagnostics);
         assert_eq!(loaded.rewrite_trace, bundle.rewrite_trace);
+        assert_eq!(loaded.materialization_report, bundle.materialization_report);
+        assert_eq!(loaded.replay_proof, bundle.replay_proof);
         assert_eq!(loaded.vllm_integration, bundle.vllm_integration);
         assert_eq!(loaded.soc_plan, bundle.soc_plan);
         assert_eq!(loaded.vllm_entrypoints, bundle.vllm_entrypoints);
@@ -1067,5 +1224,46 @@ mod tests {
 
         let err = ReplayBundle::load_from(dir.path()).expect_err("backend widening should fail");
         assert!(matches!(err, ReplayBundleError::VerificationMismatch));
+    }
+
+    #[test]
+    fn replay_bundle_rejects_replay_proof_mismatch_after_digest_refresh() {
+        let dir = tempdir().expect("tempdir");
+        let bundle = sample_bundle();
+        let metadata = bundle.write_to(dir.path()).expect("write bundle");
+        let mut replay_proof: ReplayProofDocument = serde_json::from_str(
+            &fs::read_to_string(dir.path().join("replay_proof.json")).expect("read replay proof"),
+        )
+        .expect("parse replay proof");
+        replay_proof.realization_mode = crate::ArtifactRealizationMode::Mixed;
+        fs::write(
+            dir.path().join("replay_proof.json"),
+            serde_json::to_string_pretty(&replay_proof).expect("serialize replay proof"),
+        )
+        .expect("write replay proof");
+
+        let mut digests = metadata.file_digests.clone();
+        digests.insert(
+            "replay_proof.json".to_owned(),
+            digest(
+                fs::read(dir.path().join("replay_proof.json"))
+                    .expect("read replay proof for digest")
+                    .as_slice(),
+            ),
+        );
+        let metadata = ReplayBundleMetadata {
+            schema_version: metadata.schema_version,
+            plan_identity: metadata.plan_identity,
+            file_digests: digests,
+            replay_entrypoint: metadata.replay_entrypoint,
+        };
+        fs::write(
+            dir.path().join("bundle_metadata.json"),
+            crate::canonical_json(&metadata).expect("serialize metadata"),
+        )
+        .expect("write metadata");
+
+        let err = ReplayBundle::load_from(dir.path()).expect_err("replay proof mismatch");
+        assert!(matches!(err, ReplayBundleError::ReplayProofMismatch));
     }
 }

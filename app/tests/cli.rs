@@ -119,8 +119,10 @@ fn build_verify_and_replay_bundle_round_trip() {
         "buildplan.json",
         "bundle_metadata.json",
         "diagnostics.json",
+        "explain.txt",
         "materialization_report.json",
         "optimization_explain.json",
+        "replay_proof.json",
         "replay.sh",
         "rewrite_trace.json",
         "soc_plan.json",
@@ -215,6 +217,26 @@ fn build_verify_and_replay_bundle_round_trip() {
             .any(|entrypoint| entrypoint["scope_name"] == "prefill_attention")
     );
 
+    let replay_proof: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("replay_proof.json")).expect("read replay proof"),
+    )
+    .expect("parse replay proof");
+    assert_eq!(
+        replay_proof["contradiction_contract"],
+        Value::String("same_requested_plan_requires_same_result_artifact_identity".to_owned())
+    );
+    assert!(
+        replay_proof["realization_identity"]
+            .as_str()
+            .expect("realization identity")
+            .len()
+            > 10
+    );
+    let explain_text =
+        std::fs::read_to_string(dir.path().join("explain.txt")).expect("read explain text");
+    assert!(explain_text.contains("replay proof:"));
+    assert!(explain_text.contains("realization_mode="));
+
     Command::cargo_bin("sock")
         .expect("sock binary")
         .args(["verify", "--bundle"])
@@ -234,6 +256,8 @@ fn build_verify_and_replay_bundle_round_trip() {
         .assert()
         .success()
         .stdout(predicate::str::contains("plan "))
+        .stdout(predicate::str::contains("replay proof:"))
+        .stdout(predicate::str::contains("realization_mode="))
         .stdout(predicate::str::contains("vllm replay roots key="))
         .stdout(predicate::str::contains("soc plan key="))
         .stdout(predicate::str::contains("verification Passed"))
@@ -357,6 +381,19 @@ fn repeated_build_reuses_materialized_artifacts() {
             .as_u64()
             .expect("artifact rebuild ms")
             > 0
+    );
+
+    let replay_proof: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("replay_proof.json")).expect("read replay proof"),
+    )
+    .expect("parse replay proof");
+    assert_eq!(
+        replay_proof["realization_mode"],
+        Value::String("reused_only".to_owned())
+    );
+    assert_eq!(
+        replay_proof["contradiction_contract"],
+        Value::String("same_requested_plan_requires_same_result_artifact_identity".to_owned())
     );
 }
 

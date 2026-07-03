@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "replay-proof",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" >/tmp/replay-proof-build.txt\nprintf '%s' \"$(cat /tmp/replay-proof-build.txt)\" | grep -q 'realization_mode='\ngrep -q 'same_requested_plan_requires_same_result_artifact_identity' \"$bundle_dir/replay_proof.json\"\ngrep -q 'replay proof:' \"$bundle_dir/explain.txt\"\nreplay_out=$(cargo run --quiet --bin sock -- replay --bundle \"$bundle_dir\")\nprintf '%s' \"$replay_out\" | grep -q 'replay proof:'\nprintf '%s' \"$replay_out\" | grep -q 'realization_mode='\nprintf 'replay-proof\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "replay-proof\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" >/tmp/replay-proof-build.txt\nprintf '%s' \"$(cat /tmp/replay-proof-build.txt)\" | grep -q 'realization_mode='\ngrep -q 'same_requested_plan_requires_same_result_artifact_identity' \"$bundle_dir/replay_proof.json\"\ngrep -q 'replay proof:' \"$bundle_dir/explain.txt\"\nreplay_out=$(cargo run --quiet --bin sock -- replay --bundle \"$bundle_dir\")\nprintf '%s' \"$replay_out\" | grep -q 'replay proof:'\nprintf '%s' \"$replay_out\" | grep -q 'realization_mode='\nprintf 'replay-proof\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "replay-proof\n",
+      "expect_stderr": ""
+    }
+  ]
+}

@@ -14,8 +14,7 @@ use sock_core::{
     MaterializationExecutionReport, MeasurementCaseReport, MeasurementComparisonReport,
     MeasurementPhaseTimings, OptimizationExplainDocument, OptimizationLevel, ReplayBundle,
     ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
-    render_diagnostics, render_explain, render_plan_summary, render_soc_explain,
-    render_verification_report,
+    render_explain, render_plan_summary, render_soc_explain, render_verification_report,
 };
 use sock_engine::{
     BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, Planner,
@@ -224,7 +223,6 @@ fn main() -> Result<()> {
             };
             let scope = scope.into_scope();
             let outcome = plan_with_scope(&scope, optimization_level)?;
-            let bundle = replay_bundle(&outcome, &scope);
             let vllm_integration = build_vllm_integration_document(&outcome)?;
             validate_scoped_vllm_subset(&scope, &vllm_integration)?;
             let storage = StorageRoots {
@@ -233,6 +231,7 @@ fn main() -> Result<()> {
             };
             let materialization =
                 MaterializationExecutor::new().execute(&outcome, &scope, &storage)?;
+            let bundle = replay_bundle(&outcome, &scope, materialization.clone());
             std::fs::write(
                 out.join("vllm_integration.json"),
                 canonical_json(&vllm_integration)?.as_bytes(),
@@ -452,13 +451,15 @@ fn emit_build(
     match format {
         OutputMode::Summary => {
             println!(
-                "bundle={} plan_identity={} replay_entrypoint={} artifacts={} executed={} reused={} wall_clock_ms={} bytes_written={} rebuild_ms={} readiness={:?}",
+                "bundle={} plan_identity={} replay_entrypoint={} artifacts={} executed={} reused={} realization_mode={} realization_identity={} wall_clock_ms={} bytes_written={} rebuild_ms={} readiness={:?}",
                 out.display(),
                 bundle.build_plan.structural_identity.plan_identity,
                 metadata.replay_entrypoint,
                 materialization.artifact_count,
                 materialization.executed_artifact_count,
                 materialization.reused_artifact_count,
+                bundle.replay_proof.realization_mode.as_str(),
+                bundle.replay_proof.realization_identity,
                 materialization.wall_clock_ms,
                 materialization.total_bytes_written,
                 materialization.total_rebuild_ms,
@@ -477,6 +478,7 @@ fn emit_build(
                     "plan_identity": bundle.build_plan.structural_identity.plan_identity,
                     "metadata": metadata,
                     "materialization": materialization,
+                    "replay_proof": bundle.replay_proof,
                     "vllm_integration": bundle.vllm_integration,
                     "soc_plan": bundle.soc_plan,
                     "vllm_entrypoints": bundle.vllm_entrypoints,
@@ -619,7 +621,17 @@ fn emit_verify(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
 fn emit_replay(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
     match format {
         OutputMode::Summary => {
-            print!("{}", render_plan_summary(&bundle.build_plan));
+            print!(
+                "{}",
+                sock_core::render_replay_bundle_explain(
+                    &bundle.build_plan,
+                    &bundle.optimization_explain,
+                    &bundle.verification_report,
+                    &bundle.diagnostics,
+                    &bundle.materialization_report,
+                    &bundle.replay_proof,
+                )
+            );
             println!(
                 "vllm replay roots key={} surfaces={}",
                 bundle.vllm_integration.plan_identity,
@@ -630,17 +642,15 @@ fn emit_replay(bundle: &ReplayBundle, format: OutputMode) -> Result<()> {
                 bundle.soc_plan.plan_identity,
                 bundle.soc_plan.namespaces.len()
             );
-            print!(
-                "{}",
-                render_verification_report(&bundle.verification_report)
-            );
-            print!("{}", render_diagnostics(&bundle.diagnostics));
         }
         OutputMode::Json => {
             println!(
                 "{}",
                 canonical_json(&serde_json::json!({
                     "plan": bundle.build_plan,
+                    "materialization": bundle.materialization_report,
+                    "replay_proof": bundle.replay_proof,
+                    "optimization_explain": bundle.optimization_explain,
                     "verification": bundle.verification_report,
                     "diagnostics": bundle.diagnostics,
                     "vllm_integration": bundle.vllm_integration,
@@ -900,7 +910,6 @@ struct BenchmarkProfile<'a> {
 fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Result<BundleBuild> {
     let configure_started = Instant::now();
     let outcome = plan_with_scope(scope, OptimizationLevel::O2)?;
-    let bundle = replay_bundle(&outcome, scope);
     let vllm_integration = build_vllm_integration_document(&outcome)?;
     let soc_plan = build_soc_plan_document(&outcome, scope, &vllm_integration);
     validate_scoped_vllm_subset(scope, &vllm_integration)?;
@@ -911,6 +920,7 @@ fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Resu
         cache_root: cache_root.to_path_buf(),
     };
     let materialization = MaterializationExecutor::new().execute(&outcome, scope, &storage)?;
+    let bundle = replay_bundle(&outcome, scope, materialization.clone());
 
     let packaging_started = Instant::now();
     std::fs::write(
