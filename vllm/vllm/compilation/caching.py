@@ -1966,8 +1966,49 @@ def build_compile_replay_manifest(
             if cache_key_factors is not None
             else None
         ),
+        "canonical_compile_plan_id": (
+            cache_key_factors.get("canonical_compile_plan", {}).get(
+                "canonical_compile_plan_id"
+            )
+            if cache_key_factors is not None
+            else None
+        ),
         "graph_artifact_store": _json_ready(graph_artifact_store),
         "backend_identity": _json_ready(backend_identity),
+    }
+
+
+def build_derived_compile_artifact_provenance(
+    compile_replay_manifest: dict[str, object] | None,
+) -> dict[str, object]:
+    canonical_compile_plan = (
+        _json_ready(compile_replay_manifest.get("canonical_compile_plan"))
+        if compile_replay_manifest is not None
+        else None
+    )
+    canonical_compile_plan_id = (
+        canonical_compile_plan.get("canonical_compile_plan_id")
+        if isinstance(canonical_compile_plan, dict)
+        else None
+    )
+    return {
+        "root_identity": (
+            _json_ready(compile_replay_manifest.get("root_identity"))
+            if compile_replay_manifest is not None
+            else None
+        ),
+        "replay_plan": (
+            _json_ready(compile_replay_manifest.get("replay_plan"))
+            if compile_replay_manifest is not None
+            else None
+        ),
+        "env_identity": (
+            _json_ready(compile_replay_manifest.get("env_identity"))
+            if compile_replay_manifest is not None
+            else None
+        ),
+        "canonical_compile_plan": canonical_compile_plan,
+        "canonical_compile_plan_id": canonical_compile_plan_id,
     }
 
 
@@ -2024,21 +2065,15 @@ def build_cudagraph_capture_manifest(
 ) -> dict[str, object] | None:
     if not local_cache_dir:
         return None
-    root_identity = (
-        _json_ready(compile_replay_manifest.get("root_identity"))
-        if compile_replay_manifest is not None
-        else None
-    )
-    replay_plan = (
-        _json_ready(compile_replay_manifest.get("replay_plan"))
-        if compile_replay_manifest is not None
-        else None
-    )
+    provenance = build_derived_compile_artifact_provenance(compile_replay_manifest)
     return {
         "schema_version": 1,
         "payload_kind": "vllm_cudagraph_capture_manifest",
-        "root_identity": root_identity,
-        "replay_plan": replay_plan,
+        "root_identity": provenance["root_identity"],
+        "replay_plan": provenance["replay_plan"],
+        "env_identity": provenance["env_identity"],
+        "canonical_compile_plan": provenance["canonical_compile_plan"],
+        "canonical_compile_plan_id": provenance["canonical_compile_plan_id"],
         "runtime_mode": runtime_mode,
         "capture_size_policy": list(cudagraph_capture_sizes or []),
         "capture_count": len(captured_entries),
@@ -2103,24 +2138,18 @@ def build_autotune_cache_manifest(
 ) -> dict[str, object] | None:
     if not local_cache_dir:
         return None
-    root_identity = (
-        _json_ready(compile_replay_manifest.get("root_identity"))
-        if compile_replay_manifest is not None
-        else None
-    )
-    replay_plan = (
-        _json_ready(compile_replay_manifest.get("replay_plan"))
-        if compile_replay_manifest is not None
-        else None
-    )
+    provenance = build_derived_compile_artifact_provenance(compile_replay_manifest)
     return {
         "schema_version": 1,
         "payload_kind": "vllm_autotune_cache_manifest",
         "backend_name": backend_name,
         "owning_local_cache_dir": local_cache_dir,
         "base_cache_dir": base_cache_dir,
-        "root_identity": root_identity,
-        "replay_plan": replay_plan,
+        "root_identity": provenance["root_identity"],
+        "replay_plan": provenance["replay_plan"],
+        "env_identity": provenance["env_identity"],
+        "canonical_compile_plan": provenance["canonical_compile_plan"],
+        "canonical_compile_plan_id": provenance["canonical_compile_plan_id"],
         "cache_directories": _json_ready(cache_directories),
         "environment_overrides": _json_ready(environment_overrides),
     }

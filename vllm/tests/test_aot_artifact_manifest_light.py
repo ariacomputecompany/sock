@@ -1824,6 +1824,12 @@ def test_compile_replay_manifest_roundtrip() -> None:
         manifest["replay_plan"]["replay_plan_id"]
         == canonical_compile_plan["verification_plan_id"]
     )
+    assert manifest["env_identity"] == env_identity
+    assert manifest["canonical_compile_plan"] == canonical_compile_plan
+    assert (
+        manifest["canonical_compile_plan_id"]
+        == canonical_compile_plan["canonical_compile_plan_id"]
+    )
     assert manifest["canonical_compile_plan"] == canonical_compile_plan
     assert manifest["env_identity"] == env_identity
     assert manifest["graph_artifact_store"] == graph_artifact_store
@@ -1961,6 +1967,12 @@ def test_cudagraph_capture_manifest_roundtrip() -> None:
     assert (
         manifest["replay_plan"]["replay_plan_id"]
         == canonical_compile_plan["verification_plan_id"]
+    )
+    assert manifest["env_identity"] == env_identity
+    assert manifest["canonical_compile_plan"] == canonical_compile_plan
+    assert (
+        manifest["canonical_compile_plan_id"]
+        == canonical_compile_plan["canonical_compile_plan_id"]
     )
 
 
