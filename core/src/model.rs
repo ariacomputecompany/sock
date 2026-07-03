@@ -71,6 +71,21 @@ pub enum ArtifactClass {
     TopologyScopedCache,
 }
 
+impl ArtifactClass {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CompiledGraph => "compiled-graph",
+            Self::TritonBinary => "triton-binary",
+            Self::ExtensionBinary => "extension-binary",
+            Self::BackendPackageInput => "backend-package-input",
+            Self::AutotuneResult => "autotune-result",
+            Self::CudaGraphCapture => "cuda-graph-capture",
+            Self::TopologyScopedCache => "topology-scoped-cache",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum HazardClass {
     StaleCache,
@@ -547,6 +562,30 @@ impl ResolvedBuildPlan {
                 severity: ValidationSeverity::Error,
                 code: "early_serve_frontier_invalid".to_owned(),
                 message: "Early-serve frontier references unknown materialization nodes".to_owned(),
+            });
+        }
+
+        let mut materialization_nodes = BTreeSet::new();
+        let duplicate_nodes = self
+            .materialization_graph
+            .nodes
+            .iter()
+            .filter_map(|node| {
+                if materialization_nodes.insert(node.name.as_str()) {
+                    None
+                } else {
+                    Some(node.name.clone())
+                }
+            })
+            .collect::<Vec<_>>();
+        if !duplicate_nodes.is_empty() {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "materialization_node_duplicate".to_owned(),
+                message: format!(
+                    "Materialization graph contains duplicate node names: {}",
+                    duplicate_nodes.join(", ")
+                ),
             });
         }
 

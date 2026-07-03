@@ -47,12 +47,25 @@ fn build_verify_and_replay_bundle_round_trip() {
         "buildplan.json",
         "bundle_metadata.json",
         "diagnostics.json",
+        "materialization_report.json",
         "replay.sh",
         "rewrite_trace.json",
         "verification_report.json",
     ] {
         assert!(dir.path().join(file).exists(), "missing {file}");
     }
+
+    let materialization: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("materialization_report.json"))
+            .expect("read materialization report"),
+    )
+    .expect("parse materialization report");
+    assert!(
+        materialization["artifact_count"]
+            .as_u64()
+            .expect("artifact count")
+            > 0
+    );
 
     Command::cargo_bin("sock")
         .expect("sock binary")
@@ -101,6 +114,38 @@ fn tampered_bundle_is_rejected() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("digest mismatch"));
+}
+
+#[test]
+fn repeated_build_reuses_materialized_artifacts() {
+    let dir = tempdir().expect("tempdir");
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args(["build", "--out"])
+        .arg(dir.path())
+        .assert()
+        .success();
+
+    Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args(["build", "--out"])
+        .arg(dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("reused="));
+
+    let materialization: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("materialization_report.json"))
+            .expect("read materialization report"),
+    )
+    .expect("parse materialization report");
+    assert!(
+        materialization["reused_artifact_count"]
+            .as_u64()
+            .expect("reused artifact count")
+            > 0
+    );
 }
 
 #[test]
@@ -158,6 +203,24 @@ fn scoped_prefill_build_emits_minimal_closure() {
             .iter()
             .all(|obligation| obligation["blocking"] == true)
     );
+
+    let materialization: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("materialization_report.json"))
+            .expect("read materialization report"),
+    )
+    .expect("parse materialization report");
+    let materialized_artifacts = materialization["artifacts"]
+        .as_array()
+        .expect("materialized artifacts array");
+    assert!(
+        materialized_artifacts
+            .iter()
+            .all(|artifact| artifact["scope"] == "prefill_attention")
+    );
+    assert!(materialized_artifacts.iter().all(|artifact| {
+        let relative_path = artifact["relative_path"].as_str().expect("relative path");
+        dir.path().join(relative_path).exists()
+    }));
 }
 
 #[test]

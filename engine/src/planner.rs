@@ -110,7 +110,7 @@ impl Planner {
             &normalized.topology,
             &artifact_requirements,
             &warmup_obligations,
-        );
+        )?;
         let guarantee_envelope =
             self.guarantee_envelope(&normalized, &shape_envelope, residual_risks.clone());
         let artifact_manifest = artifact_requirements
@@ -931,7 +931,7 @@ impl Planner {
         topology: &ExecutionTopology,
         artifact_requirements: &[ArtifactRequirement],
         warmup_obligations: &[WarmupObligation],
-    ) -> MaterializationGraph {
+    ) -> Result<MaterializationGraph, CanonicalError> {
         let mut nodes = Vec::new();
         let rank_zero = vec![0];
         for requirement in artifact_requirements {
@@ -956,8 +956,9 @@ impl Planner {
             } else {
                 CoveragePlane::Performance
             };
+            let artifact_node = artifact_handle(requirement)?;
             nodes.push(MaterializationNode {
-                name: format!("artifact:{}", requirement.scope),
+                name: artifact_node.clone(),
                 wave: if requirement.class == ArtifactClass::CudaGraphCapture {
                     2
                 } else {
@@ -968,10 +969,10 @@ impl Planner {
                 plane,
                 dependency_nodes: Vec::new(),
                 consumes: Vec::new(),
-                produces: vec![requirement.scope.clone()],
+                produces: vec![artifact_node.clone()],
                 rank_scope: rank_zero.clone(),
                 invalidation_domain: requirement.scope.clone(),
-                replay_boundary: format!("artifact:{}", requirement.scope),
+                replay_boundary: artifact_node.clone(),
                 expected_compile_ms: requirement.expected_compile_ms,
                 expected_bytes_written: requirement.expected_bytes,
                 expected_transfer_ms: requirement.expected_transfer_ms,
@@ -987,18 +988,19 @@ impl Planner {
             if total_rank_count(topology) > 1
                 && requirement.rank_disposition == RankDisposition::Shared
             {
+                let fanout_node = fanout_handle(requirement)?;
                 nodes.push(MaterializationNode {
-                    name: format!("fanout:{}", requirement.scope),
+                    name: fanout_node.clone(),
                     wave: 2,
                     kind: MaterializationNodeKind::Transfer,
                     queue: QueueKind::ArtifactIo,
                     plane,
-                    dependency_nodes: vec![format!("artifact:{}", requirement.scope)],
-                    consumes: vec![requirement.scope.clone()],
-                    produces: vec![format!("distributed:{}", requirement.scope)],
+                    dependency_nodes: vec![artifact_node.clone()],
+                    consumes: vec![artifact_node.clone()],
+                    produces: vec![fanout_node.clone()],
                     rank_scope: total_ranks(topology),
                     invalidation_domain: requirement.scope.clone(),
-                    replay_boundary: format!("fanout:{}", requirement.scope),
+                    replay_boundary: fanout_node.clone(),
                     expected_compile_ms: Some(0),
                     expected_bytes_written: requirement.expected_bytes,
                     expected_transfer_ms: requirement.expected_transfer_ms,
@@ -1008,7 +1010,7 @@ impl Planner {
                         discipline: QueueDiscipline::LeaderThenBroadcast,
                         serve_phase: ServePhase::EarlyServeReady,
                         fanout_strategy: FanoutStrategy::BroadcastFromLeader,
-                        dependency_barrier: vec![format!("artifact:{}", requirement.scope)],
+                        dependency_barrier: vec![artifact_node],
                     },
                 });
             }
@@ -1018,7 +1020,7 @@ impl Planner {
                 topology,
                 artifact_requirements,
                 &obligation.required_artifacts,
-            );
+            )?;
             nodes.push(MaterializationNode {
                 name: format!("warmup:{}:{}", obligation.node_name, obligation.region_name),
                 wave: if obligation.blocking { 3 } else { 4 },
@@ -1026,7 +1028,7 @@ impl Planner {
                 queue: QueueKind::Warmup,
                 plane: obligation.plane,
                 dependency_nodes: dependency_nodes.clone(),
-                consumes: obligation.required_artifacts.clone(),
+                consumes: dependency_nodes.clone(),
                 produces: vec![format!(
                     "coverage:{}:{}",
                     obligation.node_name, obligation.region_name
@@ -1064,7 +1066,7 @@ impl Planner {
             })
             .collect::<Vec<_>>();
         let waves = build_waves(&nodes);
-        MaterializationGraph {
+        Ok(MaterializationGraph {
             nodes,
             waves,
             leader_assignments,
@@ -1080,7 +1082,7 @@ impl Planner {
                 "strict-no-surprise-jit".to_owned(),
             )],
             runtime_roi: artifact_requirements.iter().map(runtime_roi).collect(),
-        }
+        })
     }
 
     fn guarantee_envelope(
@@ -1544,7 +1546,7 @@ fn bounded_by(
                     .iter()
                     .any(|scope| scope == &requirement.scope)
         })
-        .map(|requirement| format!("artifact:{}", requirement.scope));
+        .filter_map(|requirement| artifact_handle(requirement).ok());
     let mut bounded = regions
         .chain(warmups)
         .chain(artifacts)
@@ -1826,22 +1828,40 @@ fn warmup_dependency_nodes(
     topology: &ExecutionTopology,
     artifact_requirements: &[ArtifactRequirement],
     required_artifacts: &[String],
-) -> Vec<String> {
+) -> Result<Vec<String>, CanonicalError> {
     required_artifacts
         .iter()
-        .map(|artifact| {
-            let dependency = artifact_requirements
+        .flat_map(|artifact| {
+            artifact_requirements
                 .iter()
-                .find(|requirement| requirement.scope == *artifact)
-                .filter(|requirement| {
-                    requirement.rank_disposition == RankDisposition::Shared
+                .filter(|requirement| requirement.scope == *artifact)
+                .map(|requirement| {
+                    if requirement.rank_disposition == RankDisposition::Shared
                         && total_rank_count(topology) > 1
+                    {
+                        fanout_handle(requirement)
+                    } else {
+                        artifact_handle(requirement)
+                    }
                 })
-                .map(|_| format!("fanout:{artifact}"))
-                .unwrap_or_else(|| format!("artifact:{artifact}"));
-            dependency
         })
         .collect()
+}
+
+fn artifact_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {
+    Ok(format!(
+        "artifact:{}:{}",
+        requirement.class.as_str(),
+        canonical_hash(requirement)?
+    ))
+}
+
+fn fanout_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {
+    Ok(format!(
+        "fanout:{}:{}",
+        requirement.class.as_str(),
+        canonical_hash(requirement)?
+    ))
 }
 
 fn node_discipline(rank_disposition: RankDisposition, queue: QueueKind) -> QueueDiscipline {
@@ -2053,6 +2073,21 @@ mod tests {
         assert!(!outcome.plan.rewrite_trace.is_empty());
         for pass in &outcome.plan.rewrite_trace {
             pass.validate().expect("rewrite pass contract");
+        }
+    }
+
+    #[test]
+    fn materialization_graph_uses_unique_artifact_nodes() {
+        let planner = Planner::new(host());
+        let outcome = planner.resolve(request()).expect("plan");
+        let mut names = std::collections::BTreeSet::new();
+
+        for node in &outcome.plan.materialization_graph.nodes {
+            assert!(
+                names.insert(node.name.as_str()),
+                "duplicate materialization node {}",
+                node.name
+            );
         }
     }
 

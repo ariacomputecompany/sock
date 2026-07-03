@@ -7,11 +7,13 @@ use sock_app::{
     rewrite_trace_for,
 };
 use sock_core::{
-    BackendFamily, DiagnosticsDocument, ReplayBundle, ReplayBundleMetadata, RewriteTraceDocument,
-    canonical_json, render_diagnostics, render_explain, render_plan_summary,
-    render_verification_report,
+    BackendFamily, DiagnosticsDocument, MaterializationExecutionReport, ReplayBundle,
+    ReplayBundleMetadata, RewriteTraceDocument, canonical_json, render_diagnostics, render_explain,
+    render_plan_summary, render_verification_report,
 };
-use sock_engine::{BuildReadiness, BuildScope, PlannerHostSnapshot, PlanningOutcome};
+use sock_engine::{
+    BuildReadiness, BuildScope, MaterializationExecutor, PlannerHostSnapshot, PlanningOutcome,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "sock")]
@@ -110,8 +112,9 @@ fn main() -> Result<()> {
         Command::Build { out, scope, format } => {
             let outcome = plan_with_scope(&scope.into_scope())?;
             let bundle = replay_bundle(&outcome);
+            let materialization = MaterializationExecutor::new().execute(&outcome, &out)?;
             let metadata = bundle.write_to(&out)?;
-            emit_build(&out, &bundle, &metadata, format)?;
+            emit_build(&out, &bundle, &metadata, &materialization, format)?;
         }
         Command::Verify { bundle, format } => {
             emit_verify(&ReplayBundle::load_from(&bundle)?, format)?;
@@ -202,15 +205,19 @@ fn emit_build(
     out: &Path,
     bundle: &ReplayBundle,
     metadata: &ReplayBundleMetadata,
+    materialization: &MaterializationExecutionReport,
     format: OutputMode,
 ) -> Result<()> {
     match format {
         OutputMode::Summary => {
             println!(
-                "bundle={} plan_identity={} replay_entrypoint={}",
+                "bundle={} plan_identity={} replay_entrypoint={} artifacts={} reused={} bytes_written={}",
                 out.display(),
                 bundle.build_plan.structural_identity.plan_identity,
-                metadata.replay_entrypoint
+                metadata.replay_entrypoint,
+                materialization.artifact_count,
+                materialization.reused_artifact_count,
+                materialization.total_bytes_written
             );
         }
         OutputMode::Json => {
@@ -220,6 +227,7 @@ fn emit_build(
                     "bundle_path": out,
                     "plan_identity": bundle.build_plan.structural_identity.plan_identity,
                     "metadata": metadata,
+                    "materialization": materialization,
                 }))?
             );
         }
