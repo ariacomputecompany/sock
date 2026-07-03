@@ -116,6 +116,18 @@ def test_compile_factor_manifest_lightweight() -> None:
         == "unordered_string_list"
     )
     assert (
+        manifest["normalization"]["declared_factor_normalization"]["VLLM_PLUGINS"][
+            "family"
+        ]
+        == "unordered_exact_string_list"
+    )
+    assert (
+        manifest["normalization"]["declared_factor_normalization"][
+            "VLLM_PP_LAYER_PARTITION"
+        ]["family"]
+        == "ordered_int_csv"
+    )
+    assert (
         manifest["normalization"]["ambient_factor_normalization"][
             "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
         ]["family"]
@@ -352,6 +364,87 @@ def test_ambient_boolean_compile_factors_are_canonicalized() -> None:
     assert factors["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] is True
     assert equivalent_factors["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] is True
     assert disabled_factors["RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"] is False
+    assert (
+        identity["combined_factor_digest"]
+        == equivalent_identity["combined_factor_digest"]
+    )
+
+
+def test_pipeline_partition_compile_factor_is_ordered_int_csv_canonicalized() -> None:
+    envs = _load_envs_module()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_PP_LAYER_PARTITION": "01, 2,3"},
+        clear=False,
+    ):
+        factors = envs.compile_factors()
+        identity = envs.compile_factor_identity_manifest()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_PP_LAYER_PARTITION": "1,2,03"},
+        clear=False,
+    ):
+        equivalent_factors = envs.compile_factors()
+        equivalent_identity = envs.compile_factor_identity_manifest()
+
+    assert factors["VLLM_PP_LAYER_PARTITION"] == (1, 2, 3)
+    assert equivalent_factors["VLLM_PP_LAYER_PARTITION"] == (1, 2, 3)
+    assert (
+        identity["combined_factor_digest"]
+        == equivalent_identity["combined_factor_digest"]
+    )
+
+
+def test_ray_bundle_indices_compile_factor_is_ordered_int_csv_canonicalized() -> None:
+    envs = _load_envs_module()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_RAY_BUNDLE_INDICES": "0, 01,2"},
+        clear=False,
+    ):
+        factors = envs.compile_factors()
+        identity = envs.compile_factor_identity_manifest()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_RAY_BUNDLE_INDICES": "0,1,02"},
+        clear=False,
+    ):
+        equivalent_factors = envs.compile_factors()
+        equivalent_identity = envs.compile_factor_identity_manifest()
+
+    assert factors["VLLM_RAY_BUNDLE_INDICES"] == (0, 1, 2)
+    assert equivalent_factors["VLLM_RAY_BUNDLE_INDICES"] == (0, 1, 2)
+    assert (
+        identity["combined_factor_digest"]
+        == equivalent_identity["combined_factor_digest"]
+    )
+
+
+def test_plugins_compile_factor_is_unordered_membership_canonicalized() -> None:
+    envs = _load_envs_module()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_PLUGINS": "beta,alpha,beta"},
+        clear=False,
+    ):
+        factors = envs.compile_factors()
+        identity = envs.compile_factor_identity_manifest()
+
+    with patch.dict(
+        os.environ,
+        {"VLLM_PLUGINS": "alpha,beta"},
+        clear=False,
+    ):
+        equivalent_factors = envs.compile_factors()
+        equivalent_identity = envs.compile_factor_identity_manifest()
+
+    assert factors["VLLM_PLUGINS"] == ("alpha", "beta")
+    assert equivalent_factors["VLLM_PLUGINS"] == ("alpha", "beta")
     assert (
         identity["combined_factor_digest"]
         == equivalent_identity["combined_factor_digest"]

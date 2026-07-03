@@ -2307,6 +2307,35 @@ def _normalize_unordered_string_list_compile_factor(raw: object) -> object:
     )
 
 
+def _normalize_unordered_exact_string_list_compile_factor(raw: object) -> object:
+    if not isinstance(raw, list):
+        return raw
+
+    return tuple(
+        sorted(
+            {
+                value
+                for value in raw
+                if isinstance(value, str)
+            }
+        )
+    )
+
+
+def _normalize_ordered_int_csv_compile_factor(raw: object) -> object:
+    if not isinstance(raw, str):
+        return raw
+
+    values = [segment for segment in raw.split(",") if segment.strip()]
+    if not values:
+        return ()
+
+    try:
+        return tuple(int(segment) for segment in values)
+    except ValueError:
+        return raw
+
+
 def _normalize_boolean_toggle_compile_factor(raw: object) -> object:
     if not isinstance(raw, str):
         return raw
@@ -2324,6 +2353,12 @@ def _compile_factor_normalizer_functions() -> dict[str, Callable[[object], objec
         "_normalize_unordered_string_list_compile_factor": (
             _normalize_unordered_string_list_compile_factor
         ),
+        "_normalize_unordered_exact_string_list_compile_factor": (
+            _normalize_unordered_exact_string_list_compile_factor
+        ),
+        "_normalize_ordered_int_csv_compile_factor": (
+            _normalize_ordered_int_csv_compile_factor
+        ),
         "_normalize_boolean_toggle_compile_factor": (
             _normalize_boolean_toggle_compile_factor
         ),
@@ -2337,6 +2372,20 @@ def _compile_factor_normalization_families() -> dict[str, dict[str, str]]:
             "description": (
                 "Set-like string collections where duplicates, whitespace, and "
                 "ordering must collapse before hashing."
+            ),
+        },
+        "unordered_exact_string_list": {
+            "strategy": "custom",
+            "description": (
+                "Set-like exact string collections where ordering and duplicates "
+                "must collapse, but token spelling remains semantically meaningful."
+            ),
+        },
+        "ordered_int_csv": {
+            "strategy": "custom",
+            "description": (
+                "Comma-separated integer sequences where ordering is semantic but "
+                "incidental whitespace and integer spelling must not fragment keys."
             ),
         },
         "boolean_toggle": {
@@ -2410,6 +2459,33 @@ def _compile_factor_normalization_policy(factor: str) -> dict[str, str]:
             "reason": (
                 "Kernel disablement is set-like for compile identity, so duplicate "
                 "entries, whitespace, and ordering must not fragment cache keys."
+            ),
+        },
+        "VLLM_PLUGINS": {
+            "strategy": "custom",
+            "family": "unordered_exact_string_list",
+            "normalizer": "_normalize_unordered_exact_string_list_compile_factor",
+            "reason": (
+                "Plugin allow-lists are membership-based, so ordering and duplicates "
+                "must not fragment cache identity."
+            ),
+        },
+        "VLLM_PP_LAYER_PARTITION": {
+            "strategy": "custom",
+            "family": "ordered_int_csv",
+            "normalizer": "_normalize_ordered_int_csv_compile_factor",
+            "reason": (
+                "Pipeline partition strings are parsed as ordered integers, so "
+                "whitespace and integer spelling must not fragment identity."
+            ),
+        },
+        "VLLM_RAY_BUNDLE_INDICES": {
+            "strategy": "custom",
+            "family": "ordered_int_csv",
+            "normalizer": "_normalize_ordered_int_csv_compile_factor",
+            "reason": (
+                "Explicit Ray bundle placements are parsed as ordered integers, so "
+                "whitespace and integer spelling must not fragment identity."
             ),
         },
     }
