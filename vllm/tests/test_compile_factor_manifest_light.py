@@ -101,6 +101,22 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["audit"]["category_counts"]["debug_only"] >= 1
     assert manifest["audit"]["category_counts"]["runtime_non_compile"] >= 1
     assert manifest["audit"]["overlap_keys"] == {}
+    assert (
+        manifest["normalization"]["declared_factor_normalizers"][
+            "VLLM_DISABLED_KERNELS"
+        ]
+        == "_normalize_unordered_string_list_compile_factor"
+    )
+    assert (
+        manifest["normalization"]["ambient_factor_normalizers"][
+            "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+        ]
+        == "_normalize_boolean_toggle_compile_factor"
+    )
+    assert (
+        "VLLM_DISABLED_KERNELS"
+        not in manifest["normalization"]["declared_factor_without_normalizer"]
+    )
     assert "VLLM_CONFIGURE_LOGGING" in manifest["audit"]["category_keys"]["debug_only"]
     assert "VLLM_API_KEY" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_LOG_MODEL_INSPECTION" in manifest["audit"]["category_keys"]["debug_only"]
@@ -115,6 +131,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert reparsed["categories"] == manifest["categories"]
     assert reparsed["policies"] == manifest["policies"]
     assert reparsed["ambient_policies"] == manifest["ambient_policies"]
+    assert reparsed["normalization"] == manifest["normalization"]
     assert reparsed["included_keys"] == manifest["included_keys"]
     assert reparsed["ambient_included_keys"] == manifest["ambient_included_keys"]
     assert reparsed["ignored_keys"] == manifest["ignored_keys"]

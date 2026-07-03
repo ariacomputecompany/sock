@@ -2162,6 +2162,22 @@ _AMBIENT_COMPILE_FACTOR_REASONS: dict[str, str] = {
     ),
 }
 
+_AMBIENT_COMPILE_FACTOR_NAMES: tuple[str, ...] = (
+    "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES",
+    "RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES",
+    "RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES",
+    "RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES",
+    "RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES",
+    "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES",
+    "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS",
+    "RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR",
+    "RAY_EXPERIMENTAL_NOSET_RBLN_RT_VISIBLE_DEVICES",
+)
+
+_AMBIENT_BOOLEAN_COMPILE_FACTOR_NAMES: frozenset[str] = frozenset(
+    _AMBIENT_COMPILE_FACTOR_NAMES
+)
+
 _EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST = (
     "0b491f67ebffbc66dd5e53187456729b1daabc47e05939768323c94c6f146bcc"
 )
@@ -2276,25 +2292,50 @@ def compile_factors() -> dict[str, object]:
     return factors
 
 
+def _normalize_unordered_string_list_compile_factor(raw: object) -> object:
+    if not isinstance(raw, list):
+        return raw
+
+    return tuple(
+        sorted(
+            {
+                value.strip()
+                for value in raw
+                if isinstance(value, str) and value.strip()
+            }
+        )
+    )
+
+
+def _normalize_boolean_toggle_compile_factor(raw: object) -> object:
+    if not isinstance(raw, str):
+        return raw
+
+    normalized_raw = raw.strip().lower()
+    if normalized_raw in {"1", "true"}:
+        return True
+    if normalized_raw in {"0", "false", ""}:
+        return False
+    return raw
+
+
+def _compile_factor_normalizer(factor: str) -> Callable[[object], object] | None:
+    exact_normalizers: dict[str, Callable[[object], object]] = {
+        "VLLM_DISABLED_KERNELS": _normalize_unordered_string_list_compile_factor,
+    }
+    if factor in exact_normalizers:
+        return exact_normalizers[factor]
+    if factor in _AMBIENT_BOOLEAN_COMPILE_FACTOR_NAMES:
+        return _normalize_boolean_toggle_compile_factor
+    return None
+
+
 def _normalize_compile_factor_value(factor: str, raw: object) -> object:
     from vllm.config.utils import normalize_value
 
-    if factor == "VLLM_DISABLED_KERNELS" and isinstance(raw, list):
-        raw = tuple(
-            sorted(
-                {
-                    kernel.strip()
-                    for kernel in raw
-                    if isinstance(kernel, str) and kernel.strip()
-                }
-            )
-        )
-    elif factor in _ambient_compile_factor_names() and isinstance(raw, str):
-        normalized_raw = raw.strip().lower()
-        if normalized_raw in {"1", "true"}:
-            raw = True
-        elif normalized_raw in {"0", "false", ""}:
-            raw = False
+    normalizer = _compile_factor_normalizer(factor)
+    if normalizer is not None:
+        raw = normalizer(raw)
 
     return normalize_value(raw)
 
@@ -2311,16 +2352,37 @@ def _ambient_compile_factor_names() -> list[str]:
         # https://github.com/ray-project/ray/blob/c584b1ea97b00793d1def71eaf81537d70efba42/python/ray/_private/accelerators/tpu.py#L38
         # https://github.com/ray-project/ray/blob/c584b1ea97b00793d1def71eaf81537d70efba42/python/ray/_private/accelerators/intel_gpu.py#L10
         # https://github.com/ray-project/ray/blob/c584b1ea97b00793d1def71eaf81537d70efba42/python/ray/_private/accelerators/rbln.py#L10
-        "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES",
-        "RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES",
-        "RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES",
-        "RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES",
-        "RAY_EXPERIMENTAL_NOSET_HABANA_VISIBLE_MODULES",
-        "RAY_EXPERIMENTAL_NOSET_NEURON_RT_VISIBLE_CORES",
-        "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS",
-        "RAY_EXPERIMENTAL_NOSET_ONEAPI_DEVICE_SELECTOR",
-        "RAY_EXPERIMENTAL_NOSET_RBLN_RT_VISIBLE_DEVICES",
+        *_AMBIENT_COMPILE_FACTOR_NAMES,
     ]
+
+
+def compile_factor_normalization_manifest() -> dict[str, object]:
+    categories = compile_factor_categories()
+    compile_affecting_names = sorted(
+        factor for factor, category in categories.items() if category == "compile_affecting"
+    )
+    ambient_names = sorted(_ambient_compile_factor_names())
+    declared_normalizers = {
+        factor: normalizer.__name__
+        for factor in compile_affecting_names
+        if (normalizer := _compile_factor_normalizer(factor)) is not None
+    }
+    ambient_normalizers = {
+        factor: normalizer.__name__
+        for factor in ambient_names
+        if (normalizer := _compile_factor_normalizer(factor)) is not None
+    }
+    return {
+        "schema_version": 1,
+        "declared_factor_normalizers": declared_normalizers,
+        "ambient_factor_normalizers": ambient_normalizers,
+        "declared_factor_without_normalizer": sorted(
+            factor for factor in compile_affecting_names if factor not in declared_normalizers
+        ),
+        "ambient_factor_without_normalizer": sorted(
+            factor for factor in ambient_names if factor not in ambient_normalizers
+        ),
+    }
 
 
 def compile_factor_identity_manifest() -> dict[str, object]:
@@ -2501,6 +2563,7 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
 def compile_factor_manifest() -> dict[str, object]:
     factors = compile_factors()
     identity_manifest = compile_factor_identity_manifest()
+    normalization_manifest = compile_factor_normalization_manifest()
     categories = compile_factor_categories()
     policies = compile_factor_policies()
     ambient_policies = ambient_compile_factor_policies()
@@ -2526,6 +2589,7 @@ def compile_factor_manifest() -> dict[str, object]:
             key: ambient_policies[key]
             for key in sorted(ambient_policies)
         },
+        "normalization": normalization_manifest,
         "included_keys": included_keys,
         "ambient_included_keys": ambient_included_keys,
         "ignored_keys": ignored_keys,
