@@ -97,6 +97,32 @@ def _load_caching_module():
     env_override_mod.patch_profile_manifest = lambda: {
         "schema_version": 1,
         "torch_version": "2.9.0-light",
+        "fallback_namespace_coverage": {
+            "schema_version": 1,
+            "allow_list_proxy_active": True,
+            "graph_binding_rebound": True,
+            "namespaces": [
+                {
+                    "namespace": "vllm",
+                    "prefix": "vllm::",
+                    "registered_op_count": 2,
+                    "registered_ops_digest": "vllm-digest",
+                    "registered_ops_preview": [
+                        "vllm::all_reduce",
+                        "vllm::fused_add_rms_norm",
+                    ],
+                },
+                {
+                    "namespace": "vllm_aiter",
+                    "prefix": "vllm_aiter::",
+                    "registered_op_count": 1,
+                    "registered_ops_digest": "aiter-digest",
+                    "registered_ops_preview": [
+                        "vllm_aiter::rocm_aiter_fused_moe",
+                    ],
+                },
+            ],
+        },
         "patches": [
             {
                 "patch_id": "lightweight-stub",
@@ -105,6 +131,32 @@ def _load_caching_module():
                 "applied": True,
                 "detail": "stubbed patch profile",
             }
+        ],
+    }
+    env_override_mod.fallback_namespace_manifest = lambda: {
+        "schema_version": 1,
+        "allow_list_proxy_active": True,
+        "graph_binding_rebound": True,
+        "namespaces": [
+            {
+                "namespace": "vllm",
+                "prefix": "vllm::",
+                "registered_op_count": 2,
+                "registered_ops_digest": "vllm-digest",
+                "registered_ops_preview": [
+                    "vllm::all_reduce",
+                    "vllm::fused_add_rms_norm",
+                ],
+            },
+            {
+                "namespace": "vllm_aiter",
+                "prefix": "vllm_aiter::",
+                "registered_op_count": 1,
+                "registered_ops_digest": "aiter-digest",
+                "registered_ops_preview": [
+                    "vllm_aiter::rocm_aiter_fused_moe",
+                ],
+            },
         ],
     }
 
@@ -344,6 +396,32 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "patch_profile": {
             "schema_version": 1,
             "torch_version": "2.9.0-light",
+            "fallback_namespace_coverage": {
+                "schema_version": 1,
+                "allow_list_proxy_active": True,
+                "graph_binding_rebound": True,
+                "namespaces": [
+                    {
+                        "namespace": "vllm",
+                        "prefix": "vllm::",
+                        "registered_op_count": 2,
+                        "registered_ops_digest": "vllm-digest",
+                        "registered_ops_preview": [
+                            "vllm::all_reduce",
+                            "vllm::fused_add_rms_norm",
+                        ],
+                    },
+                    {
+                        "namespace": "vllm_aiter",
+                        "prefix": "vllm_aiter::",
+                        "registered_op_count": 1,
+                        "registered_ops_digest": "aiter-digest",
+                        "registered_ops_preview": [
+                            "vllm_aiter::rocm_aiter_fused_moe",
+                        ],
+                    },
+                ],
+            },
             "patches": [
                 {
                     "patch_id": "lightweight-stub",
@@ -352,6 +430,32 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                     "applied": True,
                     "detail": "stubbed patch profile",
                 }
+            ],
+        },
+        "fallback_namespace_coverage": {
+            "schema_version": 1,
+            "allow_list_proxy_active": True,
+            "graph_binding_rebound": True,
+            "namespaces": [
+                {
+                    "namespace": "vllm",
+                    "prefix": "vllm::",
+                    "registered_op_count": 2,
+                    "registered_ops_digest": "vllm-digest",
+                    "registered_ops_preview": [
+                        "vllm::all_reduce",
+                        "vllm::fused_add_rms_norm",
+                    ],
+                },
+                {
+                    "namespace": "vllm_aiter",
+                    "prefix": "vllm_aiter::",
+                    "registered_op_count": 1,
+                    "registered_ops_digest": "aiter-digest",
+                    "registered_ops_preview": [
+                        "vllm_aiter::rocm_aiter_fused_moe",
+                    ],
+                },
             ],
         },
         "shape_envelope": {
@@ -559,6 +663,32 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
         "patch_profile": {
             "schema_version": 1,
             "torch_version": "2.9.0-light",
+            "fallback_namespace_coverage": {
+                "schema_version": 1,
+                "allow_list_proxy_active": True,
+                "graph_binding_rebound": True,
+                "namespaces": [
+                    {
+                        "namespace": "vllm",
+                        "prefix": "vllm::",
+                        "registered_op_count": 2,
+                        "registered_ops_digest": "vllm-digest",
+                        "registered_ops_preview": [
+                            "vllm::all_reduce",
+                            "vllm::fused_add_rms_norm",
+                        ],
+                    },
+                    {
+                        "namespace": "vllm_aiter",
+                        "prefix": "vllm_aiter::",
+                        "registered_op_count": 1,
+                        "registered_ops_digest": "aiter-digest",
+                        "registered_ops_preview": [
+                            "vllm_aiter::rocm_aiter_fused_moe",
+                        ],
+                    },
+                ],
+            },
             "patches": [
                 {
                     "patch_id": "lightweight-stub",
@@ -567,6 +697,32 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                     "applied": True,
                     "detail": "stubbed patch profile",
                 }
+            ],
+        },
+        "fallback_namespace_coverage": {
+            "schema_version": 1,
+            "allow_list_proxy_active": True,
+            "graph_binding_rebound": True,
+            "namespaces": [
+                {
+                    "namespace": "vllm",
+                    "prefix": "vllm::",
+                    "registered_op_count": 2,
+                    "registered_ops_digest": "vllm-digest",
+                    "registered_ops_preview": [
+                        "vllm::all_reduce",
+                        "vllm::fused_add_rms_norm",
+                    ],
+                },
+                {
+                    "namespace": "vllm_aiter",
+                    "prefix": "vllm_aiter::",
+                    "registered_op_count": 1,
+                    "registered_ops_digest": "aiter-digest",
+                    "registered_ops_preview": [
+                        "vllm_aiter::rocm_aiter_fused_moe",
+                    ],
+                },
             ],
         },
         "shape_envelope": {

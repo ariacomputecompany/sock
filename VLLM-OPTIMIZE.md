@@ -398,7 +398,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 - [ ] Detect when an upstream torch upgrade makes a local patch obsolete.
 - [ ] Avoid allowing patches to silently widen the compile surface.
 - [ ] Surface fallback creation as explicit evidence, not silent behavior.
-- [ ] Track custom-op fallback namespace coverage as a first-class signal.
 
 ## 13. AOT Compile Artifact Improvements
 

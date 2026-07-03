@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 # ruff: noqa: E402
+import hashlib
 import importlib.util
+import json
 import os
 
 
@@ -857,6 +859,65 @@ def _patch_inductor_fallback_allow_list() -> None:
 
 _patch_inductor_fallback_allow_list()
 
+
+def _registered_custom_op_names(namespace: str) -> list[str]:
+    ops_root = getattr(torch, "ops", None)
+    namespace_root = getattr(ops_root, namespace, None) if ops_root is not None else None
+    if namespace_root is None:
+        return []
+
+    return sorted(
+        f"{namespace}::{name}"
+        for name in dir(namespace_root)
+        if not name.startswith("_")
+    )
+
+
+def fallback_namespace_manifest() -> dict[str, object]:
+    """Return explicit evidence for the custom-op fallback namespace patch."""
+    try:
+        from torch._inductor import lowering as _lowering
+    except ImportError:
+        allow_list = None
+        allow_list_patched = False
+    else:
+        allow_list = getattr(_lowering, "FALLBACK_ALLOW_LIST", None)
+        allow_list_patched = bool(getattr(allow_list, "_vllm_patched", False))
+
+    try:
+        from torch._inductor import graph as _graph
+    except ImportError:
+        graph_binding_rebound = False
+    else:
+        graph_binding_rebound = (
+            allow_list is not None
+            and getattr(_graph, "FALLBACK_ALLOW_LIST", None) is allow_list
+        )
+
+    namespaces = []
+    for prefix in _VLLM_FALLBACK_NAMESPACE_PREFIXES:
+        namespace = prefix.split("::", 1)[0]
+        registered_ops = _registered_custom_op_names(namespace)
+        registered_ops_digest = hashlib.sha256(
+            json.dumps(registered_ops, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        namespaces.append(
+            {
+                "namespace": namespace,
+                "prefix": prefix,
+                "registered_op_count": len(registered_ops),
+                "registered_ops_digest": registered_ops_digest,
+                "registered_ops_preview": registered_ops[:8],
+            }
+        )
+
+    return {
+        "schema_version": 1,
+        "allow_list_proxy_active": allow_list_patched,
+        "graph_binding_rebound": graph_binding_rebound,
+        "namespaces": namespaces,
+    }
+
 # ============================================================
 # Triton Autotuner determinism
 # ============================================================
@@ -1046,5 +1107,6 @@ def patch_profile_manifest() -> dict[str, object]:
     return {
         "schema_version": 1,
         "torch_version": getattr(torch, "__version__", "<unknown>"),
+        "fallback_namespace_coverage": fallback_namespace_manifest(),
         "patches": patches,
     }

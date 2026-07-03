@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+import hashlib
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -43,9 +45,33 @@ def _load_env_override_module():
 def test_patch_profile_manifest_lightweight() -> None:
     env_override = _load_env_override_module()
     manifest = env_override.patch_profile_manifest()
+    empty_digest = hashlib.sha256(
+        json.dumps([], separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
     assert manifest["schema_version"] == 1
     assert manifest["torch_version"] == "2.9.0-light"
+    assert manifest["fallback_namespace_coverage"] == {
+        "schema_version": 1,
+        "allow_list_proxy_active": False,
+        "graph_binding_rebound": False,
+        "namespaces": [
+            {
+                "namespace": "vllm",
+                "prefix": "vllm::",
+                "registered_op_count": 0,
+                "registered_ops_digest": empty_digest,
+                "registered_ops_preview": [],
+            },
+            {
+                "namespace": "vllm_aiter",
+                "prefix": "vllm_aiter::",
+                "registered_op_count": 0,
+                "registered_ops_digest": empty_digest,
+                "registered_ops_preview": [],
+            },
+        ],
+    }
     patch_ids = {patch["patch_id"] for patch in manifest["patches"]}
     assert "fallback_allow_list" in patch_ids
     assert "triton_force_first_config" in patch_ids
