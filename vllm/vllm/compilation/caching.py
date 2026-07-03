@@ -343,7 +343,11 @@ def pack_serialized_fn_state_bundle(state: dict[str, Any]) -> bytes:
     )
 
 
-def unpack_serialized_fn_state_bundle(data: bytes) -> dict[str, Any]:
+def unpack_serialized_fn_state_bundle(
+    data: bytes,
+    *,
+    eager_pickle: bool = True,
+) -> dict[str, Any]:
     if not data.startswith(_SERIALIZED_FN_STATE_BUNDLE_MAGIC):
         raise ValueError("invalid serialized function state bundle header")
 
@@ -368,17 +372,37 @@ def unpack_serialized_fn_state_bundle(data: bytes) -> dict[str, Any]:
         "consts": None,
         "standalone_compile_artifact_store_bundle": None,
     }
+    serialized_blob_codecs: dict[str, str] = {}
     for item in header["blobs"]:
         blob_offset = int(item["offset"])
         blob_size = int(item["size"])
         blob = payload[blob_offset : blob_offset + blob_size]
         name = str(item["name"])
         codec = str(item["codec"])
-        if codec == "pickle":
+        serialized_blob_codecs[name] = codec
+        if codec == "pickle" and eager_pickle:
             state[name] = pickle.loads(blob)
         else:
             state[name] = blob
+    if not eager_pickle:
+        state["_serialized_blob_codecs"] = serialized_blob_codecs
     return state
+
+
+def materialize_serialized_fn_state_fields(
+    state: dict[str, Any],
+    *names: str,
+) -> None:
+    serialized_blob_codecs = state.get("_serialized_blob_codecs")
+    if not isinstance(serialized_blob_codecs, dict):
+        return
+
+    for name in names:
+        if serialized_blob_codecs.get(name) != "pickle":
+            continue
+        value = state.get(name)
+        if isinstance(value, bytes):
+            state[name] = pickle.loads(value)
 
 
 def build_artifact_load_topology_summary(
@@ -1068,7 +1092,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         from torch.fx.experimental.symbolic_shapes import ShapeEnv
 
         sidecar, payload = unpack_serialized_compile_artifact_bundle(data)
-        state = unpack_serialized_fn_state_bundle(payload)
+        state = unpack_serialized_fn_state_bundle(payload, eager_pickle=False)
         fake_mode = FakeTensorMode(shape_env=ShapeEnv())
 
         standalone_compile_artifact_store_bundle = state.pop(
@@ -1116,6 +1140,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         }
         example_input_tensor_specs = sidecar_metadata.get("example_input_tensor_specs")
 
+        materialize_serialized_fn_state_fields(state, "aot_autograd_config")
         saved_aot_autograd_config = state["aot_autograd_config"]
         if saved_aot_autograd_config is not None:
             functorch_ctx = torch._functorch.config.patch(saved_aot_autograd_config)
@@ -1268,6 +1293,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 ),
             )
 
+            state.pop("_serialized_blob_codecs", None)
             return fn
 
         state["example_inputs"] = GraphPickler.loads(state["example_inputs"], fake_mode)
@@ -1275,6 +1301,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
             state["graph_module"], fake_mode
         )
         state["graph_module"].recompile()
+        state.pop("_serialized_blob_codecs", None)
 
         # Fall back to standard VllmBackend.
         # Use a lazy closure: the backend needs traced_files for cache
@@ -1502,11 +1529,13 @@ def reconstruct_serializable_fn_from_mega_artifact(
     execution_code = state.get("execution_code")
     submod_names = state.get("submod_names")
     if execution_plan is not None and submod_names is not None:
+        materialize_serialized_fn_state_fields(state, "consts")
         consts = state.get("consts")
         runtime_callable = compile_execution_plan_fn(
             execution_plan, submod_callables, submod_names, consts
         )
     elif execution_code is not None and submod_names is not None:
+        materialize_serialized_fn_state_fields(state, "consts")
         consts = state.get("consts")
         runtime_callable = compile_execution_fn(
             execution_code, submod_callables, submod_names, consts
@@ -1533,6 +1562,7 @@ def reconstruct_serializable_fn_from_mega_artifact(
     else:
         optimized_call = runtime_callable
 
+    state.pop("_serialized_blob_codecs", None)
     fn = VllmSerializableFunction(
         **state,
         optimized_call=optimized_call,

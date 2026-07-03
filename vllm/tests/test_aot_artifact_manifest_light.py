@@ -1369,6 +1369,46 @@ def test_serialized_fn_state_bundle_roundtrip() -> None:
     assert restored == state
 
 
+def test_serialized_fn_state_bundle_can_delay_pickle_rehydration() -> None:
+    caching, _ = _load_caching_module()
+    state = {
+        "graph_module": b"graph-bytes",
+        "example_inputs": b"example-input-bytes",
+        "prefix": "unit-prefix",
+        "is_encoder": False,
+        "sym_tensor_indices": [0],
+        "aot_autograd_config": {"bundled_autograd_cache": True},
+        "execution_plan": {
+            "schema_version": 1,
+            "name": "execution_fn",
+            "with_submods": True,
+            "params": ["x"],
+            "ops": [{"kind": "return", "value": {"kind": "node", "name": "x"}}],
+        },
+        "execution_code": None,
+        "submod_names": ["block0"],
+        "consts": ["const0"],
+        "standalone_compile_artifact_store_bundle": b"artifact-store",
+    }
+
+    bundle = caching.pack_serialized_fn_state_bundle(state)
+    restored = caching.unpack_serialized_fn_state_bundle(bundle, eager_pickle=False)
+
+    assert restored["graph_module"] == b"graph-bytes"
+    assert restored["example_inputs"] == b"example-input-bytes"
+    assert isinstance(restored["aot_autograd_config"], bytes)
+    assert isinstance(restored["consts"], bytes)
+    assert restored["_serialized_blob_codecs"]["aot_autograd_config"] == "pickle"
+    assert restored["_serialized_blob_codecs"]["consts"] == "pickle"
+
+    caching.materialize_serialized_fn_state_fields(
+        restored, "aot_autograd_config", "consts"
+    )
+
+    assert restored["aot_autograd_config"] == {"bundled_autograd_cache": True}
+    assert restored["consts"] == ["const0"]
+
+
 def test_artifact_load_topology_summary_tracks_data_parallel_estimate() -> None:
     caching, _ = _load_caching_module()
     caching.envs.VLLM_DP_RANK = 2
