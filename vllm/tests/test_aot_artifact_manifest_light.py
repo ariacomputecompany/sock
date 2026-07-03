@@ -325,10 +325,12 @@ def test_artifact_manifest_summary_and_identity() -> None:
     assert rendered["entries"] == manifest["entries"]
     assert rendered["stores"] == manifest["stores"]
 
-    assert artifacts.reuse_summary() == {
+    reuse_summary = artifacts.reuse_summary()
+    assert reuse_summary == {
         "schema_version": 1,
         "cache_hit_reason": "standalone_aot_artifact_manifest_match",
         "artifact_reuse_mode": "content_addressed_dedup",
+        "store_identity": artifacts.store_identity(),
         "entry_count": 3,
         "unique_artifact_count": 2,
         "deduped_entry_count": 2,
@@ -337,6 +339,26 @@ def test_artifact_manifest_summary_and_identity() -> None:
         "expanded_entry_bytes": len(b"same-bytes") * 2 + len(b"other-bytes"),
         "duplicate_bytes_elided": len(b"same-bytes"),
         "duplicate_artifact_loads_avoided": 1,
+        "load_topology": {
+            "schema_version": 1,
+            "store_identity": artifacts.store_identity(),
+            "process_id": reuse_summary["load_topology"]["process_id"],
+            "global_rank": 0,
+            "local_rank": 0,
+            "data_parallel_rank": 0,
+            "data_parallel_rank_local": 0,
+            "data_parallel_size": 1,
+            "local_process_count_estimate": 1,
+            "unique_artifact_count": 2,
+            "unique_bytes": len(b"same-bytes") + len(b"other-bytes"),
+            "expanded_entry_bytes": len(b"same-bytes") * 2 + len(b"other-bytes"),
+            "duplicate_process_loads_estimate": 0,
+            "duplicate_rank_loads_estimate": 0,
+            "cluster_unique_bytes_estimate": len(b"same-bytes") + len(b"other-bytes"),
+            "cluster_expanded_entry_bytes_estimate": len(b"same-bytes") * 2
+            + len(b"other-bytes"),
+            "cluster_duplicate_artifact_bytes_estimate": len(b"same-bytes"),
+        },
     }
 
 
@@ -420,6 +442,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             "schema_version": 1,
             "cache_hit_reason": "standalone_aot_artifact_manifest_match",
             "artifact_reuse_mode": "content_addressed_dedup",
+            "store_identity": artifacts.store_identity(),
             "entry_count": 2,
             "unique_artifact_count": 1,
             "deduped_entry_count": 2,
@@ -428,6 +451,25 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             "expanded_entry_bytes": len(b"payload") * 2,
             "duplicate_bytes_elided": len(b"payload"),
             "duplicate_artifact_loads_avoided": 1,
+            "load_topology": {
+                "schema_version": 1,
+                "store_identity": artifacts.store_identity(),
+                "process_id": sidecar["reuse_summary"]["load_topology"]["process_id"],
+                "global_rank": 0,
+                "local_rank": 0,
+                "data_parallel_rank": 0,
+                "data_parallel_rank_local": 0,
+                "data_parallel_size": 1,
+                "local_process_count_estimate": 1,
+                "unique_artifact_count": 1,
+                "unique_bytes": len(b"payload"),
+                "expanded_entry_bytes": len(b"payload") * 2,
+                "duplicate_process_loads_estimate": 0,
+                "duplicate_rank_loads_estimate": 0,
+                "cluster_unique_bytes_estimate": len(b"payload"),
+                "cluster_expanded_entry_bytes_estimate": len(b"payload") * 2,
+                "cluster_duplicate_artifact_bytes_estimate": len(b"payload"),
+            },
         },
         "proof_manifest": {
             "schema_version": 1,
@@ -611,6 +653,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "schema_version": 1,
         "cache_hit_reason": "standalone_aot_artifact_manifest_match",
         "artifact_reuse_mode": "content_addressed_dedup",
+        "store_identity": artifacts.store_identity(),
         "entry_count": 2,
         "unique_artifact_count": 1,
         "deduped_entry_count": 2,
@@ -619,6 +662,25 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         "expanded_entry_bytes": len(b"payload") * 2,
         "duplicate_bytes_elided": len(b"payload"),
         "duplicate_artifact_loads_avoided": 1,
+        "load_topology": {
+            "schema_version": 1,
+            "store_identity": artifacts.store_identity(),
+            "process_id": sidecar["reuse_summary"]["load_topology"]["process_id"],
+            "global_rank": 0,
+            "local_rank": 0,
+            "data_parallel_rank": 0,
+            "data_parallel_rank_local": 0,
+            "data_parallel_size": 1,
+            "local_process_count_estimate": 1,
+            "unique_artifact_count": 1,
+            "unique_bytes": len(b"payload"),
+            "expanded_entry_bytes": len(b"payload") * 2,
+            "duplicate_process_loads_estimate": 0,
+            "duplicate_rank_loads_estimate": 0,
+            "cluster_unique_bytes_estimate": len(b"payload"),
+            "cluster_expanded_entry_bytes_estimate": len(b"payload") * 2,
+            "cluster_duplicate_artifact_bytes_estimate": len(b"payload"),
+        },
     }
     assert sidecar["proof_manifest"] == {
         "schema_version": 1,
@@ -1089,6 +1151,25 @@ def test_load_report_marks_already_loaded_fast_path() -> None:
         "already_loaded_count": 0,
         "deserialization_wall_time_ms": 0.0,
         "store_identity": artifacts.store_identity(),
+        "load_topology": {
+            "schema_version": 1,
+            "store_identity": artifacts.store_identity(),
+            "process_id": artifacts.last_load_report()["load_topology"]["process_id"],
+            "global_rank": 0,
+            "local_rank": 0,
+            "data_parallel_rank": 0,
+            "data_parallel_rank_local": 0,
+            "data_parallel_size": 1,
+            "local_process_count_estimate": 1,
+            "unique_artifact_count": 1,
+            "unique_bytes": len(b"payload"),
+            "expanded_entry_bytes": len(b"payload"),
+            "duplicate_process_loads_estimate": 0,
+            "duplicate_rank_loads_estimate": 0,
+            "cluster_unique_bytes_estimate": len(b"payload"),
+            "cluster_expanded_entry_bytes_estimate": len(b"payload"),
+            "cluster_duplicate_artifact_bytes_estimate": 0,
+        },
     }
 
 
@@ -1120,6 +1201,25 @@ def test_get_loaded_materializes_only_requested_artifact() -> None:
         "already_loaded_count": 0,
         "deserialization_wall_time_ms": report["deserialization_wall_time_ms"],
         "store_identity": artifacts.store_identity(),
+        "load_topology": {
+            "schema_version": 1,
+            "store_identity": artifacts.store_identity(),
+            "process_id": report["load_topology"]["process_id"],
+            "global_rank": 0,
+            "local_rank": 0,
+            "data_parallel_rank": 0,
+            "data_parallel_rank_local": 0,
+            "data_parallel_size": 1,
+            "local_process_count_estimate": 1,
+            "unique_artifact_count": 2,
+            "unique_bytes": len(payload0) + len(payload1),
+            "expanded_entry_bytes": len(payload0) + len(payload1),
+            "duplicate_process_loads_estimate": 0,
+            "duplicate_rank_loads_estimate": 0,
+            "cluster_unique_bytes_estimate": len(payload0) + len(payload1),
+            "cluster_expanded_entry_bytes_estimate": len(payload0) + len(payload1),
+            "cluster_duplicate_artifact_bytes_estimate": 0,
+        },
     }
     assert float(report["deserialization_wall_time_ms"]) >= 0.0
 
@@ -1227,6 +1327,41 @@ def test_serialized_fn_state_bundle_roundtrip() -> None:
     restored = caching.unpack_serialized_fn_state_bundle(bundle)
 
     assert restored == state
+
+
+def test_artifact_load_topology_summary_tracks_data_parallel_estimate() -> None:
+    caching, _ = _load_caching_module()
+    caching.envs.VLLM_DP_RANK = 2
+    caching.envs.VLLM_DP_RANK_LOCAL = 1
+    caching.envs.VLLM_DP_SIZE = 4
+    caching.envs.LOCAL_RANK = 1
+
+    topology = caching.build_artifact_load_topology_summary(
+        store_identity="store-1",
+        unique_artifact_count=3,
+        unique_bytes=10,
+        expanded_entry_bytes=16,
+    )
+
+    assert topology == {
+        "schema_version": 1,
+        "store_identity": "store-1",
+        "process_id": topology["process_id"],
+        "global_rank": 2,
+        "local_rank": 1,
+        "data_parallel_rank": 2,
+        "data_parallel_rank_local": 1,
+        "data_parallel_size": 4,
+        "local_process_count_estimate": 2,
+        "unique_artifact_count": 3,
+        "unique_bytes": 10,
+        "expanded_entry_bytes": 16,
+        "duplicate_process_loads_estimate": 3,
+        "duplicate_rank_loads_estimate": 3,
+        "cluster_unique_bytes_estimate": 40,
+        "cluster_expanded_entry_bytes_estimate": 64,
+        "cluster_duplicate_artifact_bytes_estimate": 24,
+    }
 
 
 def test_standalone_artifact_store_bundle_roundtrip() -> None:

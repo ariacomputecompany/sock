@@ -377,6 +377,47 @@ def unpack_serialized_fn_state_bundle(data: bytes) -> dict[str, Any]:
     return state
 
 
+def build_artifact_load_topology_summary(
+    *,
+    store_identity: str,
+    unique_artifact_count: int,
+    unique_bytes: int,
+    expanded_entry_bytes: int,
+) -> dict[str, object]:
+    local_rank = int(getattr(envs, "LOCAL_RANK", 0))
+    dp_rank = int(getattr(envs, "VLLM_DP_RANK", 0))
+    dp_rank_local = int(getattr(envs, "VLLM_DP_RANK_LOCAL", dp_rank))
+    dp_size = max(int(getattr(envs, "VLLM_DP_SIZE", 1)), 1)
+    global_rank = int(os.environ.get("RANK", str(dp_rank)))
+    local_processes = max(local_rank + 1, 1)
+
+    duplicate_process_loads_estimate = max(dp_size - 1, 0)
+    cluster_unique_bytes_estimate = unique_bytes * dp_size
+    cluster_expanded_entry_bytes_estimate = expanded_entry_bytes * dp_size
+
+    return {
+        "schema_version": 1,
+        "store_identity": store_identity,
+        "process_id": os.getpid(),
+        "global_rank": global_rank,
+        "local_rank": local_rank,
+        "data_parallel_rank": dp_rank,
+        "data_parallel_rank_local": dp_rank_local,
+        "data_parallel_size": dp_size,
+        "local_process_count_estimate": local_processes,
+        "unique_artifact_count": unique_artifact_count,
+        "unique_bytes": unique_bytes,
+        "expanded_entry_bytes": expanded_entry_bytes,
+        "duplicate_process_loads_estimate": duplicate_process_loads_estimate,
+        "duplicate_rank_loads_estimate": duplicate_process_loads_estimate,
+        "cluster_unique_bytes_estimate": cluster_unique_bytes_estimate,
+        "cluster_expanded_entry_bytes_estimate": cluster_expanded_entry_bytes_estimate,
+        "cluster_duplicate_artifact_bytes_estimate": (
+            cluster_expanded_entry_bytes_estimate - cluster_unique_bytes_estimate
+        ),
+    }
+
+
 class StandaloneCompiledArtifacts:
     """Storage for standalone compiled artifacts with content-based deduplication.
 
@@ -560,10 +601,12 @@ class StandaloneCompiledArtifacts:
                 deduped_entry_count += count
 
         duplicate_entry_count = self.num_entries() - self.num_artifacts()
+        store_identity = self.store_identity()
         return {
             "schema_version": 1,
             "cache_hit_reason": "standalone_aot_artifact_manifest_match",
             "artifact_reuse_mode": "content_addressed_dedup",
+            "store_identity": store_identity,
             "entry_count": self.num_entries(),
             "unique_artifact_count": self.num_artifacts(),
             "deduped_entry_count": deduped_entry_count,
@@ -572,6 +615,12 @@ class StandaloneCompiledArtifacts:
             "expanded_entry_bytes": total_entry_bytes,
             "duplicate_bytes_elided": total_entry_bytes - unique_bytes,
             "duplicate_artifact_loads_avoided": duplicate_entry_count,
+            "load_topology": build_artifact_load_topology_summary(
+                store_identity=store_identity,
+                unique_artifact_count=self.num_artifacts(),
+                unique_bytes=unique_bytes,
+                expanded_entry_bytes=total_entry_bytes,
+            ),
         }
 
     def last_load_report(self) -> dict[str, object] | None:
@@ -591,6 +640,15 @@ class StandaloneCompiledArtifacts:
             "already_loaded_count": 0,
             "deserialization_wall_time_ms": 0.0,
             "store_identity": store_identity,
+            "load_topology": build_artifact_load_topology_summary(
+                store_identity=store_identity,
+                unique_artifact_count=self.num_artifacts(),
+                unique_bytes=self.size_bytes(),
+                expanded_entry_bytes=sum(
+                    len(self.submodule_bytes_store[digest])
+                    for digest in self.submodule_bytes.values()
+                ),
+            ),
         }
 
     def _update_load_path(self) -> None:
@@ -1350,11 +1408,16 @@ def reconstruct_serializable_fn_from_mega_artifact(
         )
 
     if load_report is not None:
-        logger.info(
-            "standalone compile artifact load complete. loaded_artifacts=%d deserialization_wall_time_ms=%.6f load_path=%s startup_closure=%s",
+            logger.info(
+            "standalone compile artifact load complete. loaded_artifacts=%d deserialization_wall_time_ms=%.6f load_path=%s topology=%s startup_closure=%s",
             load_report.get("loaded_artifact_count", 0),
             float(load_report.get("deserialization_wall_time_ms", 0.0)),
             load_report.get("load_path", "<unknown>"),
+            json.dumps(
+                load_report.get("load_topology", {}),
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
             json.dumps(startup_closure, sort_keys=True, separators=(",", ":")),
         )
 

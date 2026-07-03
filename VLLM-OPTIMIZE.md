@@ -398,7 +398,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 ## 13. AOT Compile Artifact Improvements
 
-- [ ] Measure duplicate-load cost across ranks and processes, not just duplicate artifact bytes on disk.
 - [ ] Distinguish artifact-store identity from rank-local placement so one compiled payload can back multiple rank-local manifests.
 - [ ] Reduce reliance on runtime `exec` for stitching-graph execution code where a pre-emitted module, manifest-bound callable, or equivalent static representation would work.
 - [ ] Keep Python source generation and Python object rehydration off the common warm-start fast path wherever possible.
