@@ -68,6 +68,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_COMPUTE_NANS_IN_LOGITS"] == "debug_only"
     assert manifest["categories"]["VLLM_MM_HASHER_ALGORITHM"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_FASTSAFETENSORS_QUEUE_SIZE"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_KV_EVENTS_USE_INT_BLOCK_HASHES"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_MEDIA_CONNECTOR"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_CPU_KVCACHE_SPACE"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "runtime_non_compile"
@@ -142,6 +143,7 @@ def test_compile_factor_manifest_lightweight() -> None:
         == "runtime_non_compile"
     )
     assert manifest["categories"]["VLLM_LOOPBACK_IP"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_USE_RUST_FRONTEND"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_GC_DEBUG"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_PATTERN_MATCH_DEBUG"] == "runtime_non_compile"
     assert (
@@ -165,6 +167,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_NCCL_INCLUDE_PATH"] == "host_only"
     assert manifest["categories"]["VLLM_DOCKER_BUILD_CONTEXT"] == "host_only"
     assert manifest["categories"]["VLLM_SKIP_PRECOMPILED_VERSION_SUFFIX"] == "host_only"
+    assert manifest["categories"]["VLLM_RUST_FRONTEND_PATH"] == "host_only"
     assert manifest["categories"]["VLLM_CPU_OMP_THREADS_BIND"] == "host_only"
     assert manifest["categories"]["VLLM_PROCESS_NAME_PREFIX"] == "host_only"
     assert (
@@ -188,6 +191,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_SYSTEM_START_DATE" in manifest["ignored_keys"]
     assert "VLLM_MM_HASHER_ALGORITHM" in manifest["ignored_keys"]
     assert "VLLM_FASTSAFETENSORS_QUEUE_SIZE" in manifest["ignored_keys"]
+    assert "VLLM_KV_EVENTS_USE_INT_BLOCK_HASHES" in manifest["ignored_keys"]
     assert "VLLM_MEDIA_CONNECTOR" in manifest["ignored_keys"]
     assert "VLLM_CPU_KVCACHE_SPACE" in manifest["ignored_keys"]
     assert "VLLM_USE_SIMPLE_KV_OFFLOAD" in manifest["ignored_keys"]
@@ -229,6 +233,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_MSGPACK_ZERO_COPY_THRESHOLD" in manifest["ignored_keys"]
     assert "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS" in manifest["ignored_keys"]
     assert "VLLM_LOOPBACK_IP" in manifest["ignored_keys"]
+    assert "VLLM_USE_RUST_FRONTEND" in manifest["ignored_keys"]
     assert "VLLM_GC_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_PATTERN_MATCH_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE" in manifest["ignored_keys"]
@@ -240,6 +245,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_NCCL_INCLUDE_PATH" in manifest["ignored_keys"]
     assert "VLLM_DOCKER_BUILD_CONTEXT" in manifest["ignored_keys"]
     assert "VLLM_SKIP_PRECOMPILED_VERSION_SUFFIX" in manifest["ignored_keys"]
+    assert "VLLM_RUST_FRONTEND_PATH" in manifest["ignored_keys"]
     assert "VLLM_CPU_OMP_THREADS_BIND" in manifest["ignored_keys"]
     assert "VLLM_PROCESS_NAME_PREFIX" in manifest["ignored_keys"]
     assert (
@@ -346,6 +352,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_MEDIA_CONNECTOR" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_MM_HASHER_ALGORITHM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_FASTSAFETENSORS_QUEUE_SIZE" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_KV_EVENTS_USE_INT_BLOCK_HASHES" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_USE_SPINLOOP_EXT" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_DISABLE_PYNCCL" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_USE_NCCL_SYMM_MEM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
@@ -471,6 +478,7 @@ def test_compile_factor_manifest_lightweight() -> None:
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
     )
     assert "VLLM_LOOPBACK_IP" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_USE_RUST_FRONTEND" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_GC_DEBUG" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_PATTERN_MATCH_DEBUG" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert (
@@ -489,6 +497,7 @@ def test_compile_factor_manifest_lightweight() -> None:
         "VLLM_SKIP_PRECOMPILED_VERSION_SUFFIX"
         in manifest["audit"]["category_keys"]["host_only"]
     )
+    assert "VLLM_RUST_FRONTEND_PATH" in manifest["audit"]["category_keys"]["host_only"]
     assert "VLLM_CPU_OMP_THREADS_BIND" in manifest["audit"]["category_keys"]["host_only"]
     assert "VLLM_LOG_MODEL_INSPECTION" in manifest["audit"]["category_keys"]["debug_only"]
     assert (
