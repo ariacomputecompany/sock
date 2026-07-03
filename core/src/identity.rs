@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AcceleratorVendor, ArtifactAcquisition, ArtifactPortability, ArtifactRequirement,
-    BackendFamily, BackendSelection, CanonicalHash, CompileRegion, ExecutionTopology,
-    OperatingSystem, RankDisposition,
+    BackendFamily, BackendSelection, CanonicalError, CanonicalHash, CompileRegion,
+    ExecutionTopology, OperatingSystem, RankDisposition, canonical_hash,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -46,6 +46,7 @@ pub struct PortabilityFingerprint {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StructuralIdentity {
     pub request_identity: CanonicalHash,
+    pub optimization_identity: CanonicalHash,
     pub backend_registry_identity: CanonicalHash,
     pub shape_envelope_identity: CanonicalHash,
     pub compile_region_identity: CanonicalHash,
@@ -56,6 +57,35 @@ pub struct StructuralIdentity {
     pub artifact_identity: CanonicalHash,
     pub evidence_identity: CanonicalHash,
     pub plan_identity: CanonicalHash,
+}
+
+#[must_use]
+pub fn artifact_manifest_identity(
+    primary_backend: BackendFamily,
+    requirement: &ArtifactRequirement,
+) -> String {
+    format!(
+        "{}:{:?}:{}",
+        primary_backend.as_str(),
+        requirement.class,
+        requirement.scope
+    )
+}
+
+pub fn artifact_node_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {
+    Ok(format!(
+        "artifact:{}:{}",
+        requirement.class.as_str(),
+        canonical_hash(requirement)?
+    ))
+}
+
+pub fn fanout_node_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {
+    Ok(format!(
+        "fanout:{}:{}",
+        requirement.class.as_str(),
+        canonical_hash(requirement)?
+    ))
 }
 
 impl BackendExtensionFingerprint {

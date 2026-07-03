@@ -1,6 +1,6 @@
 use crate::{
-    DiagnosticsDocument, HazardClass, ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument,
-    VerificationReport,
+    DiagnosticsDocument, HazardClass, OptimizationExplainDocument, ResolvedBuildPlan,
+    RewriteTraceDocument, SocPlanDocument, VerificationReport,
 };
 
 #[must_use]
@@ -20,6 +20,7 @@ pub fn render_explain(
     plan: &ResolvedBuildPlan,
     diagnostics: &DiagnosticsDocument,
     rewrite_trace: &RewriteTraceDocument,
+    optimization_explain: &OptimizationExplainDocument,
 ) -> String {
     let mut out = String::new();
     out.push_str(&render_plan_summary(plan));
@@ -27,6 +28,7 @@ pub fn render_explain(
         "guarantee correctness {:?} performance {:?}\n",
         plan.guarantee_envelope.achieved_correctness, plan.guarantee_envelope.achieved_performance
     ));
+    out.push_str(&render_optimization_explain(optimization_explain));
     out.push_str("rewrite trace:\n");
     for pass in &rewrite_trace.passes {
         out.push_str(&format!(
@@ -38,6 +40,44 @@ pub fn render_explain(
     }
     out.push_str("diagnostics:\n");
     out.push_str(&render_diagnostics(diagnostics));
+    out
+}
+
+#[must_use]
+pub fn render_optimization_explain(document: &OptimizationExplainDocument) -> String {
+    let mut out = String::new();
+    out.push_str("optimization envelope:\n");
+    out.push_str(&format!(
+        "  - level={} profile={} startup_budget_ms={} max_warmup_steps={} artifact_budget={} rank_local_budget={}\n",
+        document.level.as_str(),
+        document.profile_name,
+        document.startup_budget_ms,
+        document.max_warmup_steps,
+        document.artifact_budget.max_artifact_count,
+        document.artifact_budget.max_rank_local_artifacts
+    ));
+    out.push_str(&format!(
+        "  - phase_budgets={}\n",
+        document
+            .phase_budgets
+            .iter()
+            .map(|budget| format!("{}:{}", budget.phase_name, budget.startup_budget_ms))
+            .collect::<Vec<_>>()
+            .join("|")
+    ));
+    out.push_str("  - actions:\n");
+    for action in document
+        .compile_actions
+        .iter()
+        .chain(document.warmup_actions.iter())
+        .chain(document.autotune_actions.iter())
+        .chain(document.graph_actions.iter())
+    {
+        out.push_str(&format!(
+            "    {} {} because {}\n",
+            action.category, action.effect, action.reason
+        ));
+    }
     out
 }
 

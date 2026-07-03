@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::backend::{PackagingStrategy, RuntimeJitPolicy};
 use crate::canonical::{CanonicalError, CanonicalHash, canonical_hash};
+use crate::optimization::OptimizationPolicy;
 use crate::{
     AcceleratorVendor, BackendFamily, CoveragePlane, FailureMode, GuaranteeLevel, OperatingSystem,
     TargetEngine,
@@ -134,6 +135,7 @@ pub struct RawRequest {
     pub shape_policy: ShapePolicy,
     pub cache_policy: CachePolicy,
     pub warmup_policy: WarmupPolicy,
+    pub optimization_policy: OptimizationPolicy,
     pub layered_config: Vec<ConfigLayer>,
 }
 
@@ -148,6 +150,7 @@ pub struct NormalizedRequest {
     pub shape_policy: ShapePolicy,
     pub cache_policy: CachePolicy,
     pub warmup_policy: WarmupPolicy,
+    pub optimization_policy: OptimizationPolicy,
     pub layered_config: Vec<ConfigLayer>,
     pub identity: CanonicalHash,
 }
@@ -174,6 +177,7 @@ impl RawRequest {
             shape_policy: self.shape_policy,
             cache_policy: self.cache_policy,
             warmup_policy: self.warmup_policy,
+            optimization_policy: self.optimization_policy,
             layered_config: self.layered_config,
         };
         let identity = canonical_hash(&body)?;
@@ -188,6 +192,7 @@ impl RawRequest {
             shape_policy: body.shape_policy,
             cache_policy: body.cache_policy,
             warmup_policy: body.warmup_policy,
+            optimization_policy: body.optimization_policy,
             layered_config: body.layered_config,
             identity,
         })
@@ -205,5 +210,6 @@ struct NormalizedRequestBody {
     shape_policy: ShapePolicy,
     cache_policy: CachePolicy,
     warmup_policy: WarmupPolicy,
+    optimization_policy: OptimizationPolicy,
     layered_config: Vec<ConfigLayer>,
 }

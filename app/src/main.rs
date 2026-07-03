@@ -5,21 +5,23 @@ use std::time::Instant;
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use sock_app::{
-    default_host_snapshot, diagnostics_for, plan_outcome, plan_outcome_scoped, replay_bundle,
+    default_host_snapshot, default_request_with_optimization, diagnostics_for, replay_bundle,
     rewrite_trace_for,
 };
 use sock_core::{
     BackendFamily, BenchmarkCaseArtifactPaths, BenchmarkMatrixEntry, BenchmarkMatrixReport,
     BenchmarkTraceReference, BuildMeasurementReport, DiagnosticsDocument,
     MaterializationExecutionReport, MeasurementCaseReport, MeasurementComparisonReport,
-    MeasurementPhaseTimings, ReplayBundle, ReplayBundleMetadata, ResolvedBuildPlan,
-    RewriteTraceDocument, SchemaVersion, canonical_json, render_diagnostics, render_explain,
-    render_plan_summary, render_soc_explain, render_verification_report,
+    MeasurementPhaseTimings, OptimizationExplainDocument, OptimizationLevel, ReplayBundle,
+    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
+    render_diagnostics, render_explain, render_plan_summary, render_soc_explain,
+    render_verification_report,
 };
 use sock_engine::{
-    BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, PlannerHostSnapshot,
-    PlanningOutcome, StorageRoots, build_soc_plan_document, build_vllm_entrypoint_document,
-    build_vllm_integration_document, emit_vllm_entrypoints, validate_scoped_vllm_subset,
+    BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, Planner,
+    PlannerHostSnapshot, PlanningOutcome, StorageRoots, build_soc_plan_document,
+    build_vllm_entrypoint_document, build_vllm_integration_document, emit_vllm_entrypoints,
+    validate_scoped_vllm_subset,
 };
 
 #[derive(Debug, Parser)]
@@ -117,6 +119,8 @@ struct ScopeArgs {
     warmup_scopes: Vec<String>,
     #[arg(long, value_enum)]
     readiness: Option<ReadinessArg>,
+    #[arg(short = 'O', long = "opt-level", value_enum, default_value_t = OptimizationLevelArg::O2)]
+    optimization_level: OptimizationLevelArg,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -148,30 +152,61 @@ enum PrepareIntentArg {
     ReplaySafeClosure,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum OptimizationLevelArg {
+    O0,
+    O1,
+    O2,
+    O3,
+}
+
+impl Default for OptimizationLevelArg {
+    fn default() -> Self {
+        Self::O2
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Command::Plan { scope, format } => {
+            let optimization_level = scope.optimization_level;
             let scope = scope.into_scope();
             emit_plan(
                 &scope,
                 request_label_for_scope(&scope),
-                &plan(&scope)?,
+                &plan(
+                    &scope,
+                    match optimization_level {
+                        OptimizationLevelArg::O0 => OptimizationLevel::O0,
+                        OptimizationLevelArg::O1 => OptimizationLevel::O1,
+                        OptimizationLevelArg::O2 => OptimizationLevel::O2,
+                        OptimizationLevelArg::O3 => OptimizationLevel::O3,
+                    },
+                )?,
                 format,
             )?
         }
         Command::Explain { scope, format } => {
+            let optimization_level = match scope.optimization_level {
+                OptimizationLevelArg::O0 => OptimizationLevel::O0,
+                OptimizationLevelArg::O1 => OptimizationLevel::O1,
+                OptimizationLevelArg::O2 => OptimizationLevel::O2,
+                OptimizationLevelArg::O3 => OptimizationLevel::O3,
+            };
             let scope = scope.into_scope();
-            let outcome = plan_with_scope(&scope)?;
+            let outcome = plan_with_scope(&scope, optimization_level)?;
             let diagnostics = diagnostics_for(&outcome);
             let rewrite_trace = rewrite_trace_for(&outcome);
+            let optimization_explain = OptimizationExplainDocument::from_plan(&outcome.plan);
             emit_explain(
                 &scope,
                 request_label_for_scope(&scope),
                 &outcome,
                 &diagnostics,
                 &rewrite_trace,
+                &optimization_explain,
                 format,
             )?;
         }
@@ -181,8 +216,14 @@ fn main() -> Result<()> {
             scope,
             format,
         } => {
+            let optimization_level = match scope.optimization_level {
+                OptimizationLevelArg::O0 => OptimizationLevel::O0,
+                OptimizationLevelArg::O1 => OptimizationLevel::O1,
+                OptimizationLevelArg::O2 => OptimizationLevel::O2,
+                OptimizationLevelArg::O3 => OptimizationLevel::O3,
+            };
             let scope = scope.into_scope();
-            let outcome = plan_with_scope(&scope)?;
+            let outcome = plan_with_scope(&scope, optimization_level)?;
             let bundle = replay_bundle(&outcome, &scope);
             let vllm_integration = build_vllm_integration_document(&outcome)?;
             validate_scoped_vllm_subset(&scope, &vllm_integration)?;
@@ -316,16 +357,16 @@ fn intent_label(intent: PrepareIntentArg) -> &'static str {
     }
 }
 
-fn plan(scope: &BuildScope) -> Result<PlanningOutcome> {
-    Ok(if scope.is_unscoped() {
-        plan_outcome()?
-    } else {
-        plan_outcome_scoped(scope)?
-    })
+fn plan(scope: &BuildScope, optimization_level: OptimizationLevel) -> Result<PlanningOutcome> {
+    Ok(Planner::new(default_host_snapshot())
+        .resolve_scoped(default_request_with_optimization(optimization_level), scope)?)
 }
 
-fn plan_with_scope(scope: &BuildScope) -> Result<PlanningOutcome> {
-    plan(scope)
+fn plan_with_scope(
+    scope: &BuildScope,
+    optimization_level: OptimizationLevel,
+) -> Result<PlanningOutcome> {
+    plan(scope, optimization_level)
 }
 
 fn emit_plan(
@@ -353,6 +394,7 @@ fn emit_explain(
     outcome: &PlanningOutcome,
     diagnostics: &DiagnosticsDocument,
     rewrite_trace: &RewriteTraceDocument,
+    optimization_explain: &OptimizationExplainDocument,
     format: OutputMode,
 ) -> Result<()> {
     match format {
@@ -366,9 +408,14 @@ fn emit_explain(
             print!("{}", render_soc_contract(scope, outcome)?);
             print!(
                 "{}",
-                render_explain(&outcome.plan, diagnostics, rewrite_trace)
-                    .strip_prefix(&render_plan_summary(&outcome.plan))
-                    .unwrap_or("")
+                render_explain(
+                    &outcome.plan,
+                    diagnostics,
+                    rewrite_trace,
+                    optimization_explain,
+                )
+                .strip_prefix(&render_plan_summary(&outcome.plan))
+                .unwrap_or("")
             );
         }
         OutputMode::Json => {
@@ -378,6 +425,7 @@ fn emit_explain(
                     "plan": outcome.plan,
                     "diagnostics": diagnostics,
                     "rewrite_trace": rewrite_trace,
+                    "optimization_explain": optimization_explain,
                     "verification": outcome.verification,
                     "vllm_integration": build_vllm_integration_document(outcome)?,
                     "soc_plan": build_soc_plan_document(
@@ -733,6 +781,17 @@ fn render_request_contract(
         transfer_ms,
         bytes
     ));
+    out.push_str(&format!(
+        "  - optimization: level={} profile={} startup_budget_ms={} max_warmup_steps={} artifact_budget={} rank_local_budget={}\n",
+        plan.optimization_envelope.level.as_str(),
+        plan.optimization_envelope.profile_name,
+        plan.optimization_envelope.startup_budget_ms,
+        plan.optimization_envelope.max_warmup_steps,
+        plan.optimization_envelope.artifact_budget.max_artifact_count,
+        plan.optimization_envelope
+            .artifact_budget
+            .max_rank_local_artifacts
+    ));
 
     let expansion_reasons = plan
         .artifact_requirements
@@ -840,7 +899,7 @@ struct BenchmarkProfile<'a> {
 
 fn materialize_bundle(scope: &BuildScope, out: &Path, cache_root: &Path) -> Result<BundleBuild> {
     let configure_started = Instant::now();
-    let outcome = plan_with_scope(scope)?;
+    let outcome = plan_with_scope(scope, OptimizationLevel::O2)?;
     let bundle = replay_bundle(&outcome, scope);
     let vllm_integration = build_vllm_integration_document(&outcome)?;
     let soc_plan = build_soc_plan_document(&outcome, scope, &vllm_integration);

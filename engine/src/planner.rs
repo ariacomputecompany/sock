@@ -10,12 +10,13 @@ use sock_core::{
     FanoutStrategy, GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel,
     HazardClass, LeaderAssignment, MaterializationGraph, MaterializationNode,
     MaterializationNodeKind, MaterializationWave, NodeExecutionContract, NormalizedRequest,
-    OperatingSystem, PackagingStrategy, PassTrace, PortabilityFingerprint, QueueDiscipline,
-    QueueKind, RangeIntent, RankDisposition, RawRequest, ResidualRuntimeRisk, ResolvedBuildPlan,
-    RewritePassContract, RewritePhase, RuntimeJitDisposition, RuntimeJitEvidence, RuntimeRoi,
-    ServePhase, ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapeRange, StructuralIdentity,
-    ValidationStatus, WarmupContradiction, WarmupCoverageProof, WarmupObligation, WaveEstimate,
-    WaveExecutionContract, canonical_hash,
+    OperatingSystem, OptimizationEnvelope, PackagingStrategy, PassTrace, PortabilityFingerprint,
+    QueueDiscipline, QueueKind, RangeIntent, RankDisposition, RawRequest, ResidualRuntimeRisk,
+    ResolvedBuildPlan, RewritePassContract, RewritePhase, RuntimeJitDisposition,
+    RuntimeJitEvidence, RuntimeRoi, ServePhase, ShapeEnvelope, ShapeEnvelopeNode, ShapePoint,
+    ShapeRange, StructuralIdentity, ValidationStatus, WarmupContradiction, WarmupCoverageProof,
+    WarmupObligation, WaveEstimate, WaveExecutionContract, artifact_manifest_identity,
+    artifact_node_handle, canonical_hash, fanout_node_handle,
 };
 use thiserror::Error;
 
@@ -71,11 +72,21 @@ impl Planner {
         scope: &BuildScope,
     ) -> Result<PlanningOutcome, PlanError> {
         let normalized = raw.normalize()?;
+        let optimization_envelope =
+            OptimizationEnvelope::from_level(normalized.optimization_policy.level);
         let adapter_survey = VllmAdapter::default().survey()?;
         let capability_witnesses = self.capability_witnesses(&normalized, &adapter_survey);
         let backend_registry = self.backend_registry(&normalized);
         let selected_backends =
             self.select_backends(&normalized, &capability_witnesses, &backend_registry)?;
+        let selected_backends = if optimization_envelope.compile_secondary_backends {
+            selected_backends
+        } else {
+            BackendSelection {
+                primary: selected_backends.primary,
+                secondary: Vec::new(),
+            }
+        };
         let compile_regions = self.compile_regions(&selected_backends, &adapter_survey, scope);
         if compile_regions.is_empty() {
             return Err(PlanError::Validation(
@@ -90,7 +101,7 @@ impl Planner {
             &compile_regions,
         )?;
         let shape_envelope = scoped_shape_envelope(
-            self.shape_envelope(&normalized, &selected_backends),
+            self.shape_envelope(&normalized, &selected_backends, &optimization_envelope),
             &compile_regions,
             scope,
         );
@@ -101,10 +112,16 @@ impl Planner {
             &selected_backends,
             &compile_regions,
             &adapter_survey,
+            &optimization_envelope,
             scope,
         )?;
-        let warmup_obligations =
-            self.warmup_obligations(&normalized, &shape_envelope, &compile_regions, scope);
+        let warmup_obligations = self.warmup_obligations(
+            &normalized,
+            &shape_envelope,
+            &compile_regions,
+            &optimization_envelope,
+            scope,
+        );
         let residual_risks = self.residual_risks(
             &normalized,
             &shape_envelope,
@@ -123,12 +140,7 @@ impl Planner {
         let artifact_manifest = artifact_requirements
             .iter()
             .map(|requirement| ArtifactManifestEntry {
-                identity: format!(
-                    "{}:{:?}:{}",
-                    selected_backends.primary.family.as_str(),
-                    requirement.class,
-                    requirement.scope
-                ),
+                identity: artifact_manifest_identity(selected_backends.primary.family, requirement),
                 class: requirement.class,
                 backend: requirement.backend,
                 scope: requirement.scope.clone(),
@@ -182,6 +194,7 @@ impl Planner {
                 BuildReadiness::Correctness => "correctness".to_owned(),
                 BuildReadiness::Performance => "performance".to_owned(),
             }),
+            optimization_envelope,
             backend_registry,
             selected_backends,
             compile_regions,
@@ -638,34 +651,37 @@ impl Planner {
         &self,
         normalized: &NormalizedRequest,
         selected_backends: &BackendSelection,
+        optimization_envelope: &OptimizationEnvelope,
     ) -> ShapeEnvelope {
-        let mut nodes = vec![
-            ShapeEnvelopeNode {
-                name: "correctness-range".to_owned(),
-                plane: CoveragePlane::Correctness,
-                intent: RangeIntent::SymbolicRange,
-                range: normalized.shape_policy.correctness_range.clone(),
-                exact_shape: None,
-                required_backends: vec![selected_backends.primary.family],
-            },
-            ShapeEnvelopeNode {
+        let mut nodes = vec![ShapeEnvelopeNode {
+            name: "correctness-range".to_owned(),
+            plane: CoveragePlane::Correctness,
+            intent: RangeIntent::SymbolicRange,
+            range: normalized.shape_policy.correctness_range.clone(),
+            exact_shape: None,
+            required_backends: vec![selected_backends.primary.family],
+        }];
+        if optimization_envelope.include_performance_warmup {
+            nodes.push(ShapeEnvelopeNode {
                 name: "performance-range".to_owned(),
                 plane: CoveragePlane::Performance,
                 intent: RangeIntent::FallbackRange,
                 range: normalized.shape_policy.performance_range.clone(),
                 exact_shape: None,
                 required_backends: vec![selected_backends.primary.family],
-            },
-        ];
-        for hot in &normalized.shape_policy.hot_shapes {
-            nodes.push(hot_shape_node("hot", hot, selected_backends.primary.family));
+            });
+            for hot in &normalized.shape_policy.hot_shapes {
+                nodes.push(hot_shape_node("hot", hot, selected_backends.primary.family));
+            }
         }
-        for graph in &normalized.shape_policy.cuda_graph_shapes {
-            nodes.push(hot_shape_node(
-                "cuda-graph",
-                graph,
-                BackendFamily::CudaGraphs,
-            ));
+        if optimization_envelope.include_cuda_graphs {
+            for graph in &normalized.shape_policy.cuda_graph_shapes {
+                nodes.push(hot_shape_node(
+                    "cuda-graph",
+                    graph,
+                    BackendFamily::CudaGraphs,
+                ));
+            }
         }
         if normalized.backend_policy.runtime_jit_policy.disposition
             == RuntimeJitDisposition::ShapeBounded
@@ -691,6 +707,7 @@ impl Planner {
         selected_backends: &BackendSelection,
         compile_regions: &[CompileRegion],
         adapter_survey: &AdapterSurvey,
+        optimization_envelope: &OptimizationEnvelope,
         scope: &BuildScope,
     ) -> Result<Vec<ArtifactRequirement>, PlanError> {
         let abi_identity = canonical_hash(&AbiFingerprint {
@@ -787,9 +804,10 @@ impl Planner {
                 ]
             })
             .collect::<Vec<_>>();
-        if compile_regions
-            .iter()
-            .any(|region| region.name == "decode_attention")
+        if optimization_envelope.include_cuda_graphs
+            && compile_regions
+                .iter()
+                .any(|region| region.name == "decode_attention")
             && scope.allows_artifact_scope("decode_attention")
         {
             requirements.push(ArtifactRequirement {
@@ -828,6 +846,7 @@ impl Planner {
         normalized: &NormalizedRequest,
         shape_envelope: &ShapeEnvelope,
         compile_regions: &[CompileRegion],
+        optimization_envelope: &OptimizationEnvelope,
         scope: &BuildScope,
     ) -> Vec<WarmupObligation> {
         let all_ranks = total_ranks(&normalized.topology);
@@ -837,12 +856,22 @@ impl Planner {
                 continue;
             }
             let steps = match node.intent {
-                RangeIntent::ExactHotShape => 1,
-                RangeIntent::SymbolicRange => normalized.warmup_policy.max_warmup_steps.min(3),
-                RangeIntent::FallbackRange => normalized.warmup_policy.max_warmup_steps.min(2),
+                RangeIntent::ExactHotShape => 1_u32.min(optimization_envelope.max_warmup_steps),
+                RangeIntent::SymbolicRange => optimization_envelope.max_warmup_steps.min(3),
+                RangeIntent::FallbackRange => optimization_envelope.max_warmup_steps.min(2),
                 RangeIntent::UncoveredResidual => 0,
             };
             for region in compile_regions {
+                if node.plane == CoveragePlane::Performance
+                    && !optimization_envelope.include_performance_warmup
+                {
+                    continue;
+                }
+                if node.plane == CoveragePlane::CudaGraph
+                    && !optimization_envelope.include_cuda_graphs
+                {
+                    continue;
+                }
                 if region.shape_planes.contains(&node.plane)
                     || node.plane == CoveragePlane::Correctness
                 {
@@ -854,8 +883,10 @@ impl Planner {
                         blocking: node.plane == CoveragePlane::Correctness,
                         required_artifacts: vec![region.name.clone()],
                         rank_scope: all_ranks.clone(),
-                        requires_capture: node.plane == CoveragePlane::CudaGraph,
-                        requires_autotune: region.family == BackendFamily::FlashInfer,
+                        requires_capture: node.plane == CoveragePlane::CudaGraph
+                            && optimization_envelope.include_cuda_graphs,
+                        requires_autotune: region.family == BackendFamily::FlashInfer
+                            && optimization_envelope.enable_autotune,
                         proof: warmup_proof(node, region, &all_ranks),
                     });
                 }
@@ -1027,7 +1058,7 @@ impl Planner {
             } else {
                 CoveragePlane::Performance
             };
-            let artifact_node = artifact_handle(requirement)?;
+            let artifact_node = artifact_node_handle(requirement)?;
             nodes.push(MaterializationNode {
                 name: artifact_node.clone(),
                 wave: if requirement.class == ArtifactClass::CudaGraphCapture {
@@ -1059,7 +1090,7 @@ impl Planner {
             if total_rank_count(topology) > 1
                 && requirement.rank_disposition == RankDisposition::Shared
             {
-                let fanout_node = fanout_handle(requirement)?;
+                let fanout_node = fanout_node_handle(requirement)?;
                 nodes.push(MaterializationNode {
                     name: fanout_node.clone(),
                     wave: 2,
@@ -1425,6 +1456,7 @@ impl Planner {
         guarantee_envelope: &GuaranteeEnvelope,
     ) -> Result<StructuralIdentity, CanonicalError> {
         let request_identity = normalized.identity.clone();
+        let optimization_identity = canonical_hash(&normalized.optimization_policy)?;
         let shape_envelope_identity = canonical_hash(shape_envelope)?;
         let compile_region_identity = canonical_hash(compile_regions)?;
         let capability_identity = canonical_hash(capability_witnesses)?;
@@ -1452,6 +1484,7 @@ impl Planner {
         let artifact_identity = canonical_hash(artifact_requirements)?;
         let evidence_identity = canonical_hash(guarantee_evidence)?;
         let plan_identity = canonical_hash(&(
+            &optimization_identity,
             selected_backends,
             compile_regions,
             shape_envelope,
@@ -1467,6 +1500,7 @@ impl Planner {
         ))?;
         Ok(StructuralIdentity {
             request_identity,
+            optimization_identity,
             backend_registry_identity,
             shape_envelope_identity,
             compile_region_identity,
@@ -1618,7 +1652,7 @@ fn bounded_by(
                     .iter()
                     .any(|scope| scope == &requirement.scope)
         })
-        .filter_map(|requirement| artifact_handle(requirement).ok());
+        .filter_map(|requirement| artifact_node_handle(requirement).ok());
     let mut bounded = regions
         .chain(warmups)
         .chain(artifacts)
@@ -1911,29 +1945,13 @@ fn warmup_dependency_nodes(
                     if requirement.rank_disposition == RankDisposition::Shared
                         && total_rank_count(topology) > 1
                     {
-                        fanout_handle(requirement)
+                        fanout_node_handle(requirement)
                     } else {
-                        artifact_handle(requirement)
+                        artifact_node_handle(requirement)
                     }
                 })
         })
         .collect()
-}
-
-fn artifact_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {
-    Ok(format!(
-        "artifact:{}:{}",
-        requirement.class.as_str(),
-        canonical_hash(requirement)?
-    ))
-}
-
-fn fanout_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {
-    Ok(format!(
-        "fanout:{}:{}",
-        requirement.class.as_str(),
-        canonical_hash(requirement)?
-    ))
 }
 
 fn node_discipline(rank_disposition: RankDisposition, queue: QueueKind) -> QueueDiscipline {
@@ -2096,6 +2114,9 @@ mod tests {
             warmup_policy: WarmupPolicy {
                 max_warmup_steps: 6,
                 verify_cuda_graph_capture: true,
+            },
+            optimization_policy: sock_core::OptimizationPolicy {
+                level: sock_core::OptimizationLevel::O2,
             },
             layered_config: vec![
                 ConfigLayer {

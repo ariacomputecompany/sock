@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "optimization-levels",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\nexplain_json=$(mktemp)\ncargo run --quiet --bin sock -- explain --format json -O o0 > \"$explain_json\"\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" -O o0 >/dev/null\npython3 - \"$explain_json\" \"$bundle_dir/optimization_explain.json\" <<'PY'\nimport json, sys\nexplain = json.load(open(sys.argv[1]))\nopt = json.load(open(sys.argv[2]))\nassert explain['plan']['optimization_envelope']['level'] == 'o0'\nassert explain['optimization_explain']['profile_name'] == 'minimal_dev'\nassert opt['level'] == 'o0'\nassert opt['graph_actions'][0]['effect'] == 'cuda_graphs=disabled'\nplanes = {node['plane'] for node in explain['plan']['shape_envelope']['nodes']}\nassert 'CudaGraph' not in planes\nPY\nprintf 'optimization-levels\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "optimization-levels\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\nexplain_json=$(mktemp)\ncargo run --quiet --bin sock -- explain --format json -O o0 > \"$explain_json\"\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" -O o0 >/dev/null\npython3 - \"$explain_json\" \"$bundle_dir/optimization_explain.json\" <<'PY'\nimport json, sys\nexplain = json.load(open(sys.argv[1]))\nopt = json.load(open(sys.argv[2]))\nassert explain['plan']['optimization_envelope']['level'] == 'o0'\nassert explain['optimization_explain']['profile_name'] == 'minimal_dev'\nassert opt['level'] == 'o0'\nassert opt['graph_actions'][0]['effect'] == 'cuda_graphs=disabled'\nplanes = {node['plane'] for node in explain['plan']['shape_envelope']['nodes']}\nassert 'CudaGraph' not in planes\nPY\nprintf 'optimization-levels\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "optimization-levels\n",
+      "expect_stderr": ""
+    }
+  ]
+}

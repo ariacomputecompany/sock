@@ -9,8 +9,8 @@ use thiserror::Error;
 
 use crate::{
     ArtifactClosure, ArtifactManifestEntry, CanonicalError, CanonicalHash, DiagnosticsDocument,
-    ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument, VerificationReport,
-    VllmEntrypointDocument, VllmIntegrationDocument, canonical_json,
+    OptimizationExplainDocument, ResolvedBuildPlan, RewriteTraceDocument, SocPlanDocument,
+    VerificationReport, VllmEntrypointDocument, VllmIntegrationDocument, canonical_json,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,6 +35,7 @@ pub struct ReplayBundle {
     pub verification_report: VerificationReport,
     pub diagnostics: DiagnosticsDocument,
     pub rewrite_trace: RewriteTraceDocument,
+    pub optimization_explain: OptimizationExplainDocument,
     pub vllm_integration: VllmIntegrationDocument,
     pub soc_plan: SocPlanDocument,
     pub vllm_entrypoints: VllmEntrypointDocument,
@@ -90,6 +91,10 @@ impl ReplayBundle {
             ),
             ("diagnostics.json", canonical_json(&self.diagnostics)?),
             ("rewrite_trace.json", canonical_json(&self.rewrite_trace)?),
+            (
+                "optimization_explain.json",
+                canonical_json(&self.optimization_explain)?,
+            ),
             (
                 "vllm_integration.json",
                 canonical_json(&self.vllm_integration)?,
@@ -148,6 +153,8 @@ impl ReplayBundle {
             serde_json::from_str(&fs::read_to_string(dir.join("diagnostics.json"))?)?;
         let rewrite_trace: RewriteTraceDocument =
             serde_json::from_str(&fs::read_to_string(dir.join("rewrite_trace.json"))?)?;
+        let optimization_explain: OptimizationExplainDocument =
+            serde_json::from_str(&fs::read_to_string(dir.join("optimization_explain.json"))?)?;
         let vllm_integration: VllmIntegrationDocument =
             serde_json::from_str(&fs::read_to_string(dir.join("vllm_integration.json"))?)?;
         let soc_plan: SocPlanDocument =
@@ -174,6 +181,11 @@ impl ReplayBundle {
         if rewrite_trace.plan_identity != plan_identity {
             return Err(ReplayBundleError::IdentityMismatch {
                 document: "rewrite_trace.json".to_owned(),
+            });
+        }
+        if optimization_explain.plan_identity != plan_identity {
+            return Err(ReplayBundleError::IdentityMismatch {
+                document: "optimization_explain.json".to_owned(),
             });
         }
         if vllm_integration.plan_identity != plan_identity {
@@ -208,6 +220,7 @@ impl ReplayBundle {
             verification_report,
             diagnostics,
             rewrite_trace,
+            optimization_explain,
             vllm_integration,
             soc_plan,
             vllm_entrypoints,
@@ -233,11 +246,12 @@ mod tests {
         DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode, FanoutStrategy,
         GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel, GuaranteeTarget,
         MaterializationGraph, MaterializationNode, MaterializationNodeKind, MaterializationWave,
-        ModelRef, NodeExecutionContract, PortabilityFingerprint, QueueDiscipline, QueueKind,
-        RangeIntent, RankDisposition, RawRequest, RequestedEnvironment, RewritePassContract,
-        RewritePhase, RewriteTraceDocument, RuntimeJitEvidence, RuntimeRoi, SchemaVersion,
-        ServePhase, ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapePolicy, ShapeRange,
-        SourceEvidence, StructuralIdentity, TargetEngine, WarmupContradiction, WarmupCoverageProof,
+        ModelRef, NodeExecutionContract, OptimizationEnvelope, OptimizationLevel,
+        OptimizationPolicy, PortabilityFingerprint, QueueDiscipline, QueueKind, RangeIntent,
+        RankDisposition, RawRequest, RequestedEnvironment, RewritePassContract, RewritePhase,
+        RewriteTraceDocument, RuntimeJitEvidence, RuntimeRoi, SchemaVersion, ServePhase,
+        ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapePolicy, ShapeRange, SourceEvidence,
+        StructuralIdentity, TargetEngine, WarmupContradiction, WarmupCoverageProof,
         WarmupObligation, WarmupPolicy, WaveEstimate, WaveExecutionContract, canonical_hash,
     };
 
@@ -316,6 +330,9 @@ mod tests {
                 max_warmup_steps: 4,
                 verify_cuda_graph_capture: true,
             },
+            optimization_policy: OptimizationPolicy {
+                level: OptimizationLevel::O2,
+            },
             layered_config: vec![
                 ConfigLayer {
                     name: "env".to_owned(),
@@ -338,6 +355,7 @@ mod tests {
         .normalize()
         .expect("normalize request");
 
+        let optimization_envelope = OptimizationEnvelope::from_level(OptimizationLevel::O2);
         let backend_registry = crate::BackendCapabilityRegistry {
             entries: vec![crate::BackendCapability {
                 family: BackendFamily::FlashInfer,
@@ -694,6 +712,8 @@ mod tests {
         .expect("portability identity");
         let structural_identity = StructuralIdentity {
             request_identity: normalized_request.identity.clone(),
+            optimization_identity: canonical_hash(&normalized_request.optimization_policy)
+                .expect("optimization identity"),
             backend_registry_identity,
             shape_envelope_identity: shape_envelope_identity,
             compile_region_identity: canonical_hash(&compile_regions).expect("region identity"),
@@ -721,6 +741,7 @@ mod tests {
         let plan = crate::ResolvedBuildPlan {
             normalized_request,
             requested_readiness: None,
+            optimization_envelope,
             backend_registry,
             selected_backends,
             compile_regions,
@@ -753,6 +774,7 @@ mod tests {
             plan_identity: plan.structural_identity.plan_identity.clone(),
             passes: rewrite_trace,
         };
+        let optimization_explain = crate::OptimizationExplainDocument::from_plan(&plan);
         let vllm_integration = crate::VllmIntegrationDocument {
             schema_version: SchemaVersion::current(),
             plan_identity: plan.structural_identity.plan_identity.clone(),
@@ -891,6 +913,7 @@ mod tests {
             verification_report,
             diagnostics,
             rewrite_trace,
+            optimization_explain,
             vllm_integration,
             soc_plan,
             vllm_entrypoints,

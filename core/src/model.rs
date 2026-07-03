@@ -15,6 +15,7 @@ use crate::runtime::{
     NodeExecutionContract, RuntimeRoi, WarmupCoverageProof, WaveExecutionContract,
 };
 use crate::verification::{GuaranteeEvidence, OperatorGate, ValidationIssue, VerificationReport};
+use crate::{OptimizationEnvelope, artifact_manifest_identity};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum TargetEngine {
@@ -399,6 +400,7 @@ pub struct ArtifactClosure {
 pub struct ResolvedBuildPlan {
     pub normalized_request: NormalizedRequest,
     pub requested_readiness: Option<String>,
+    pub optimization_envelope: OptimizationEnvelope,
     pub backend_registry: BackendCapabilityRegistry,
     pub selected_backends: BackendSelection,
     pub compile_regions: Vec<CompileRegion>,
@@ -428,11 +430,9 @@ impl ResolvedBuildPlan {
             .artifact_requirements
             .iter()
             .map(|requirement| ArtifactManifestEntry {
-                identity: format!(
-                    "{}:{:?}:{}",
-                    self.selected_backends.primary.family.as_str(),
-                    requirement.class,
-                    requirement.scope
+                identity: artifact_manifest_identity(
+                    self.selected_backends.primary.family,
+                    requirement,
                 ),
                 class: requirement.class,
                 backend: requirement.backend,
@@ -692,6 +692,73 @@ impl ResolvedBuildPlan {
                         .backend_policy
                         .runtime_jit_policy
                         .max_residual_node_count
+                ),
+            });
+        }
+
+        let total_warmup_steps = self
+            .warmup_obligations
+            .iter()
+            .map(|obligation| obligation.step_count)
+            .sum::<u32>();
+        if total_warmup_steps > self.optimization_envelope.max_warmup_steps {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "optimization_warmup_budget_exceeded".to_owned(),
+                message: format!(
+                    "Warmup steps {} exceed optimization budget {} for {}",
+                    total_warmup_steps,
+                    self.optimization_envelope.max_warmup_steps,
+                    self.optimization_envelope.level.as_str()
+                ),
+            });
+        }
+
+        if self.artifact_requirements.len()
+            > usize::try_from(
+                self.optimization_envelope
+                    .artifact_budget
+                    .max_artifact_count,
+            )
+            .expect("artifact budget fits usize")
+        {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "optimization_artifact_budget_exceeded".to_owned(),
+                message: format!(
+                    "Artifact count {} exceeds optimization budget {} for {}",
+                    self.artifact_requirements.len(),
+                    self.optimization_envelope
+                        .artifact_budget
+                        .max_artifact_count,
+                    self.optimization_envelope.level.as_str()
+                ),
+            });
+        }
+
+        let rank_local_artifacts = self
+            .artifact_requirements
+            .iter()
+            .filter(|artifact| artifact.rank_disposition == RankDisposition::RankLocal)
+            .count();
+        if rank_local_artifacts
+            > usize::try_from(
+                self.optimization_envelope
+                    .artifact_budget
+                    .max_rank_local_artifacts,
+            )
+            .expect("rank-local budget fits usize")
+        {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "optimization_rank_local_budget_exceeded".to_owned(),
+                message: format!(
+                    "Rank-local artifact count {} exceeds optimization budget {} for {}",
+                    rank_local_artifacts,
+                    self.optimization_envelope
+                        .artifact_budget
+                        .max_rank_local_artifacts,
+                    self.optimization_envelope.level.as_str()
                 ),
             });
         }
@@ -1027,6 +1094,9 @@ mod tests {
             warmup_policy: crate::WarmupPolicy {
                 max_warmup_steps: 6,
                 verify_cuda_graph_capture: true,
+            },
+            optimization_policy: crate::OptimizationPolicy {
+                level: crate::OptimizationLevel::O2,
             },
             layered_config: vec![
                 crate::ConfigLayer {

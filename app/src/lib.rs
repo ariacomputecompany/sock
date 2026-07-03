@@ -1,9 +1,9 @@
 use sock_core::{
     AcceleratorVendor, BackendFamily, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer,
     CoveragePlane, DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode,
-    GuaranteeLevel, GuaranteeTarget, ModelRef, OperatingSystem, RawRequest, ReplayBundle,
-    RequestedEnvironment, RewriteTraceDocument, ShapePoint, ShapePolicy, ShapeRange, TargetEngine,
-    WarmupPolicy,
+    GuaranteeLevel, GuaranteeTarget, ModelRef, OperatingSystem, OptimizationLevel,
+    OptimizationPolicy, RawRequest, ReplayBundle, RequestedEnvironment, RewriteTraceDocument,
+    ShapePoint, ShapePolicy, ShapeRange, TargetEngine, WarmupPolicy,
 };
 use sock_engine::{
     BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome, build_soc_plan_document,
@@ -109,6 +109,9 @@ pub fn default_request() -> RawRequest {
             max_warmup_steps: 6,
             verify_cuda_graph_capture: true,
         },
+        optimization_policy: OptimizationPolicy {
+            level: OptimizationLevel::O2,
+        },
         layered_config: vec![
             ConfigLayer {
                 name: "env".to_owned(),
@@ -128,6 +131,13 @@ pub fn default_request() -> RawRequest {
             },
         ],
     }
+}
+
+#[must_use]
+pub fn default_request_with_optimization(level: OptimizationLevel) -> RawRequest {
+    let mut request = default_request();
+    request.optimization_policy.level = level;
+    request
 }
 
 pub fn plan_outcome() -> Result<PlanningOutcome, PlanError> {
@@ -157,6 +167,7 @@ pub fn replay_bundle(outcome: &PlanningOutcome, scope: &BuildScope) -> ReplayBun
     let vllm_integration =
         build_vllm_integration_document(outcome).expect("vllm integration document");
     let soc_plan = build_soc_plan_document(outcome, scope, &vllm_integration);
+    let optimization_explain = sock_core::OptimizationExplainDocument::from_plan(&outcome.plan);
     let vllm_entrypoints = build_vllm_entrypoint_document(outcome, &vllm_integration)
         .expect("vllm entrypoint document");
     ReplayBundle {
@@ -165,6 +176,7 @@ pub fn replay_bundle(outcome: &PlanningOutcome, scope: &BuildScope) -> ReplayBun
         verification_report: outcome.verification.clone(),
         diagnostics: diagnostics_for(outcome),
         rewrite_trace: rewrite_trace_for(outcome),
+        optimization_explain,
         vllm_integration,
         soc_plan,
         vllm_entrypoints,

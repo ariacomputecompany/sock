@@ -11,6 +11,7 @@ pub mod materialization;
 pub mod measurement;
 pub mod model;
 pub mod operator;
+pub mod optimization;
 pub mod request;
 pub mod rewrite;
 pub mod runtime;
@@ -34,9 +35,10 @@ pub use materialization::*;
 pub use measurement::*;
 pub use model::*;
 pub use operator::{
-    render_diagnostics, render_explain, render_plan_summary, render_soc_explain,
-    render_verification_report,
+    render_diagnostics, render_explain, render_optimization_explain, render_plan_summary,
+    render_soc_explain, render_verification_report,
 };
+pub use optimization::*;
 pub use request::*;
 pub use rewrite::*;
 pub use runtime::*;

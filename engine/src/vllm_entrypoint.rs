@@ -386,6 +386,9 @@ mod tests {
                 max_warmup_steps: 6,
                 verify_cuda_graph_capture: true,
             },
+            optimization_policy: sock_core::OptimizationPolicy {
+                level: sock_core::OptimizationLevel::O2,
+            },
             layered_config: vec![
                 ConfigLayer {
                     name: "env".to_owned(),

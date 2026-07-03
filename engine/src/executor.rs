@@ -11,8 +11,8 @@ use sock_core::{
     MaterializationNodeRecord, MaterializationSchedulingMode, MaterializationWave,
     MaterializationWaveRecord, MaterializedArtifactRecord, ObservedReadinessLevel, QueueDiscipline,
     RankDisposition, ReadinessObservation, RuntimeJitObservation, RuntimeJitObservationStatus,
-    SchemaVersion, SourceAnchor, StartupClosureOutcome, WarmupObligation, canonical_hash,
-    canonical_json,
+    SchemaVersion, SourceAnchor, StartupClosureOutcome, WarmupObligation, artifact_node_handle,
+    canonical_hash, canonical_json,
 };
 use thiserror::Error;
 
@@ -123,7 +123,7 @@ impl MaterializationExecutor {
             .plan
             .artifact_requirements
             .iter()
-            .map(|requirement| Ok((artifact_handle(requirement)?, requirement.clone())))
+            .map(|requirement| Ok((artifact_node_handle(requirement)?, requirement.clone())))
             .collect::<Result<BTreeMap<_, _>, MaterializationError>>()?;
         let warmup_index = outcome
             .plan
@@ -1012,14 +1012,6 @@ fn sibling_temp_path(path: &Path) -> std::path::PathBuf {
         .and_then(|name| name.to_str())
         .unwrap_or("artifact");
     path.with_file_name(format!("{file_name}.{nanos}.tmp"))
-}
-
-fn artifact_handle(requirement: &ArtifactRequirement) -> Result<String, CanonicalError> {
-    Ok(format!(
-        "artifact:{}:{}",
-        requirement.class.as_str(),
-        canonical_hash(requirement)?
-    ))
 }
 
 fn source_anchors_for_scope(outcome: &PlanningOutcome, scope: &str) -> Vec<SourceAnchor> {

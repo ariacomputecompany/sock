@@ -27,13 +27,48 @@ fn explain_includes_trace_and_diagnostics() {
         .stdout(predicate::str::contains("request contract:"))
         .stdout(predicate::str::contains("expanded closure:"))
         .stdout(predicate::str::contains("estimated work:"))
+        .stdout(predicate::str::contains("optimization: level=O2"))
         .stdout(predicate::str::contains("vllm native contract:"))
         .stdout(predicate::str::contains("soc integration:"))
         .stdout(predicate::str::contains("replay root key:"))
         .stdout(predicate::str::contains("rooted vllm replay surfaces:"))
+        .stdout(predicate::str::contains("optimization envelope:"))
         .stdout(predicate::str::contains("rewrite trace:"))
         .stdout(predicate::str::contains("diagnostics:"))
         .stdout(predicate::str::contains("verified_bundle"));
+}
+
+#[test]
+fn o0_explain_reduces_cuda_graph_and_performance_scope() {
+    let output = Command::cargo_bin("sock")
+        .expect("sock binary")
+        .args(["explain", "--format", "json", "-O", "o0"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let explain: Value = serde_json::from_slice(&output).expect("parse explain json");
+
+    assert_eq!(
+        explain["plan"]["optimization_envelope"]["level"],
+        Value::String("o0".to_owned())
+    );
+    assert_eq!(
+        explain["optimization_explain"]["profile_name"],
+        Value::String("minimal_dev".to_owned())
+    );
+    assert_eq!(
+        explain["optimization_explain"]["graph_actions"][0]["effect"],
+        Value::String("cuda_graphs=disabled".to_owned())
+    );
+    assert!(
+        explain["plan"]["shape_envelope"]["nodes"]
+            .as_array()
+            .expect("shape envelope nodes")
+            .iter()
+            .all(|node| node["plane"] != "CudaGraph" && node["plane"] != "Performance")
+    );
 }
 
 #[test]
@@ -85,6 +120,7 @@ fn build_verify_and_replay_bundle_round_trip() {
         "bundle_metadata.json",
         "diagnostics.json",
         "materialization_report.json",
+        "optimization_explain.json",
         "replay.sh",
         "rewrite_trace.json",
         "soc_plan.json",
