@@ -144,6 +144,10 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert manifest["categories"]["VLLM_LOOPBACK_IP"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_USE_RUST_FRONTEND"] == "runtime_non_compile"
+    assert (
+        manifest["categories"]["VLLM_ALLOW_RUNTIME_LORA_UPDATING"]
+        == "runtime_non_compile"
+    )
     assert manifest["categories"]["VLLM_GC_DEBUG"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_PATTERN_MATCH_DEBUG"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_DP_RANK"] == "runtime_non_compile"
@@ -165,6 +169,18 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert (
         manifest["categories"]["VLLM_RAY_EXTRA_ENV_VARS_TO_COPY"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_ELASTIC_EP_SCALE_UP_LAUNCH"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_ELASTIC_EP_DRAIN_REQUESTS"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_PREFIX_CACHE_RETENTION_INTERVAL"]
         == "runtime_non_compile"
     )
     assert (
@@ -255,6 +271,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS" in manifest["ignored_keys"]
     assert "VLLM_LOOPBACK_IP" in manifest["ignored_keys"]
     assert "VLLM_USE_RUST_FRONTEND" in manifest["ignored_keys"]
+    assert "VLLM_ALLOW_RUNTIME_LORA_UPDATING" in manifest["ignored_keys"]
     assert "VLLM_GC_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_PATTERN_MATCH_DEBUG" in manifest["ignored_keys"]
     assert "VLLM_DP_RANK" in manifest["ignored_keys"]
@@ -266,6 +283,9 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_RAY_DP_PLACEMENT_NODE_IPS" in manifest["ignored_keys"]
     assert "VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY" in manifest["ignored_keys"]
     assert "VLLM_RAY_EXTRA_ENV_VARS_TO_COPY" in manifest["ignored_keys"]
+    assert "VLLM_ELASTIC_EP_SCALE_UP_LAUNCH" in manifest["ignored_keys"]
+    assert "VLLM_ELASTIC_EP_DRAIN_REQUESTS" in manifest["ignored_keys"]
+    assert "VLLM_PREFIX_CACHE_RETENTION_INTERVAL" in manifest["ignored_keys"]
     assert "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE" in manifest["ignored_keys"]
     assert "VLLM_ENABLE_CUDAGRAPH_GC" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_SHARED_EXPERTS_STREAM" in manifest["ignored_keys"]
