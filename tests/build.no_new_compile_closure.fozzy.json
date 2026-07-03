@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "build-no-new-compile-closure",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nfirst_dir=$(mktemp -d)\nsecond_dir=$(mktemp -d)\ncache_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$first_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness >/dev/null\nsecond_out=$(cargo run --quiet --bin sock -- build --out \"$second_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness)\nprintf '%s' \"$second_out\" | grep -q 'executed=0'\nprintf '%s' \"$second_out\" | grep -q 'reused=2'\ngrep -q '\"executed_artifact_count\":0' \"$second_dir/materialization_report.json\"\ngrep -q '\"total_compile_ms\":0' \"$second_dir/materialization_report.json\"\ngrep -q '\"closure_outcome\":\"full_compile_closure\"' \"$second_dir/materialization_report.json\"\nprintf 'no-new-compile\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "no-new-compile\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

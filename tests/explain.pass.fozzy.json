@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "explain-pass",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nexplain_out=$(cargo run --quiet --bin sock -- explain)\nprintf '%s' \"$explain_out\" | grep -q 'request contract:'\nprintf '%s' \"$explain_out\" | grep -q 'expanded closure:'\nprintf '%s' \"$explain_out\" | grep -q 'vllm native contract:'\nprintf '%s' \"$explain_out\" | grep -q 'rewrite trace:'\nprintf '%s' \"$explain_out\" | grep -q 'diagnostics:'\nprintf '%s' \"$explain_out\" | grep -q 'verified_bundle'\nprintf 'explained\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "explained\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nexplain_out=$(cargo run --quiet --bin sock -- explain)\nprintf '%s' \"$explain_out\" | grep -q 'request contract:'\nprintf '%s' \"$explain_out\" | grep -q 'expanded closure:'\nprintf '%s' \"$explain_out\" | grep -q 'vllm native contract:'\nprintf '%s' \"$explain_out\" | grep -q 'rewrite trace:'\nprintf '%s' \"$explain_out\" | grep -q 'diagnostics:'\nprintf '%s' \"$explain_out\" | grep -q 'verified_bundle'\nprintf 'explained\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "explained\n",
+      "expect_stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "doctor-pass",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\ndoctor_out=$(cargo run --quiet --bin sock -- doctor)\nprintf '%s' \"$doctor_out\" | grep -q 'host os='\nprintf '%s' \"$doctor_out\" | grep -q 'vendor='\nprintf '%s' \"$doctor_out\" | grep -q 'flashinfer_prebuilt='\nprintf 'doctor\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "doctor\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\ndoctor_out=$(cargo run --quiet --bin sock -- doctor)\nprintf '%s' \"$doctor_out\" | grep -q 'host os='\nprintf '%s' \"$doctor_out\" | grep -q 'vendor='\nprintf '%s' \"$doctor_out\" | grep -q 'flashinfer_prebuilt='\nprintf 'doctor\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "doctor\n",
+      "expect_stderr": ""
+    }
+  ]
+}

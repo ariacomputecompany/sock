@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "prepare-decode-path",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\nif cargo run --quiet --bin sock -- prepare decode-path --out \"$bundle_dir\" >\"$bundle_dir/stdout.txt\" 2>\"$bundle_dir/stderr.txt\"; then\n  echo 'decode-path prepare unexpectedly succeeded' >&2\n  exit 1\nfi\ngrep -q 'compile-region:decode_attention' \"$bundle_dir/stderr.txt\"\ngrep -q 'Full worker startup context' \"$bundle_dir/stderr.txt\"\nprintf 'prepare-decode-fail-closed\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "prepare-decode-fail-closed\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

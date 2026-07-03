@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "explain-replay-alignment",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\nexplain_json=$(mktemp)\ncargo run --quiet --bin sock -- explain --format json --region prefill_attention --readiness correctness > \"$explain_json\"\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --region prefill_attention --readiness correctness >/dev/null\npython3 - \"$explain_json\" \"$bundle_dir/buildplan.json\" \"$bundle_dir/verification_report.json\" <<'PY'\nimport json, sys\nexplain = json.load(open(sys.argv[1]))\nbuildplan = json.load(open(sys.argv[2]))\nverification = json.load(open(sys.argv[3]))\nassert explain['plan']['structural_identity']['plan_identity'] == buildplan['structural_identity']['plan_identity']\nassert explain['verification']['status'] == verification['status']\nPY\nprintf 'aligned\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "aligned\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

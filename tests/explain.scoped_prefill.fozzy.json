@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "explain-scoped-prefill",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nexplain_json=$(mktemp)\ncargo run --quiet --bin sock -- explain --format json --region prefill_attention --readiness correctness > \"$explain_json\"\npython3 - \"$explain_json\" <<'PY'\nimport json, sys\nobj = json.load(open(sys.argv[1]))\nregions = [region['name'] for region in obj['plan']['compile_regions']]\nassert regions == ['prefill_attention'], regions\nassert obj['verification']['status'] == 'Passed', obj['verification']['status']\nassert obj['plan']['structural_identity']['plan_identity']\nassert obj['diagnostics']['diagnostics']\nPY\nprintf 'scoped-explained\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "scoped-explained\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nexplain_json=$(mktemp)\ncargo run --quiet --bin sock -- explain --format json --region prefill_attention --readiness correctness > \"$explain_json\"\npython3 - \"$explain_json\" <<'PY'\nimport json, sys\nobj = json.load(open(sys.argv[1]))\nregions = [region['name'] for region in obj['plan']['compile_regions']]\nassert regions == ['prefill_attention'], regions\nassert obj['verification']['status'] == 'Passed', obj['verification']['status']\nassert obj['plan']['structural_identity']['plan_identity']\nassert obj['diagnostics']['diagnostics']\nPY\nprintf 'scoped-explained\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "scoped-explained\n",
+      "expect_stderr": ""
+    }
+  ]
+}

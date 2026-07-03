@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "doctor-json",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\ndoctor_json=$(mktemp)\ncargo run --quiet --bin sock -- doctor --format json > \"$doctor_json\"\npython3 - \"$doctor_json\" <<'PY'\nimport json, sys\nobj = json.load(open(sys.argv[1]))\nassert obj['operating_system'] == 'Linux'\nassert obj['accelerator_vendor'] == 'Nvidia'\nassert obj['flashinfer_prebuilt_available'] is True\nassert obj['gpu_arches']\nPY\nprintf 'doctor-json\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "doctor-json\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

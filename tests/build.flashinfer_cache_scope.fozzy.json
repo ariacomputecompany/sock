@@ -7,10 +7,10 @@
       "cmd": "sh",
       "args": [
         "-c",
-        "set -eu\nbundle_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --cache-namespace flashinfer-autotune-cache --readiness correctness >/dev/null\ngrep -q '\"name\":\"kv_cache_update\"' \"$bundle_dir/buildplan.json\"\nif grep -q 'prefill_attention' \"$bundle_dir/buildplan.json\"; then\n  echo 'unexpected prefill scope in cache-scoped buildplan' >&2\n  exit 1\nfi\nprintf 'cache-scoped-build\\n'"
+        "set -eu\nplan_json=$(mktemp)\ncargo run --quiet --bin sock -- plan --format json --cache-namespace flashinfer-autotune-cache --readiness correctness > \"$plan_json\"\ngrep -q '\"name\":\"kv_cache_update\"' \"$plan_json\"\nif grep -q 'prefill_attention' \"$plan_json\"; then\n  echo 'unexpected prefill scope in cache-scoped plan' >&2\n  exit 1\nfi\nprintf 'cache-scoped-plan\\n'"
       ],
       "exit_code": 0,
-      "stdout": "cache-scoped-build\n",
+      "stdout": "cache-scoped-plan\n",
       "stderr": "",
       "times": 1
     },
@@ -19,10 +19,10 @@
       "cmd": "sh",
       "args": [
         "-c",
-        "set -eu\nbundle_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --cache-namespace flashinfer-autotune-cache --readiness correctness >/dev/null\ngrep -q '\"name\":\"kv_cache_update\"' \"$bundle_dir/buildplan.json\"\nif grep -q 'prefill_attention' \"$bundle_dir/buildplan.json\"; then\n  echo 'unexpected prefill scope in cache-scoped buildplan' >&2\n  exit 1\nfi\nprintf 'cache-scoped-build\\n'"
+        "set -eu\nplan_json=$(mktemp)\ncargo run --quiet --bin sock -- plan --format json --cache-namespace flashinfer-autotune-cache --readiness correctness > \"$plan_json\"\ngrep -q '\"name\":\"kv_cache_update\"' \"$plan_json\"\nif grep -q 'prefill_attention' \"$plan_json\"; then\n  echo 'unexpected prefill scope in cache-scoped plan' >&2\n  exit 1\nfi\nprintf 'cache-scoped-plan\\n'"
       ],
       "expect_exit": 0,
-      "expect_stdout": "cache-scoped-build\n",
+      "expect_stdout": "cache-scoped-plan\n",
       "expect_stderr": ""
     }
   ]

@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "surface_program": {
+    "cli_surfaces": [
+      "plan",
+      "explain",
+      "build",
+      "prepare",
+      "measure",
+      "verify",
+      "replay",
+      "doctor"
+    ],
+    "native_surfaces": [
+      "vllm_build_safe_native"
+    ]
+  },
+  "deterministic_scenarios": [
+    "tests/plan.pass.fozzy.json",
+    "tests/plan.host.fozzy.json",
+    "tests/explain.pass.fozzy.json",
+    "tests/explain.scoped_prefill.fozzy.json",
+    "tests/explain.replay_alignment.fozzy.json",
+    "tests/build.prefill_scope.fozzy.json",
+    "tests/build.prefill_warmup_scope.fozzy.json",
+    "tests/build.decode_backend_scope.fozzy.json",
+    "tests/build.flashinfer_cache_scope.fozzy.json",
+    "tests/build.early_serve_readiness.fozzy.json",
+    "tests/build.cache_invalidation.fozzy.json",
+    "tests/build.reuse_decision.fozzy.json",
+    "tests/build.shared_cache_root.fozzy.json",
+    "tests/build.no_new_compile_closure.fozzy.json",
+    "tests/build.invalid_subset_scope.fozzy.json",
+    "tests/prepare.prefill_path.fozzy.json",
+    "tests/prepare.decode_path.fozzy.json",
+    "tests/prepare.distributed_flashinfer_startup.fozzy.json",
+    "tests/prepare.replay_safe_closure.fozzy.json",
+    "tests/measure.prefill_path.fozzy.json",
+    "tests/measure.decode_path.fozzy.json",
+    "tests/measure.distributed_flashinfer_startup.fozzy.json",
+    "tests/measure.replay_safe_closure.fozzy.json",
+    "tests/verify.operator_gates.fozzy.json",
+    "tests/verify.fail_closed.fozzy.json",
+    "tests/replay.operator_gates.fozzy.json",
+    "tests/replay.pass.fozzy.json",
+    "tests/doctor.pass.fozzy.json",
+    "tests/doctor.json.fozzy.json",
+    "tests/vllm.build_safe_native.fozzy.json"
+  ],
+  "contradiction_scenarios": [
+    "tests/explain.replay_alignment.fozzy.json",
+    "tests/build.invalid_subset_scope.fozzy.json",
+    "tests/verify.fail_closed.fozzy.json",
+    "tests/replay.operator_gates.fozzy.json"
+  ],
+  "host_trace_targets": [
+    {
+      "scenario": "tests/build.prefill_scope.fozzy.json",
+      "trace_path": ".fozzy-traces/build-prefill-scope.trace.fozzy"
+    },
+    {
+      "scenario": "tests/prepare.prefill_path.fozzy.json",
+      "trace_path": ".fozzy-traces/prepare-prefill-path.trace.fozzy"
+    },
+    {
+      "scenario": "tests/measure.prefill_path.fozzy.json",
+      "trace_path": ".fozzy-traces/measure-prefill-path.trace.fozzy"
+    },
+    {
+      "scenario": "tests/prepare.distributed_flashinfer_startup.fozzy.json",
+      "trace_path": ".fozzy-traces/prepare-distributed-flashinfer-startup.trace.fozzy"
+    },
+    {
+      "scenario": "tests/measure.replay_safe_closure.fozzy.json",
+      "trace_path": ".fozzy-traces/measure-replay-safe-closure.trace.fozzy"
+    },
+    {
+      "scenario": "tests/replay.pass.fozzy.json",
+      "trace_path": ".fozzy-traces/replay-pass.trace.fozzy"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "measure-replay-safe-closure",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nmeasure_dir=$(mktemp -d)\nmeasure_out=$(cargo run --quiet --bin sock -- measure replay-safe-closure --out \"$measure_dir\")\nprintf '%s' \"$measure_out\" | grep -q 'measurement intent=replay_safe_closure'\ngrep -q '\"intent\":\"replay_safe_closure\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"closure_outcome\":\"full_compile_closure\"' \"$measure_dir/measurement_report.json\"\ngrep -q '\"reused_artifact_count\":11' \"$measure_dir/measurement_report.json\"\ngrep -q '\"phase_timings\":' \"$measure_dir/measurement_report.json\"\nprintf 'measured-replay-safe\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "measured-replay-safe\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}
