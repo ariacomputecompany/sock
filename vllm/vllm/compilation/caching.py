@@ -41,6 +41,7 @@ logger = init_logger(__name__)
 _COMPILE_ARTIFACT_BUNDLE_MAGIC = b"VLLM_AOT_BUNDLE_V1\n"
 _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES = 8
 _STANDALONE_ARTIFACT_STORE_BUNDLE_MAGIC = b"VLLM_STANDALONE_AOT_STORE_V1\n"
+_SERIALIZED_FN_STATE_BUNDLE_MAGIC = b"VLLM_SERIALIZED_FN_STATE_V1\n"
 _SHARED_LOADED_ARTIFACT_STORES: dict[str, dict[str, Any]] = {}
 
 
@@ -269,6 +270,111 @@ def unpack_standalone_artifact_store_bundle(
                 f"expected={expected_store_identity} actual={actual_store_identity}"
             )
     return artifacts
+
+
+def pack_serialized_fn_state_bundle(state: dict[str, Any]) -> bytes:
+    metadata = {
+        "schema_version": 1,
+        "payload_kind": "vllm_serialized_fn_state_bundle",
+        "prefix": state["prefix"],
+        "is_encoder": bool(state["is_encoder"]),
+        "sym_tensor_indices": state.get("sym_tensor_indices"),
+        "execution_code": state.get("execution_code"),
+        "submod_names": state.get("submod_names"),
+        "blobs": [],
+    }
+    blob_payloads: list[bytes] = []
+    offset = 0
+    blob_specs = [
+        ("graph_module", state["graph_module"], "raw"),
+        ("example_inputs", state["example_inputs"], "raw"),
+    ]
+    if state.get("standalone_compile_artifact_store_bundle") is not None:
+        blob_specs.append(
+            (
+                "standalone_compile_artifact_store_bundle",
+                state["standalone_compile_artifact_store_bundle"],
+                "raw",
+            )
+        )
+    if state.get("aot_autograd_config") is not None:
+        blob_specs.append(
+            (
+                "aot_autograd_config",
+                pickle.dumps(state["aot_autograd_config"]),
+                "pickle",
+            )
+        )
+    if state.get("consts") is not None:
+        blob_specs.append(("consts", pickle.dumps(state["consts"]), "pickle"))
+
+    for name, blob, codec in blob_specs:
+        blob_bytes = bytes(blob)
+        metadata["blobs"].append(
+            {
+                "name": name,
+                "offset": offset,
+                "size": len(blob_bytes),
+                "codec": codec,
+            }
+        )
+        blob_payloads.append(blob_bytes)
+        offset += len(blob_bytes)
+
+    header_bytes = json.dumps(
+        metadata,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return b"".join(
+        (
+            _SERIALIZED_FN_STATE_BUNDLE_MAGIC,
+            len(header_bytes).to_bytes(
+                _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES,
+                byteorder="big",
+                signed=False,
+            ),
+            header_bytes,
+            b"".join(blob_payloads),
+        )
+    )
+
+
+def unpack_serialized_fn_state_bundle(data: bytes) -> dict[str, Any]:
+    if not data.startswith(_SERIALIZED_FN_STATE_BUNDLE_MAGIC):
+        raise ValueError("invalid serialized function state bundle header")
+
+    offset = len(_SERIALIZED_FN_STATE_BUNDLE_MAGIC)
+    header_size = int.from_bytes(
+        data[offset : offset + _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES],
+        byteorder="big",
+        signed=False,
+    )
+    offset += _COMPILE_ARTIFACT_BUNDLE_SIZE_BYTES
+    header = json.loads(data[offset : offset + header_size])
+    payload = data[offset + header_size :]
+
+    state: dict[str, Any] = {
+        "prefix": header["prefix"],
+        "is_encoder": bool(header["is_encoder"]),
+        "sym_tensor_indices": header.get("sym_tensor_indices"),
+        "execution_code": header.get("execution_code"),
+        "submod_names": header.get("submod_names"),
+        "aot_autograd_config": None,
+        "consts": None,
+        "standalone_compile_artifact_store_bundle": None,
+    }
+    for item in header["blobs"]:
+        blob_offset = int(item["offset"])
+        blob_size = int(item["size"])
+        blob = payload[blob_offset : blob_offset + blob_size]
+        name = str(item["name"])
+        codec = str(item["codec"])
+        if codec == "pickle":
+            state[name] = pickle.loads(blob)
+        else:
+            state[name] = blob
+    return state
 
 
 class StandaloneCompiledArtifacts:
@@ -824,7 +930,9 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 returns_tuple_map=returns_tuple_map,
                 example_input_tensor_specs=example_input_tensor_specs,
             )
-        return pack_serialized_compile_artifact_bundle(pickle.dumps(state), sidecar)
+        return pack_serialized_compile_artifact_bundle(
+            pack_serialized_fn_state_bundle(state), sidecar
+        )
 
     @classmethod
     def deserialize_compile_artifacts(cls, data: bytes) -> "VllmSerializableFunction":
@@ -832,7 +940,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         from torch.fx.experimental.symbolic_shapes import ShapeEnv
 
         sidecar, payload = unpack_serialized_compile_artifact_bundle(data)
-        state = pickle.loads(payload)
+        state = unpack_serialized_fn_state_bundle(payload)
         fake_mode = FakeTensorMode(shape_env=ShapeEnv())
 
         standalone_compile_artifact_store_bundle = state.pop(

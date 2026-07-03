@@ -400,7 +400,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                 original_serialize_graph_module
             )
     sidecar, payload = caching.unpack_serialized_compile_artifact_bundle(serialized)
-    state = pickle.loads(payload)
+    state = caching.unpack_serialized_fn_state_bundle(payload)
 
     assert sidecar == {
         "schema_version": 1,
@@ -1206,6 +1206,27 @@ def test_compile_artifact_bundle_passthrough_without_sidecar() -> None:
 
     assert caching.pack_serialized_compile_artifact_bundle(payload, None) == payload
     assert caching.unpack_serialized_compile_artifact_bundle(payload) == (None, payload)
+
+
+def test_serialized_fn_state_bundle_roundtrip() -> None:
+    caching, _ = _load_caching_module()
+    state = {
+        "graph_module": b"graph-bytes",
+        "example_inputs": b"example-input-bytes",
+        "prefix": "unit-prefix",
+        "is_encoder": True,
+        "sym_tensor_indices": [0, 2],
+        "aot_autograd_config": {"bundled_autograd_cache": True},
+        "execution_code": "return x",
+        "submod_names": ["block0", "block1"],
+        "consts": ["const0"],
+        "standalone_compile_artifact_store_bundle": b"artifact-store",
+    }
+
+    bundle = caching.pack_serialized_fn_state_bundle(state)
+    restored = caching.unpack_serialized_fn_state_bundle(bundle)
+
+    assert restored == state
 
 
 def test_standalone_artifact_store_bundle_roundtrip() -> None:
