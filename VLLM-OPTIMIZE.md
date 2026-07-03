@@ -212,7 +212,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 - [ ] Normalize equivalent values before hashing.
 - [ ] Prevent accidental cache splits caused by irrelevant host/process-level differences.
 - [ ] Move toward declarative compile factors rather than a broad “hash nearly everything” strategy.
-- [ ] Replace coarse whole-file compile invalidation with finer-grained fingerprints where safe.
 - [ ] Hash traced symbol sets, lowered graph structure, selected custom ops, and active passes instead of always hashing entire source files.
 - [ ] Ensure unrelated edits in non-executed code paths do not invalidate the whole compile cache.
 

@@ -1016,6 +1016,7 @@ class VllmBackend:
     @dynamo_timed("vllm_backend")
     def __call__(self, graph: fx.GraphModule, example_inputs: Sequence[Any]) -> Any:
         from .caching import (
+            build_compile_source_fingerprint_from_content,
             VllmSerializableFunction,
             write_graph_artifact_store_manifest,
         )
@@ -1037,20 +1038,24 @@ class VllmBackend:
             "Traced files (to be considered for compilation cache):\n%s",
             lazy(lambda: "\n".join(forward_code_files)),
         )
-        hash_content = []
+        traced_file_contents: dict[str, str] = {}
         for filepath in forward_code_files:
             if filepath == "<string>":
                 # This means the function was dynamically generated, with
                 # e.g. exec(). We can't actually check these.
+                traced_file_contents[filepath] = ""
                 continue
-            hash_content.append(filepath)
             try:
                 with open(filepath) as f:
-                    hash_content.append(f.read())
+                    traced_file_contents[filepath] = f.read()
             except (OSError, UnicodeDecodeError):
                 logger.warning("Failed to read file %s", filepath)
+                traced_file_contents[filepath] = ""
                 continue
-        code_hash = hashlib.sha256("\n".join(hash_content).encode()).hexdigest()
+        source_fingerprint = build_compile_source_fingerprint_from_content(
+            traced_file_contents
+        )
+        code_hash = str(source_fingerprint["aggregate_hash"])
         # Clear after consumption
         self.compilation_config.traced_files.clear()
         if not self.compilation_config.cache_dir:
@@ -1115,6 +1120,7 @@ class VllmBackend:
             "config_hash": config_hash,
             "code_hash": code_hash,
             "compiler_hash": compiler_hash,
+            "source_fingerprint": source_fingerprint,
         }
         try:
             logger.debug(

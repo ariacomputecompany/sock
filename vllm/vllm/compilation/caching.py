@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
+import ast
 import contextlib
 import hashlib
 import inspect
@@ -1745,6 +1746,11 @@ def build_graph_artifact_store_manifest(
         "cache_key_factors_source": (
             "cache_key_factors_file" if cache_key_factors is not None else "live_fallback"
         ),
+        "source_fingerprint": (
+            _json_ready(cache_key_factors.get("source_fingerprint"))
+            if cache_key_factors is not None
+            else None
+        ),
         "backend_identity": _json_ready(backend_identity),
         "artifact_count": len(artifacts),
         "present_artifact_count": sum(1 for item in artifacts if item["present"]),
@@ -1901,6 +1907,11 @@ def build_standalone_artifact_proof_manifest(
             "python_version": ".".join(str(part) for part in sys.version_info[:3]),
             "torch_version": getattr(torch, "__version__", "<unknown>"),
         },
+        "source_fingerprint": (
+            _json_ready(cache_key_factors.get("source_fingerprint"))
+            if cache_key_factors is not None
+            else None
+        ),
         "graph_artifact_store": graph_artifact_store,
         "patch_profile": env_override.patch_profile_manifest(),
         "fallback_namespace_coverage": env_override.fallback_namespace_manifest(),
@@ -2027,20 +2038,61 @@ def render_aot_compile_factor_manifest(vllm_config: VllmConfig) -> str:
     return json.dumps(manifest, sort_keys=True, separators=(",", ":"))
 
 
-def _compute_code_hash_with_content(file_contents: dict[str, str]) -> str:
+def _fingerprint_python_source(source: str) -> tuple[str, str]:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return "raw_text_fallback", source
+    return "python_ast", ast.dump(tree, include_attributes=False)
+
+
+def build_compile_source_fingerprint_from_content(
+    file_contents: dict[str, str],
+) -> dict[str, object]:
     items = list(sorted(file_contents.items(), key=lambda x: x[0]))
-    hash_content = []
+    files = []
+    aggregate_material = []
+
     for filepath, content in items:
-        hash_content.append(filepath)
-        if filepath == "<string>":
-            # This means the function was dynamically generated, with
-            # e.g. exec(). We can't actually check these.
-            continue
-        hash_content.append(content)
-    result: str = safe_hash(
-        "\n".join(hash_content).encode(), usedforsecurity=False
-    ).hexdigest()
-    return result
+        raw_sha256 = safe_hash(
+            content.encode(), usedforsecurity=False
+        ).hexdigest()
+        fingerprint_mode = "path_only"
+        fingerprint_material = ""
+        if filepath == "<string>" or filepath.startswith("<"):
+            fingerprint_mode = "path_only"
+        elif filepath.endswith(".py"):
+            fingerprint_mode, fingerprint_material = _fingerprint_python_source(content)
+        else:
+            fingerprint_mode = "raw_text"
+            fingerprint_material = content
+
+        semantic_sha256 = safe_hash(
+            fingerprint_material.encode(), usedforsecurity=False
+        ).hexdigest()
+        files.append(
+            {
+                "path": filepath,
+                "fingerprint_mode": fingerprint_mode,
+                "raw_sha256": raw_sha256,
+                "semantic_sha256": semantic_sha256,
+                "size_bytes": len(content.encode()),
+            }
+        )
+        aggregate_material.extend((filepath, fingerprint_mode, semantic_sha256))
+
+    return {
+        "schema_version": 1,
+        "file_count": len(files),
+        "files": files,
+        "aggregate_hash": safe_hash(
+            "\n".join(aggregate_material).encode(), usedforsecurity=False
+        ).hexdigest(),
+    }
+
+
+def _compute_code_hash_with_content(file_contents: dict[str, str]) -> str:
+    return build_compile_source_fingerprint_from_content(file_contents)["aggregate_hash"]
 
 
 def _compute_code_hash(files: set[str]) -> str:

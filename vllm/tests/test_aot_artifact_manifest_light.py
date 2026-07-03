@@ -523,6 +523,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
                 "python_version": ".".join(str(part) for part in sys.version_info[:3]),
                 "torch_version": "2.9.0-light",
             },
+            "source_fingerprint": None,
             "graph_artifact_store": expected_graph_artifact_store,
             "patch_profile": {
                 "schema_version": 1,
@@ -736,6 +737,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             "python_version": ".".join(str(part) for part in sys.version_info[:3]),
             "torch_version": "2.9.0-light",
         },
+        "source_fingerprint": None,
         "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
@@ -1010,6 +1012,12 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
     artifacts = caching.StandaloneCompiledArtifacts()
     artifacts.insert("block0", "shape0", b"payload")
     artifacts.insert("block0", "shape1", b"payload-2")
+    source_fingerprint = caching.build_compile_source_fingerprint_from_content(
+        {
+            "computation_graph.py": "def forward(x):\n    return x + 1\n",
+            "vllm_compile_cache.py": "compiled = True\n",
+        }
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         meta_path = Path(tmpdir) / "cache_key_factors.json"
@@ -1020,6 +1028,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                     "config_hash": "cfg-from-file",
                     "code_hash": "code-from-file",
                     "compiler_hash": "compiler-from-file",
+                    "source_fingerprint": source_fingerprint,
                 }
             )
         )
@@ -1032,6 +1041,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "source_fingerprint": source_fingerprint,
             },
             artifact_files={
                 "cache_key_factors": "cache_key_factors.json",
@@ -1086,6 +1096,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
             "python_version": ".".join(str(part) for part in sys.version_info[:3]),
             "torch_version": "2.9.0-light",
         },
+        "source_fingerprint": source_fingerprint,
         "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
@@ -1453,6 +1464,12 @@ def test_serialized_fn_state_bundle_can_delay_pickle_rehydration() -> None:
 
 def test_graph_artifact_store_manifest_roundtrip() -> None:
     caching, _ = _load_caching_module()
+    source_fingerprint = caching.build_compile_source_fingerprint_from_content(
+        {
+            "computation_graph.py": "def forward(x):\n    return x + 1\n",
+            "vllm_compile_cache.py": "compiled = True\n",
+        }
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         Path(tmpdir, "cache_key_factors.json").write_text(
@@ -1462,6 +1479,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
                     "config_hash": "cfg-from-file",
                     "code_hash": "code-from-file",
                     "compiler_hash": "compiler-from-file",
+                    "source_fingerprint": source_fingerprint,
                 }
             )
         )
@@ -1475,6 +1493,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
                 "config_hash": "cfg-from-file",
                 "code_hash": "code-from-file",
                 "compiler_hash": "compiler-from-file",
+                "source_fingerprint": source_fingerprint,
             },
             artifact_files={
                 "cache_key_factors": "cache_key_factors.json",
@@ -1500,12 +1519,28 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
         "code_hash": "code-from-file",
         "compiler_hash": "compiler-from-file",
     }
+    assert manifest["source_fingerprint"] == source_fingerprint
     assert [item["artifact_kind"] for item in manifest["artifacts"]] == [
         "cache_key_factors",
         "compiler_cache",
         "computation_graph",
     ]
     assert all(item["present"] for item in manifest["artifacts"])
+
+
+def test_compile_source_fingerprint_ignores_python_comments() -> None:
+    caching, _ = _load_caching_module()
+
+    with_comment = caching.build_compile_source_fingerprint_from_content(
+        {"module.py": "def forward(x):\n    # comment\n    return x + 1\n"}
+    )
+    without_comment = caching.build_compile_source_fingerprint_from_content(
+        {"module.py": "def forward(x):\n    return x + 1\n"}
+    )
+
+    assert with_comment["aggregate_hash"] == without_comment["aggregate_hash"]
+    assert with_comment["files"][0]["fingerprint_mode"] == "python_ast"
+    assert without_comment["files"][0]["fingerprint_mode"] == "python_ast"
 
 
 def test_mega_serialization_skips_graph_pickler_fallback_payloads() -> None:
