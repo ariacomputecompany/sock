@@ -1767,6 +1767,126 @@ def test_compile_replay_manifest_roundtrip() -> None:
     assert manifest["graph_artifact_store"] == graph_artifact_store
 
 
+def test_cudagraph_capture_manifest_roundtrip() -> None:
+    caching, _ = _load_caching_module()
+    source_fingerprint = caching.build_compile_source_fingerprint_from_content(
+        {
+            "computation_graph.py": "def forward(x):\n    return x + 1\n",
+            "vllm_compile_cache.py": "compiled = True\n",
+        }
+    )
+    compile_surface_fingerprint = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x) -> add",
+        placeholder_names=["x"],
+        node_targets=["placeholder:x", "call_function:add", "output:output"],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
+    canonical_compile_plan = caching.build_canonical_compile_plan(
+        env_factors={"A": "B"},
+        config_hash="cfg-from-file",
+        compiler_hash="compiler-from-file",
+        source_fingerprint=source_fingerprint,
+        compile_surface_fingerprint=compile_surface_fingerprint,
+        backend_identity={
+            "backend_class": "SimpleNamespace",
+            "prefix": "unit-prefix",
+            "is_encoder": False,
+            "compiler_name": "inductor-light",
+        },
+        cache_enabled=True,
+        cache_namespace_prefix="unit-prefix",
+        rank=0,
+        data_parallel_rank=0,
+    )
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        graph_artifact_store = caching.build_graph_artifact_store_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+                "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
+            },
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
+        compile_replay_manifest = caching.build_compile_replay_manifest(
+            local_cache_dir=tmpdir,
+            cache_key_factors={
+                "env": {"A": "B"},
+                "config_hash": "cfg-from-file",
+                "code_hash": "code-from-file",
+                "compiler_hash": "compiler-from-file",
+                "source_fingerprint": source_fingerprint,
+                "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
+            },
+            graph_artifact_store=graph_artifact_store,
+            backend_identity={
+                "backend_class": "SimpleNamespace",
+                "prefix": "unit-prefix",
+                "is_encoder": False,
+                "compiler_name": "inductor-light",
+            },
+        )
+        manifest = caching.write_cudagraph_capture_manifest(
+            local_cache_dir=tmpdir,
+            compile_replay_manifest=compile_replay_manifest,
+            runtime_mode="FULL",
+            cudagraph_capture_sizes=[1, 8],
+            captured_entries=[
+                {
+                    "batch_descriptor": {
+                        "num_tokens": 8,
+                        "num_reqs": 8,
+                        "uniform": False,
+                        "has_lora": False,
+                        "num_active_loras": 0,
+                    },
+                    "captured": True,
+                    "input_address_count": 2,
+                }
+            ],
+            cudagraph_options={
+                "debug_log_enable": True,
+                "gc_disable": False,
+                "weak_ref_output": True,
+            },
+        )
+        reloaded = caching.load_cudagraph_capture_manifest(tmpdir)
+
+    assert reloaded == manifest
+    assert manifest["payload_kind"] == "vllm_cudagraph_capture_manifest"
+    assert manifest["runtime_mode"] == "FULL"
+    assert manifest["capture_size_policy"] == [1, 8]
+    assert manifest["capture_count"] == 1
+    assert (
+        manifest["root_identity"]["root_plan_id"]
+        == canonical_compile_plan["canonical_compile_plan_id"]
+    )
+    assert (
+        manifest["replay_plan"]["replay_plan_id"]
+        == canonical_compile_plan["verification_plan_id"]
+    )
+
+
 def test_canonical_compile_plan_is_structural_and_renderable() -> None:
     caching, _ = _load_caching_module()
     source_fingerprint = caching.build_compile_source_fingerprint_from_content(

@@ -2001,6 +2001,85 @@ def load_compile_replay_manifest(
         return None
 
 
+def build_cudagraph_capture_manifest(
+    *,
+    local_cache_dir: str | None,
+    compile_replay_manifest: dict[str, object] | None,
+    runtime_mode: str,
+    cudagraph_capture_sizes: list[int] | None,
+    captured_entries: list[dict[str, object]],
+    cudagraph_options: dict[str, object] | None,
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+    root_identity = (
+        _json_ready(compile_replay_manifest.get("root_identity"))
+        if compile_replay_manifest is not None
+        else None
+    )
+    replay_plan = (
+        _json_ready(compile_replay_manifest.get("replay_plan"))
+        if compile_replay_manifest is not None
+        else None
+    )
+    return {
+        "schema_version": 1,
+        "payload_kind": "vllm_cudagraph_capture_manifest",
+        "root_identity": root_identity,
+        "replay_plan": replay_plan,
+        "runtime_mode": runtime_mode,
+        "capture_size_policy": list(cudagraph_capture_sizes or []),
+        "capture_count": len(captured_entries),
+        "captured_entries": _json_ready(captured_entries),
+        "cudagraph_options": _json_ready(cudagraph_options),
+    }
+
+
+def write_cudagraph_capture_manifest(
+    *,
+    local_cache_dir: str | None,
+    compile_replay_manifest: dict[str, object] | None,
+    runtime_mode: str,
+    cudagraph_capture_sizes: list[int] | None,
+    captured_entries: list[dict[str, object]],
+    cudagraph_options: dict[str, object] | None,
+) -> dict[str, object] | None:
+    manifest = build_cudagraph_capture_manifest(
+        local_cache_dir=local_cache_dir,
+        compile_replay_manifest=compile_replay_manifest,
+        runtime_mode=runtime_mode,
+        cudagraph_capture_sizes=cudagraph_capture_sizes,
+        captured_entries=captured_entries,
+        cudagraph_options=cudagraph_options,
+    )
+    if manifest is None:
+        return None
+    meta_path = Path(local_cache_dir) / "cudagraph_capture_manifest.json"
+    meta_path.write_text(
+        json.dumps(
+            manifest,
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return manifest
+
+
+def load_cudagraph_capture_manifest(
+    local_cache_dir: str | None,
+) -> dict[str, object] | None:
+    if not local_cache_dir:
+        return None
+    meta_path = Path(local_cache_dir) / "cudagraph_capture_manifest.json"
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text())
+    except Exception:
+        logger.warning("could not read cudagraph capture manifest from %s", meta_path)
+        return None
+
+
 def build_shape_envelope_summary(
     standalone_compile_artifacts: StandaloneCompiledArtifacts,
     sym_shape_indices_map: dict[str, list[int]] | None,

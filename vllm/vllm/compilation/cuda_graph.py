@@ -29,6 +29,16 @@ from vllm.utils.torch_utils import current_stream, weak_ref_tensors
 logger = init_logger(__name__)
 
 
+def _batch_descriptor_manifest(batch_descriptor: BatchDescriptor) -> dict[str, object]:
+    return {
+        "num_tokens": batch_descriptor.num_tokens,
+        "num_reqs": batch_descriptor.num_reqs,
+        "uniform": batch_descriptor.uniform,
+        "has_lora": batch_descriptor.has_lora,
+        "num_active_loras": batch_descriptor.num_active_loras,
+    }
+
+
 @dataclasses.dataclass(frozen=True)
 class CUDAGraphStat:
     num_unpadded_tokens: int
@@ -230,6 +240,52 @@ class CUDAGraphWrapper:
     def clear_graphs(self) -> None:
         self.concrete_cudagraph_entries.clear()
 
+    def _persist_capture_manifest(self) -> None:
+        local_cache_dir = getattr(self.compilation_config, "local_cache_dir", None)
+        if not local_cache_dir:
+            return
+        try:
+            from .caching import (
+                load_compile_replay_manifest,
+                write_cudagraph_capture_manifest,
+            )
+
+            compile_replay_manifest = load_compile_replay_manifest(local_cache_dir)
+            captured_entries = [
+                {
+                    "batch_descriptor": _batch_descriptor_manifest(
+                        entry.batch_descriptor
+                    ),
+                    "captured": entry.cudagraph is not None,
+                    "input_address_count": len(entry.input_addresses or []),
+                }
+                for entry in sorted(
+                    self.concrete_cudagraph_entries.values(),
+                    key=lambda item: (
+                        item.batch_descriptor.num_tokens,
+                        -1 if item.batch_descriptor.num_reqs is None else item.batch_descriptor.num_reqs,
+                        int(item.batch_descriptor.uniform),
+                        int(item.batch_descriptor.has_lora),
+                        item.batch_descriptor.num_active_loras,
+                    ),
+                )
+                if entry.cudagraph is not None
+            ]
+            write_cudagraph_capture_manifest(
+                local_cache_dir=local_cache_dir,
+                compile_replay_manifest=compile_replay_manifest,
+                runtime_mode=self.runtime_mode.name,
+                cudagraph_capture_sizes=self.compilation_config.cudagraph_capture_sizes,
+                captured_entries=captured_entries,
+                cudagraph_options=dataclasses.asdict(self.cudagraph_options),
+            )
+        except Exception:
+            logger.warning(
+                "Could not write cudagraph capture manifest at %s",
+                local_cache_dir,
+                exc_info=True,
+            )
+
     def __call__(self, *args: Any, **kwargs: Any) -> Any | None:
         if not is_forward_context_available():
             # No forward context means we are outside the normal
@@ -337,6 +393,7 @@ class CUDAGraphWrapper:
             entry.cudagraph = cudagraph
 
             compilation_counter.num_cudagraph_captured += 1
+            self._persist_capture_manifest()
 
             # important: we need to return the output, rather than
             # the weak ref of the output, so that pytorch can correctly
