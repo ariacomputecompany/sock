@@ -525,6 +525,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
             },
             "source_fingerprint": None,
             "compile_surface_fingerprint": None,
+            "canonical_compile_plan": None,
             "graph_artifact_store": expected_graph_artifact_store,
             "patch_profile": {
                 "schema_version": 1,
@@ -740,6 +741,7 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         },
         "source_fingerprint": None,
         "compile_surface_fingerprint": None,
+        "canonical_compile_plan": None,
         "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
@@ -1035,6 +1037,23 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
         enabled_custom_ops={"rotary_embedding": 1},
         disabled_custom_ops={"foo": 2},
     )
+    canonical_compile_plan = caching.build_canonical_compile_plan(
+        env_factors={"A": "B"},
+        config_hash="cfg-from-file",
+        compiler_hash="compiler-from-file",
+        source_fingerprint=source_fingerprint,
+        compile_surface_fingerprint=compile_surface_fingerprint,
+        backend_identity={
+            "backend_class": "SimpleNamespace",
+            "prefix": "unit-prefix",
+            "is_encoder": True,
+            "compiler_name": "inductor-light",
+        },
+        cache_enabled=True,
+        cache_namespace_prefix="unit-prefix",
+        rank=0,
+        data_parallel_rank=0,
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         meta_path = Path(tmpdir) / "cache_key_factors.json"
@@ -1047,6 +1066,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                     "compiler_hash": "compiler-from-file",
                     "source_fingerprint": source_fingerprint,
                     "compile_surface_fingerprint": compile_surface_fingerprint,
+                    "canonical_compile_plan": canonical_compile_plan,
                 }
             )
         )
@@ -1061,6 +1081,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
                 "compiler_hash": "compiler-from-file",
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
             },
             artifact_files={
                 "cache_key_factors": "cache_key_factors.json",
@@ -1117,6 +1138,7 @@ def test_proof_manifest_uses_cache_key_factors_when_available() -> None:
         },
         "source_fingerprint": source_fingerprint,
         "compile_surface_fingerprint": compile_surface_fingerprint,
+        "canonical_compile_plan": canonical_compile_plan,
         "graph_artifact_store": expected_graph_artifact_store,
         "patch_profile": {
             "schema_version": 1,
@@ -1505,6 +1527,23 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
         enabled_custom_ops={"rotary_embedding": 1},
         disabled_custom_ops={"foo": 2},
     )
+    canonical_compile_plan = caching.build_canonical_compile_plan(
+        env_factors={"A": "B"},
+        config_hash="cfg-from-file",
+        compiler_hash="compiler-from-file",
+        source_fingerprint=source_fingerprint,
+        compile_surface_fingerprint=compile_surface_fingerprint,
+        backend_identity={
+            "backend_class": "SimpleNamespace",
+            "prefix": "unit-prefix",
+            "is_encoder": False,
+            "compiler_name": "inductor-light",
+        },
+        cache_enabled=True,
+        cache_namespace_prefix="unit-prefix",
+        rank=0,
+        data_parallel_rank=0,
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         Path(tmpdir, "cache_key_factors.json").write_text(
@@ -1516,6 +1555,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
                     "compiler_hash": "compiler-from-file",
                     "source_fingerprint": source_fingerprint,
                     "compile_surface_fingerprint": compile_surface_fingerprint,
+                    "canonical_compile_plan": canonical_compile_plan,
                 }
             )
         )
@@ -1531,6 +1571,7 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
                 "compiler_hash": "compiler-from-file",
                 "source_fingerprint": source_fingerprint,
                 "compile_surface_fingerprint": compile_surface_fingerprint,
+                "canonical_compile_plan": canonical_compile_plan,
             },
             artifact_files={
                 "cache_key_factors": "cache_key_factors.json",
@@ -1558,12 +1599,71 @@ def test_graph_artifact_store_manifest_roundtrip() -> None:
     }
     assert manifest["source_fingerprint"] == source_fingerprint
     assert manifest["compile_surface_fingerprint"] == compile_surface_fingerprint
+    assert manifest["canonical_compile_plan"] == canonical_compile_plan
+    assert (
+        manifest["canonical_compile_plan_id"]
+        == canonical_compile_plan["canonical_compile_plan_id"]
+    )
     assert [item["artifact_kind"] for item in manifest["artifacts"]] == [
         "cache_key_factors",
         "compiler_cache",
         "computation_graph",
     ]
     assert all(item["present"] for item in manifest["artifacts"])
+
+
+def test_canonical_compile_plan_is_structural_and_renderable() -> None:
+    caching, _ = _load_caching_module()
+    source_fingerprint = caching.build_compile_source_fingerprint_from_content(
+        {"module.py": "def forward(x):\n    return x + 1\n"}
+    )
+    compile_surface_fingerprint = caching.build_compile_surface_fingerprint(
+        source_fingerprint=source_fingerprint,
+        graph_text="graph(x) -> add",
+        placeholder_names=["x"],
+        node_targets=["placeholder:x", "call_function:add", "output:output"],
+        splitting_ops=["aten::relu.default"],
+        custom_ops=["all"],
+        enabled_passes=["fusion_pass"],
+        inductor_passes=["post_grad.custom"],
+        dynamic_shapes_type="DynamicShapesType.BACKED",
+        dynamic_shapes_evaluate_guards=False,
+        use_inductor_graph_partition=True,
+        enabled_custom_ops={"rotary_embedding": 1},
+        disabled_custom_ops={"foo": 2},
+    )
+
+    plan = caching.build_canonical_compile_plan(
+        env_factors={"B": "A"},
+        config_hash="cfg-hash",
+        compiler_hash="compiler-hash",
+        source_fingerprint=source_fingerprint,
+        compile_surface_fingerprint=compile_surface_fingerprint,
+        backend_identity={
+            "backend_class": "VllmBackend",
+            "prefix": "decoder",
+            "is_encoder": False,
+            "compiler_name": "inductor-light",
+        },
+        cache_enabled=True,
+        cache_namespace_prefix="decoder",
+        rank=3,
+        data_parallel_rank=1,
+    )
+
+    assert plan["schema_version"] == 1
+    assert plan["canonical_compile_plan_id"] == plan["resolved_compile_plan_id"]
+    assert plan["requested_policy_id"] != plan["normalized_policy_id"]
+    assert plan["materialization_plan_id"] != plan["verification_plan_id"]
+    assert plan["resolved_compile_plan"]["source_fingerprint_hash"] == source_fingerprint[
+        "aggregate_hash"
+    ]
+    assert (
+        plan["resolved_compile_plan"]["compile_surface_hash"]
+        == compile_surface_fingerprint["aggregate_hash"]
+    )
+    rendered = caching.render_canonical_compile_plan(plan)
+    assert json.loads(rendered) == plan
 
 
 def test_compile_source_fingerprint_ignores_python_comments() -> None:

@@ -3,7 +3,6 @@
 
 import ast
 import dataclasses
-import hashlib
 import json
 import operator
 import os
@@ -1016,6 +1015,7 @@ class VllmBackend:
     @dynamo_timed("vllm_backend")
     def __call__(self, graph: fx.GraphModule, example_inputs: Sequence[Any]) -> Any:
         from .caching import (
+            build_canonical_compile_plan,
             build_compile_surface_fingerprint,
             build_compile_source_fingerprint_from_content,
             VllmSerializableFunction,
@@ -1101,30 +1101,16 @@ class VllmBackend:
             disabled_custom_ops=dict(self.compilation_config.disabled_custom_ops),
         )
         code_hash = str(compile_surface_fingerprint["aggregate_hash"])
+        backend_identity = {
+            "backend_class": type(self).__name__,
+            "prefix": self.prefix,
+            "is_encoder": self.is_encoder,
+            "compiler_name": self.compiler_manager.compiler.name,
+        }
         # Clear after consumption
         self.compilation_config.traced_files.clear()
-        if not self.compilation_config.cache_dir:
-            # no provided cache dir, generate one based on the known factors
-            # that affects the compilation. if none of the factors change,
-            # the cache dir will be the same so that we can reuse the compiled
-            # graph.
-            factors = [env_hash, config_hash, code_hash, compiler_hash]
-            # Use SHA-256 for cache key hashing to be consistent across
-            # compute_hash functions. Truncate for a short cache dir name.
-            hash_key = hashlib.sha256(str(factors).encode()).hexdigest()[:10]
-            cache_dir = os.path.join(
-                envs.VLLM_CACHE_ROOT, "torch_compile_cache", hash_key
-            )
-            self.compilation_config.cache_dir = cache_dir
-
-        cache_dir = self.compilation_config.cache_dir
-        os.makedirs(cache_dir, exist_ok=True)
-        self.compilation_config.cache_dir = cache_dir
         rank = vllm_config.parallel_config.rank
         dp_rank = vllm_config.parallel_config.data_parallel_index
-        local_cache_dir = os.path.join(cache_dir, f"rank_{rank}_{dp_rank}", self.prefix)
-        os.makedirs(local_cache_dir, exist_ok=True)
-        self.compilation_config.local_cache_dir = local_cache_dir
 
         # Honors opt-outs such as CompilationMode.NONE or VLLM_DISABLE_COMPILE_CACHE.
         disable_cache = not is_compile_cache_enabled(self.inductor_config)
@@ -1138,7 +1124,38 @@ class VllmBackend:
 
         if disable_cache:
             logger.info_once("vLLM's torch.compile cache is disabled.")
-        else:
+        canonical_compile_plan = build_canonical_compile_plan(
+            env_factors=env_factors,
+            config_hash=config_hash,
+            compiler_hash=compiler_hash,
+            source_fingerprint=source_fingerprint,
+            compile_surface_fingerprint=compile_surface_fingerprint,
+            backend_identity=backend_identity,
+            cache_enabled=not disable_cache,
+            cache_namespace_prefix=self.prefix,
+            rank=rank,
+            data_parallel_rank=dp_rank,
+        )
+        canonical_compile_plan_id = str(
+            canonical_compile_plan["canonical_compile_plan_id"]
+        )
+
+        if not self.compilation_config.cache_dir:
+            cache_dir = os.path.join(
+                envs.VLLM_CACHE_ROOT,
+                "torch_compile_cache",
+                canonical_compile_plan_id[:10],
+            )
+            self.compilation_config.cache_dir = cache_dir
+
+        cache_dir = self.compilation_config.cache_dir
+        os.makedirs(cache_dir, exist_ok=True)
+        self.compilation_config.cache_dir = cache_dir
+        local_cache_dir = os.path.join(cache_dir, f"rank_{rank}_{dp_rank}", self.prefix)
+        os.makedirs(local_cache_dir, exist_ok=True)
+        self.compilation_config.local_cache_dir = local_cache_dir
+
+        if not disable_cache:
             logger.info_once(
                 "Using cache directory: %s for vLLM's torch.compile",
                 local_cache_dir,
@@ -1151,11 +1168,12 @@ class VllmBackend:
         # Reuses existing cache key
 
         logger.debug(
-            "torch.compile cache factors: env=%s cfg=%s comp=%s code=%s dir=%s",
+            "torch.compile cache factors: env=%s cfg=%s comp=%s code=%s plan=%s dir=%s",
             env_hash,
             config_hash,
             compiler_hash,
             code_hash,
+            canonical_compile_plan_id,
             local_cache_dir,
         )
 
@@ -1167,6 +1185,7 @@ class VllmBackend:
             "compiler_hash": compiler_hash,
             "source_fingerprint": source_fingerprint,
             "compile_surface_fingerprint": compile_surface_fingerprint,
+            "canonical_compile_plan": canonical_compile_plan,
         }
         try:
             logger.debug(

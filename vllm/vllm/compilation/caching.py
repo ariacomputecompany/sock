@@ -1756,6 +1756,18 @@ def build_graph_artifact_store_manifest(
             if cache_key_factors is not None
             else None
         ),
+        "canonical_compile_plan": (
+            _json_ready(cache_key_factors.get("canonical_compile_plan"))
+            if cache_key_factors is not None
+            else None
+        ),
+        "canonical_compile_plan_id": (
+            cache_key_factors.get("canonical_compile_plan", {}).get(
+                "canonical_compile_plan_id"
+            )
+            if cache_key_factors is not None
+            else None
+        ),
         "backend_identity": _json_ready(backend_identity),
         "artifact_count": len(artifacts),
         "present_artifact_count": sum(1 for item in artifacts if item["present"]),
@@ -1919,6 +1931,11 @@ def build_standalone_artifact_proof_manifest(
         ),
         "compile_surface_fingerprint": (
             _json_ready(cache_key_factors.get("compile_surface_fingerprint"))
+            if cache_key_factors is not None
+            else None
+        ),
+        "canonical_compile_plan": (
+            _json_ready(cache_key_factors.get("canonical_compile_plan"))
             if cache_key_factors is not None
             else None
         ),
@@ -2148,6 +2165,80 @@ def build_compile_surface_fingerprint(
         usedforsecurity=False,
     ).hexdigest()
     return manifest
+
+
+def _stable_digest(payload: object) -> str:
+    return safe_hash(
+        json.dumps(
+            _json_ready(payload),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(),
+        usedforsecurity=False,
+    ).hexdigest()
+
+
+def build_canonical_compile_plan(
+    *,
+    env_factors: dict[str, object],
+    config_hash: str,
+    compiler_hash: str,
+    source_fingerprint: dict[str, object],
+    compile_surface_fingerprint: dict[str, object],
+    backend_identity: dict[str, object],
+    cache_enabled: bool,
+    cache_namespace_prefix: str,
+    rank: int,
+    data_parallel_rank: int,
+) -> dict[str, object]:
+    requested_policy = {
+        "env_factors": env_factors,
+        "backend_identity": backend_identity,
+        "cache_namespace_prefix": cache_namespace_prefix,
+    }
+    normalized_policy = {
+        "env_policy_hash": hash_factors(env_factors),
+        "config_hash": config_hash,
+        "compiler_hash": compiler_hash,
+        "backend_identity": backend_identity,
+    }
+    resolved_compile_plan = {
+        "normalized_policy_hash": _stable_digest(normalized_policy),
+        "source_fingerprint_hash": source_fingerprint["aggregate_hash"],
+        "compile_surface_hash": compile_surface_fingerprint["aggregate_hash"],
+        "backend_identity": backend_identity,
+    }
+    materialization_plan = {
+        "cache_enabled": cache_enabled,
+        "cache_namespace_prefix": cache_namespace_prefix,
+        "rank": rank,
+        "data_parallel_rank": data_parallel_rank,
+    }
+    verification_plan = {
+        "proof_mode": "compile_plan_manifest_v1",
+        "compile_surface_hash": compile_surface_fingerprint["aggregate_hash"],
+        "source_fingerprint_hash": source_fingerprint["aggregate_hash"],
+    }
+
+    plan = {
+        "schema_version": 1,
+        "requested_policy": requested_policy,
+        "requested_policy_id": _stable_digest(requested_policy),
+        "normalized_policy": normalized_policy,
+        "normalized_policy_id": _stable_digest(normalized_policy),
+        "resolved_compile_plan": resolved_compile_plan,
+        "resolved_compile_plan_id": _stable_digest(resolved_compile_plan),
+        "materialization_plan": materialization_plan,
+        "materialization_plan_id": _stable_digest(materialization_plan),
+        "verification_plan": verification_plan,
+        "verification_plan_id": _stable_digest(verification_plan),
+    }
+    plan["canonical_compile_plan_id"] = plan["resolved_compile_plan_id"]
+    return plan
+
+
+def render_canonical_compile_plan(plan: dict[str, object]) -> str:
+    return json.dumps(_json_ready(plan), sort_keys=True, separators=(",", ":"))
 
 
 def _compute_code_hash_with_content(file_contents: dict[str, str]) -> str:
