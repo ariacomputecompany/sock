@@ -55,14 +55,17 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_CACHE_ROOT"] == "cache_location_only"
     assert manifest["categories"]["VLLM_DISABLE_COMPILE_CACHE"] == "compile_affecting"
     assert manifest["categories"]["VLLM_API_KEY"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_ENGINE_READY_TIMEOUT_S"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_CONFIGURE_LOGGING"] == "debug_only"
     assert manifest["categories"]["VLLM_CUSTOM_SCOPES_FOR_PROFILING"] == "debug_only"
+    assert manifest["categories"]["VLLM_USAGE_SOURCE"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_SKIP_MODEL_NAME_VALIDATION"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_ENFORCE_STRICT_TOOL_CALLING"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_ENABLE_RESPONSES_API_STORE"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_LOG_MODEL_INSPECTION"] == "debug_only"
     assert manifest["categories"]["VLLM_DISABLE_LOG_LOGO"] == "debug_only"
     assert manifest["categories"]["VLLM_COMPUTE_NANS_IN_LOGITS"] == "debug_only"
+    assert manifest["categories"]["VLLM_MM_HASHER_ALGORITHM"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_MEDIA_CONNECTOR"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_CPU_KVCACHE_SPACE"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "runtime_non_compile"
@@ -71,6 +74,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_USE_NCCL_SYMM_MEM"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_ALLREDUCE_USE_SYMM_MEM"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_ALLREDUCE_USE_FLASHINFER"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MAX_N_SEQUENCES"] == "runtime_non_compile"
     assert (
         manifest["categories"]["VLLM_ALLOW_INSECURE_SERIALIZATION"]
         == "runtime_non_compile"
@@ -99,6 +103,35 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert (
         manifest["categories"]["VLLM_OBJECT_STORAGE_SHM_BUFFER_NAME"]
+        == "runtime_non_compile"
+    )
+    assert manifest["categories"]["VLLM_ASSETS_CACHE_MODEL_CLEAN"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MEDIA_CACHE"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MEDIA_CACHE_MAX_SIZE_MB"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MEDIA_CACHE_TTL_HOURS"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MEDIA_FETCH_MAX_RETRIES"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MEDIA_URL_ALLOW_REDIRECTS"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MEDIA_LOADING_THREAD_COUNT"] == "runtime_non_compile"
+    assert (
+        manifest["categories"]["VLLM_MAX_AUDIO_CLIP_FILESIZE_MB"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_MAX_AUDIO_DECODE_DURATION_S"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_MAX_AUDIO_PREPROCESS_WORKERS"]
+        == "runtime_non_compile"
+    )
+    assert manifest["categories"]["VLLM_MAX_IMAGE_PIXELS"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_VIDEO_LOADER_BACKEND"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_ENABLE_V1_MULTIPROCESSING"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_V1_OUTPUT_PROC_CHUNK_SIZE"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_LOG_BATCHSIZE_INTERVAL"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_MSGPACK_ZERO_COPY_THRESHOLD"] == "runtime_non_compile"
+    assert (
+        manifest["categories"]["VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS"]
         == "runtime_non_compile"
     )
     assert (
@@ -131,11 +164,14 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_BUILD_PROFILE" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_COMPILE_CACHE" in manifest["included_keys"]
     assert "VLLM_API_KEY" in manifest["ignored_keys"]
+    assert "VLLM_ENGINE_READY_TIMEOUT_S" in manifest["ignored_keys"]
     assert "VLLM_CONFIGURE_LOGGING" in manifest["ignored_keys"]
+    assert "VLLM_USAGE_SOURCE" in manifest["ignored_keys"]
     assert "VLLM_SKIP_MODEL_NAME_VALIDATION" in manifest["ignored_keys"]
     assert "VLLM_ENFORCE_STRICT_TOOL_CALLING" in manifest["ignored_keys"]
     assert "VLLM_LOG_MODEL_INSPECTION" in manifest["ignored_keys"]
     assert "VLLM_COMPUTE_NANS_IN_LOGITS" in manifest["ignored_keys"]
+    assert "VLLM_MM_HASHER_ALGORITHM" in manifest["ignored_keys"]
     assert "VLLM_MEDIA_CONNECTOR" in manifest["ignored_keys"]
     assert "VLLM_CPU_KVCACHE_SPACE" in manifest["ignored_keys"]
     assert "VLLM_USE_SIMPLE_KV_OFFLOAD" in manifest["ignored_keys"]
@@ -144,6 +180,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_USE_NCCL_SYMM_MEM" in manifest["ignored_keys"]
     assert "VLLM_ALLREDUCE_USE_SYMM_MEM" in manifest["ignored_keys"]
     assert "VLLM_ALLREDUCE_USE_FLASHINFER" in manifest["ignored_keys"]
+    assert "VLLM_MAX_N_SEQUENCES" in manifest["ignored_keys"]
     assert "VLLM_ALLOW_INSECURE_SERIALIZATION" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_REQUEST_ID_RANDOMIZATION" in manifest["ignored_keys"]
     assert "VLLM_MQ_MAX_CHUNK_BYTES_MB" in manifest["ignored_keys"]
@@ -156,6 +193,23 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "MOONCAKE_REQUESTER_LOCAL_HOSTNAME" in manifest["ignored_keys"]
     assert "VLLM_MOONCAKE_ABORT_REQUEST_TIMEOUT" in manifest["ignored_keys"]
     assert "VLLM_OBJECT_STORAGE_SHM_BUFFER_NAME" in manifest["ignored_keys"]
+    assert "VLLM_ASSETS_CACHE_MODEL_CLEAN" in manifest["ignored_keys"]
+    assert "VLLM_MEDIA_CACHE" in manifest["ignored_keys"]
+    assert "VLLM_MEDIA_CACHE_MAX_SIZE_MB" in manifest["ignored_keys"]
+    assert "VLLM_MEDIA_CACHE_TTL_HOURS" in manifest["ignored_keys"]
+    assert "VLLM_MEDIA_FETCH_MAX_RETRIES" in manifest["ignored_keys"]
+    assert "VLLM_MEDIA_URL_ALLOW_REDIRECTS" in manifest["ignored_keys"]
+    assert "VLLM_MEDIA_LOADING_THREAD_COUNT" in manifest["ignored_keys"]
+    assert "VLLM_MAX_AUDIO_CLIP_FILESIZE_MB" in manifest["ignored_keys"]
+    assert "VLLM_MAX_AUDIO_DECODE_DURATION_S" in manifest["ignored_keys"]
+    assert "VLLM_MAX_AUDIO_PREPROCESS_WORKERS" in manifest["ignored_keys"]
+    assert "VLLM_MAX_IMAGE_PIXELS" in manifest["ignored_keys"]
+    assert "VLLM_VIDEO_LOADER_BACKEND" in manifest["ignored_keys"]
+    assert "VLLM_ENABLE_V1_MULTIPROCESSING" in manifest["ignored_keys"]
+    assert "VLLM_V1_OUTPUT_PROC_CHUNK_SIZE" in manifest["ignored_keys"]
+    assert "VLLM_LOG_BATCHSIZE_INTERVAL" in manifest["ignored_keys"]
+    assert "VLLM_MSGPACK_ZERO_COPY_THRESHOLD" in manifest["ignored_keys"]
+    assert "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS" in manifest["ignored_keys"]
     assert "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE" in manifest["ignored_keys"]
     assert "VLLM_ENABLE_CUDAGRAPH_GC" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_SHARED_EXPERTS_STREAM" in manifest["ignored_keys"]
@@ -261,12 +315,16 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert "VLLM_CONFIGURE_LOGGING" in manifest["audit"]["category_keys"]["debug_only"]
     assert "VLLM_API_KEY" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_ENGINE_READY_TIMEOUT_S" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_USAGE_SOURCE" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_MEDIA_CONNECTOR" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_MM_HASHER_ALGORITHM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_USE_SPINLOOP_EXT" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_DISABLE_PYNCCL" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_USE_NCCL_SYMM_MEM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_ALLREDUCE_USE_SYMM_MEM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_ALLREDUCE_USE_FLASHINFER" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert "VLLM_MAX_N_SEQUENCES" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert (
         "VLLM_ALLOW_INSECURE_SERIALIZATION"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
@@ -313,6 +371,71 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert (
         "VLLM_OBJECT_STORAGE_SHM_BUFFER_NAME"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_ASSETS_CACHE_MODEL_CLEAN"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert "VLLM_MEDIA_CACHE" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert (
+        "VLLM_MEDIA_CACHE_MAX_SIZE_MB"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MEDIA_CACHE_TTL_HOURS"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MEDIA_FETCH_MAX_RETRIES"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MEDIA_URL_ALLOW_REDIRECTS"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MEDIA_LOADING_THREAD_COUNT"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MAX_AUDIO_CLIP_FILESIZE_MB"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MAX_AUDIO_DECODE_DURATION_S"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MAX_AUDIO_PREPROCESS_WORKERS"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MAX_IMAGE_PIXELS"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_VIDEO_LOADER_BACKEND"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_ENABLE_V1_MULTIPROCESSING"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_V1_OUTPUT_PROC_CHUNK_SIZE"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_LOG_BATCHSIZE_INTERVAL"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MSGPACK_ZERO_COPY_THRESHOLD"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
     )
     assert (
