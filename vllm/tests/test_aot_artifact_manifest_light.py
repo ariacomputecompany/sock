@@ -562,6 +562,11 @@ def test_serialized_state_records_artifact_manifest_metadata() -> None:
         },
         "sym_shape_indices_map": {"block0": [0]},
         "returns_tuple_map": {"block0": True},
+        "example_input_tensor_specs": {
+            "schema_version": 1,
+            "input_count": 0,
+            "indexed_tensors": [],
+        },
     }
     assert (
         state["standalone_compile_artifacts"].manifest_summary()
@@ -1124,3 +1129,60 @@ def test_no_new_compile_verification_tracks_counter_deltas() -> None:
             "load_report_missing",
         ],
     }
+
+
+def test_example_input_tensor_specs_roundtrip_helpers() -> None:
+    caching, _ = _load_caching_module()
+
+    class _FakeTensor:
+        def __init__(self, shape, dtype):
+            self.shape = shape
+            self.dtype = dtype
+
+    class _FakeBuiltTensor:
+        def __init__(self, shape, dtype, device):
+            self.shape = shape
+            self.dtype = dtype
+            self.device = device
+
+    original_tensor = caching.torch.Tensor
+    original_float32 = getattr(caching.torch, "float32", None)
+    original_empty = getattr(caching.torch, "empty", None)
+    caching.torch.Tensor = _FakeTensor
+    caching.torch.float32 = "float32-dtype"
+    caching.torch.empty = lambda shape, dtype, device: _FakeBuiltTensor(
+        shape, dtype, device
+    )
+    try:
+        specs = caching.build_example_input_tensor_specs(
+            [_FakeTensor((4, 8), "torch.float32"), "ignored"],
+            [0],
+        )
+        assert specs == {
+            "schema_version": 1,
+            "input_count": 2,
+            "indexed_tensors": [
+                {
+                    "index": 0,
+                    "shape": [4, 8],
+                    "dtype": "float32",
+                }
+            ],
+        }
+
+        rebuilt = caching.build_sparse_example_inputs_from_tensor_specs(specs)
+        assert len(rebuilt) == 2
+        assert rebuilt[1] is None
+        assert rebuilt[0].shape == (4, 8)
+        assert rebuilt[0].dtype == "float32-dtype"
+        assert rebuilt[0].device == "meta"
+    finally:
+        caching.torch.Tensor = original_tensor
+        if original_float32 is None:
+            delattr(caching.torch, "float32")
+        else:
+            caching.torch.float32 = original_float32
+        if original_empty is None:
+            delattr(caching.torch, "empty")
+        else:
+            caching.torch.empty = original_empty

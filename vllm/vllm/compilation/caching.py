@@ -61,6 +61,7 @@ def build_standalone_artifact_sidecar(
     standalone_compile_artifact_proof_manifest: dict[str, object],
     sym_shape_indices_map: dict[str, list[int]] | dict[str, tuple[int, ...]],
     returns_tuple_map: dict[str, bool],
+    example_input_tensor_specs: dict[str, object] | None,
 ) -> dict[str, object]:
     return {
         "schema_version": 1,
@@ -72,6 +73,7 @@ def build_standalone_artifact_sidecar(
         "proof_manifest": _json_ready(standalone_compile_artifact_proof_manifest),
         "sym_shape_indices_map": _json_ready(sym_shape_indices_map),
         "returns_tuple_map": _json_ready(returns_tuple_map),
+        "example_input_tensor_specs": _json_ready(example_input_tensor_specs),
     }
 
 
@@ -81,6 +83,58 @@ def build_no_new_compile_expectation() -> dict[str, object]:
         "expected_new_compiled_artifacts": 0,
         "proof_mode": "standalone_aot_artifact_reuse",
     }
+
+
+def build_example_input_tensor_specs(
+    example_inputs: Sequence[Any],
+    sym_tensor_indices: list[int] | None,
+) -> dict[str, object] | None:
+    if not sym_tensor_indices:
+        return {
+            "schema_version": 1,
+            "input_count": len(example_inputs),
+            "indexed_tensors": [],
+        }
+
+    indexed_tensors = []
+    for index in sym_tensor_indices:
+        if index >= len(example_inputs):
+            return None
+        example_input = example_inputs[index]
+        if not isinstance(example_input, torch.Tensor):
+            return None
+        indexed_tensors.append(
+            {
+                "index": index,
+                "shape": list(example_input.shape),
+                "dtype": str(example_input.dtype).removeprefix("torch."),
+            }
+        )
+
+    return {
+        "schema_version": 1,
+        "input_count": len(example_inputs),
+        "indexed_tensors": indexed_tensors,
+    }
+
+
+def build_sparse_example_inputs_from_tensor_specs(
+    specs: dict[str, object],
+) -> list[Any]:
+    input_count = int(specs.get("input_count", 0))
+    example_inputs: list[Any] = [None] * input_count
+    for item in specs.get("indexed_tensors", []):
+        if not isinstance(item, dict):
+            continue
+        dtype_name = str(item["dtype"])
+        dtype = getattr(torch, dtype_name)
+        shape = tuple(int(dim) for dim in item["shape"])
+        example_inputs[int(item["index"])] = torch.empty(
+            shape,
+            dtype=dtype,
+            device="meta",
+        )
+    return example_inputs
 
 
 def pack_serialized_compile_artifact_bundle(
@@ -508,6 +562,10 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 state["example_inputs"],
             )
 
+        example_input_tensor_specs = build_example_input_tensor_specs(
+            state["example_inputs"],
+            state.get("sym_tensor_indices"),
+        )
         state["graph_module"] = cls.serialize_graph_module(state["graph_module"])
         state["example_inputs"] = GraphPickler.dumps(state["example_inputs"])
 
@@ -557,6 +615,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 ),
                 sym_shape_indices_map=sym_shape_indices_map,
                 returns_tuple_map=returns_tuple_map,
+                example_input_tensor_specs=example_input_tensor_specs,
             )
         return pack_serialized_compile_artifact_bundle(pickle.dumps(state), sidecar)
 
@@ -568,8 +627,6 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         sidecar, payload = unpack_serialized_compile_artifact_bundle(data)
         state = pickle.loads(payload)
         fake_mode = FakeTensorMode(shape_env=ShapeEnv())
-
-        state["example_inputs"] = GraphPickler.loads(state["example_inputs"], fake_mode)
 
         standalone_compile_artifacts = state.pop("standalone_compile_artifacts", None)
         sidecar_metadata = sidecar or {}
@@ -602,6 +659,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
                 or state.pop("returns_tuple_map", {})
             ).items()
         }
+        example_input_tensor_specs = sidecar_metadata.get("example_input_tensor_specs")
 
         saved_aot_autograd_config = state["aot_autograd_config"]
         if saved_aot_autograd_config is not None:
@@ -612,6 +670,17 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
         if envs.VLLM_USE_MEGA_AOT_ARTIFACT:
             assert standalone_compile_artifacts is not None
             current_vllm_config = get_current_vllm_config()
+            if current_vllm_config.compilation_config.cudagraph_copy_inputs:
+                if example_input_tensor_specs is not None:
+                    state["example_inputs"] = build_sparse_example_inputs_from_tensor_specs(
+                        example_input_tensor_specs
+                    )
+                else:
+                    state["example_inputs"] = GraphPickler.loads(
+                        state["example_inputs"], fake_mode
+                    )
+            else:
+                state["example_inputs"] = []
             submod_names = standalone_compile_artifacts.submodule_names()
             num_submods = len(submod_names)
             num_artifacts = standalone_compile_artifacts.num_artifacts()
@@ -743,6 +812,7 @@ class VllmSerializableFunction(SerializableCallable):  # type: ignore[misc]
 
             return fn
 
+        state["example_inputs"] = GraphPickler.loads(state["example_inputs"], fake_mode)
         state["graph_module"] = cls.deserialize_graph_module(
             state["graph_module"], fake_mode
         )
