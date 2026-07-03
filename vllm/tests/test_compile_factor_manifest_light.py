@@ -72,6 +72,15 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_ALLREDUCE_USE_SYMM_MEM"] == "runtime_non_compile"
     assert manifest["categories"]["VLLM_ALLREDUCE_USE_FLASHINFER"] == "runtime_non_compile"
     assert (
+        manifest["categories"]["VLLM_ALLOW_INSECURE_SERIALIZATION"]
+        == "runtime_non_compile"
+    )
+    assert (
+        manifest["categories"]["VLLM_DISABLE_REQUEST_ID_RANDOMIZATION"]
+        == "runtime_non_compile"
+    )
+    assert manifest["categories"]["VLLM_MQ_MAX_CHUNK_BYTES_MB"] == "runtime_non_compile"
+    assert (
         manifest["categories"]["VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE"]
         == "runtime_non_compile"
     )
@@ -114,6 +123,9 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_USE_NCCL_SYMM_MEM" in manifest["ignored_keys"]
     assert "VLLM_ALLREDUCE_USE_SYMM_MEM" in manifest["ignored_keys"]
     assert "VLLM_ALLREDUCE_USE_FLASHINFER" in manifest["ignored_keys"]
+    assert "VLLM_ALLOW_INSECURE_SERIALIZATION" in manifest["ignored_keys"]
+    assert "VLLM_DISABLE_REQUEST_ID_RANDOMIZATION" in manifest["ignored_keys"]
+    assert "VLLM_MQ_MAX_CHUNK_BYTES_MB" in manifest["ignored_keys"]
     assert "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE" in manifest["ignored_keys"]
     assert "VLLM_ENABLE_CUDAGRAPH_GC" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_SHARED_EXPERTS_STREAM" in manifest["ignored_keys"]
@@ -225,6 +237,18 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert "VLLM_USE_NCCL_SYMM_MEM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_ALLREDUCE_USE_SYMM_MEM" in manifest["audit"]["category_keys"]["runtime_non_compile"]
     assert "VLLM_ALLREDUCE_USE_FLASHINFER" in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    assert (
+        "VLLM_ALLOW_INSECURE_SERIALIZATION"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_DISABLE_REQUEST_ID_RANDOMIZATION"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
+    assert (
+        "VLLM_MQ_MAX_CHUNK_BYTES_MB"
+        in manifest["audit"]["category_keys"]["runtime_non_compile"]
+    )
     assert (
         "VLLM_FLASHINFER_WORKSPACE_BUFFER_SIZE"
         in manifest["audit"]["category_keys"]["runtime_non_compile"]
