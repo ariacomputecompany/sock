@@ -52,6 +52,9 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_BUILD_PROFILE"] == "host_only"
     assert manifest["categories"]["VLLM_CACHE_ROOT"] == "cache_location_only"
     assert manifest["categories"]["VLLM_DISABLE_COMPILE_CACHE"] == "compile_affecting"
+    assert manifest["categories"]["VLLM_API_KEY"] == "runtime_non_compile"
+    assert manifest["categories"]["VLLM_CONFIGURE_LOGGING"] == "debug_only"
+    assert manifest["categories"]["VLLM_CUSTOM_SCOPES_FOR_PROFILING"] == "debug_only"
     assert (
         manifest["policies"]["VLLM_DISABLE_COMPILE_CACHE"]["included_in_compile_key"]
         is True
@@ -62,6 +65,8 @@ def test_compile_factor_manifest_lightweight() -> None:
     )
     assert "VLLM_BUILD_PROFILE" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_COMPILE_CACHE" in manifest["included_keys"]
+    assert "VLLM_API_KEY" in manifest["ignored_keys"]
+    assert "VLLM_CONFIGURE_LOGGING" in manifest["ignored_keys"]
     assert (
         "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
         in manifest["ambient_included_keys"]
@@ -77,9 +82,15 @@ def test_compile_factor_manifest_lightweight() -> None:
         manifest["validation"]["compile_affecting_key_digest"]
         == envs._EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST
     )
+    assert manifest["validation"]["overlap_keys"] == {}
     assert manifest["identity"]["schema_version"] == 1
     assert manifest["identity"]["declared_factor_count"] > 0
     assert manifest["identity"]["ambient_factor_count"] > 0
+    assert manifest["audit"]["category_counts"]["debug_only"] >= 1
+    assert manifest["audit"]["category_counts"]["runtime_non_compile"] >= 1
+    assert manifest["audit"]["overlap_keys"] == {}
+    assert "VLLM_CONFIGURE_LOGGING" in manifest["audit"]["category_keys"]["debug_only"]
+    assert "VLLM_API_KEY" in manifest["audit"]["category_keys"]["runtime_non_compile"]
 
     rendered = envs.render_compile_factor_manifest()
     reparsed = json.loads(rendered)
@@ -90,6 +101,7 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert reparsed["included_keys"] == manifest["included_keys"]
     assert reparsed["ambient_included_keys"] == manifest["ambient_included_keys"]
     assert reparsed["ignored_keys"] == manifest["ignored_keys"]
+    assert reparsed["audit"] == manifest["audit"]
     assert reparsed["validation"] == manifest["validation"]
 
     rendered_identity = envs.render_compile_factor_identity_manifest()

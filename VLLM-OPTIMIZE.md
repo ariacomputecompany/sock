@@ -188,13 +188,6 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 ## 2. Compile-Affecting Input Cleanup
 
-- [ ] Audit all compile-affecting env vars in `vllm/vllm/envs.py`.
-- [ ] Classify env vars into:
-  - compile-affecting
-  - runtime-affecting but non-compile-affecting
-  - debug-only
-  - host-only
-  - cache-location-only
 - [ ] Remove non-essential env vars from compile identity calculation.
 - [ ] Normalize equivalent values before hashing.
 - [ ] Prevent accidental cache splits caused by irrelevant host/process-level differences.

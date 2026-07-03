@@ -551,6 +551,8 @@ _HOST_ONLY_ENV_VARS: set[str] = {
 }
 
 _DEBUG_ONLY_ENV_VARS: set[str] = {
+    "VERBOSE",
+    "VLLM_CONFIGURE_LOGGING",
     "VLLM_RINGBUFFER_WARNING_INTERVAL",
     "VLLM_LOGGING_LEVEL",
     "VLLM_LOGGING_PREFIX",
@@ -558,13 +560,18 @@ _DEBUG_ONLY_ENV_VARS: set[str] = {
     "VLLM_LOGGING_CONFIG_PATH",
     "VLLM_LOGGING_COLOR",
     "VLLM_LOG_STATS_INTERVAL",
+    "VLLM_CUSTOM_SCOPES_FOR_PROFILING",
+    "VLLM_NVTX_SCOPES_FOR_PROFILING",
     "VLLM_DEBUG_LOG_API_SERVER_RESPONSE",
+    "VLLM_DEBUG_MFU_METRICS",
+    "VLLM_DEBUG_WORKSPACE",
     "VLLM_SERVER_DEV_MODE",
     "VLLM_TRACE_FUNCTION",
     "NO_COLOR",
 }
 
 _NON_COMPILE_RUNTIME_ENV_VARS: set[str] = {
+    "VLLM_API_KEY",
     "VLLM_USE_MODELSCOPE",
     "VLLM_RANDOMIZE_DP_DUMMY_INPUTS",
     "VLLM_CI_USE_S3",
@@ -2136,7 +2143,7 @@ _AMBIENT_COMPILE_FACTOR_REASONS: dict[str, str] = {
 }
 
 _EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST = (
-    "e9253646b54a56f9df44305b4c961b1a5222d2b70dcb5f4b803cf66413fb01cb"
+    "3d22b415ef389ee3d3e5340cf56e634a69b0d69ce58f8385855b92e18e2709ce"
 )
 
 
@@ -2334,6 +2341,41 @@ def compile_factor_categories() -> dict[str, str]:
     return categories
 
 
+def compile_factor_audit_manifest() -> dict[str, object]:
+    categories = compile_factor_categories()
+    category_keys = {
+        category: sorted(
+            factor for factor, classified in categories.items() if classified == category
+        )
+        for category in sorted(_COMPILE_FACTOR_CATEGORY_REASONS)
+    }
+    declared_category_sets = {
+        "cache_location_only": _CACHE_LOCATION_ONLY_ENV_VARS & set(environment_variables),
+        "host_only": _HOST_ONLY_ENV_VARS & set(environment_variables),
+        "debug_only": _DEBUG_ONLY_ENV_VARS & set(environment_variables),
+        "runtime_non_compile": (
+            _NON_COMPILE_RUNTIME_ENV_VARS | {"VLLM_NIXL_SIDE_CHANNEL_HOST"}
+        )
+        & set(environment_variables),
+    }
+    overlap_keys: dict[str, list[str]] = {}
+    category_names = sorted(declared_category_sets)
+    for index, left in enumerate(category_names):
+        for right in category_names[index + 1 :]:
+            overlap = sorted(declared_category_sets[left] & declared_category_sets[right])
+            if overlap:
+                overlap_keys[f"{left}__{right}"] = overlap
+    return {
+        "schema_version": 1,
+        "category_counts": {
+            category: len(category_keys[category]) for category in sorted(category_keys)
+        },
+        "category_keys": category_keys,
+        "ambient_compile_factor_names": sorted(_ambient_compile_factor_names()),
+        "overlap_keys": overlap_keys,
+    }
+
+
 def ambient_compile_factor_policies() -> dict[str, dict[str, object]]:
     policies: dict[str, dict[str, object]] = {}
     for factor, reason in sorted(_AMBIENT_COMPILE_FACTOR_REASONS.items()):
@@ -2365,6 +2407,7 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
     categories = compile_factor_categories()
     policies = compile_factor_policies()
     ambient_policies = ambient_compile_factor_policies()
+    audit = compile_factor_audit_manifest()
     compile_affecting_keys = sorted(
         factor for factor, category in categories.items() if category == "compile_affecting"
     )
@@ -2388,6 +2431,10 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
     if missing_reason_keys:
         reasons.append("compile_factor_reason_missing")
 
+    overlap_keys = audit["overlap_keys"]
+    if overlap_keys:
+        reasons.append("compile_factor_category_overlap")
+
     validation = {
         "schema_version": 1,
         "ok": not reasons,
@@ -2398,6 +2445,7 @@ def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
         ),
         "reasons": reasons,
         "missing_reason_keys": missing_reason_keys,
+        "overlap_keys": overlap_keys,
     }
     if hard_fail and reasons:
         raise ValueError(
@@ -2438,6 +2486,7 @@ def compile_factor_manifest() -> dict[str, object]:
         "included_keys": included_keys,
         "ambient_included_keys": ambient_included_keys,
         "ignored_keys": ignored_keys,
+        "audit": compile_factor_audit_manifest(),
         "validation": validate_compile_factor_policy(hard_fail=False),
     }
 
