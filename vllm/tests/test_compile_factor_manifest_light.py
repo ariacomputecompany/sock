@@ -52,12 +52,39 @@ def test_compile_factor_manifest_lightweight() -> None:
     assert manifest["categories"]["VLLM_BUILD_PROFILE"] == "host_only"
     assert manifest["categories"]["VLLM_CACHE_ROOT"] == "cache_location_only"
     assert manifest["categories"]["VLLM_DISABLE_COMPILE_CACHE"] == "compile_affecting"
+    assert (
+        manifest["policies"]["VLLM_DISABLE_COMPILE_CACHE"]["included_in_compile_key"]
+        is True
+    )
+    assert "compile identity" in manifest["policies"]["VLLM_BUILD_PROFILE"]["reason"] or (
+        "must not change shared compile identity"
+        in manifest["policies"]["VLLM_BUILD_PROFILE"]["reason"]
+    )
     assert "VLLM_BUILD_PROFILE" in manifest["ignored_keys"]
     assert "VLLM_DISABLE_COMPILE_CACHE" in manifest["included_keys"]
+    assert manifest["validation"]["ok"] is True
+    assert (
+        manifest["validation"]["compile_affecting_key_digest"]
+        == envs._EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST
+    )
 
     rendered = envs.render_compile_factor_manifest()
     reparsed = json.loads(rendered)
     assert reparsed["schema_version"] == manifest["schema_version"]
     assert reparsed["categories"] == manifest["categories"]
+    assert reparsed["policies"] == manifest["policies"]
     assert reparsed["included_keys"] == manifest["included_keys"]
     assert reparsed["ignored_keys"] == manifest["ignored_keys"]
+    assert reparsed["validation"] == manifest["validation"]
+
+
+def test_compile_factor_policy_detects_unexpected_compile_affecting_set() -> None:
+    envs = _load_envs_module()
+    original_digest = envs._EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST
+    envs._EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST = "bad-digest"
+    try:
+        validation = envs.validate_compile_factor_policy(hard_fail=False)
+        assert validation["ok"] is False
+        assert validation["reasons"] == ["compile_affecting_env_var_set_changed"]
+    finally:
+        envs._EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST = original_digest

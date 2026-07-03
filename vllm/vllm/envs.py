@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import functools
+import hashlib
 import json
 import logging
 import os
@@ -2054,6 +2055,51 @@ environment_variables: dict[str, Callable[[], Any]] = {
     "VLLM_NIC_SELECTION_VARS": lambda: os.getenv("VLLM_NIC_SELECTION_VARS", ""),
 }
 
+_COMPILE_FACTOR_CATEGORY_REASONS: dict[str, str] = {
+    "compile_affecting": (
+        "Participates in compile identity because it can change graph shape, "
+        "backend legality, generated native code, or cached artifact compatibility."
+    ),
+    "runtime_non_compile": (
+        "Affects runtime behavior or service operation, but should not split the "
+        "torch.compile cache because it does not change compile artifacts."
+    ),
+    "debug_only": (
+        "Affects logging, tracing, or diagnostics only and must not change compile identity."
+    ),
+    "host_only": (
+        "Describes host-local process or build context and must not change shared compile identity."
+    ),
+    "cache_location_only": (
+        "Changes where artifacts are stored, not what artifacts are valid."
+    ),
+}
+
+_COMPILE_FACTOR_REASON_OVERRIDES: dict[str, str] = {
+    "VLLM_DISABLE_COMPILE_CACHE": (
+        "Controls whether compile artifacts are admitted for reuse, so it must remain "
+        "visible in compile policy and artifact compatibility."
+    ),
+    "VLLM_USE_AOT_COMPILE": (
+        "Selects whether vLLM runs through the AOT compile path, which changes artifact format "
+        "and closure expectations."
+    ),
+    "VLLM_USE_MEGA_AOT_ARTIFACT": (
+        "Switches the mega-artifact path on or off, which changes serialized payload layout and "
+        "warm-start reconstruction behavior."
+    ),
+    "VLLM_MAIN_CUDA_VERSION": (
+        "Changes the CUDA toolkit ABI surface expected by compiled extensions and cached artifacts."
+    ),
+    "VLLM_TARGET_DEVICE": (
+        "Changes target-device legality and therefore which compile outputs and kernels are admissible."
+    ),
+}
+
+_EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST = (
+    "0fa45e31dd06a2aa7d7b68ecb626fdc5c1bc7209db3f5d81f0cc9dee77a66a5f"
+)
+
 
 # --8<-- [end:env-vars-definition]
 
@@ -2208,9 +2254,67 @@ def compile_factor_categories() -> dict[str, str]:
     return categories
 
 
+def compile_factor_policies() -> dict[str, dict[str, object]]:
+    categories = compile_factor_categories()
+    policies: dict[str, dict[str, object]] = {}
+    for factor, category in categories.items():
+        policies[factor] = {
+            "category": category,
+            "included_in_compile_key": category == "compile_affecting",
+            "reason": _COMPILE_FACTOR_REASON_OVERRIDES.get(
+                factor, _COMPILE_FACTOR_CATEGORY_REASONS[category]
+            ),
+        }
+    return policies
+
+
+def validate_compile_factor_policy(hard_fail: bool = True) -> dict[str, object]:
+    categories = compile_factor_categories()
+    policies = compile_factor_policies()
+    compile_affecting_keys = sorted(
+        factor for factor, category in categories.items() if category == "compile_affecting"
+    )
+    compile_affecting_key_digest = hashlib.sha256(
+        json.dumps(
+            compile_affecting_keys,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+    reasons = []
+    if compile_affecting_key_digest != _EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST:
+        reasons.append("compile_affecting_env_var_set_changed")
+
+    missing_reason_keys = sorted(
+        factor for factor, policy in policies.items() if not str(policy["reason"]).strip()
+    )
+    if missing_reason_keys:
+        reasons.append("compile_factor_reason_missing")
+
+    validation = {
+        "schema_version": 1,
+        "ok": not reasons,
+        "compile_affecting_key_count": len(compile_affecting_keys),
+        "compile_affecting_key_digest": compile_affecting_key_digest,
+        "expected_compile_affecting_key_digest": (
+            _EXPECTED_COMPILE_AFFECTING_ENV_VARS_DIGEST
+        ),
+        "reasons": reasons,
+        "missing_reason_keys": missing_reason_keys,
+    }
+    if hard_fail and reasons:
+        raise ValueError(
+            "Compile factor policy validation failed: "
+            f"reasons={reasons} digest={compile_affecting_key_digest}"
+        )
+    return validation
+
+
 def compile_factor_manifest() -> dict[str, object]:
     factors = compile_factors()
     categories = compile_factor_categories()
+    policies = compile_factor_policies()
     included_keys = sorted(factors)
     ignored_keys = sorted(
         factor
@@ -2221,8 +2325,10 @@ def compile_factor_manifest() -> dict[str, object]:
         "schema_version": 1,
         "factors": {key: factors[key] for key in included_keys},
         "categories": {key: categories[key] for key in sorted(categories)},
+        "policies": {key: policies[key] for key in sorted(policies)},
         "included_keys": included_keys,
         "ignored_keys": ignored_keys,
+        "validation": validate_compile_factor_policy(hard_fail=False),
     }
 
 
