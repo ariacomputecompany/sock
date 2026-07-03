@@ -7,8 +7,15 @@ version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
 sock-core = { path = "../core" }
 sock-engine = { path = "../engine" }
+
+[dev-dependencies]
+assert_cmd = "2.0.17"
+predicates = "3.1.3"
+tempfile = "3.20.0"
 
 [[bin]]
 name = "sock"
