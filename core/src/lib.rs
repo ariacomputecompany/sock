@@ -5,6 +5,7 @@ pub mod canonical;
 pub mod diagnostics;
 pub mod governance;
 pub mod identity;
+pub mod integration;
 pub mod materialization;
 pub mod model;
 pub mod operator;
@@ -24,6 +25,7 @@ pub use diagnostics::{
     RewriteTraceDocument, SchemaVersion, StructuredDiagnostic,
 };
 pub use identity::*;
+pub use integration::*;
 pub use materialization::*;
 pub use model::*;
 pub use operator::{

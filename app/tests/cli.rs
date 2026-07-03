@@ -51,6 +51,7 @@ fn build_verify_and_replay_bundle_round_trip() {
         "replay.sh",
         "rewrite_trace.json",
         "verification_report.json",
+        "vllm_integration.json",
     ] {
         assert!(dir.path().join(file).exists(), "missing {file}");
     }
@@ -65,6 +66,19 @@ fn build_verify_and_replay_bundle_round_trip() {
             .as_u64()
             .expect("artifact count")
             > 0
+    );
+
+    let integration: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("vllm_integration.json"))
+            .expect("read vllm integration"),
+    )
+    .expect("parse vllm integration");
+    assert!(
+        integration["surfaces"]
+            .as_array()
+            .expect("integration surfaces")
+            .iter()
+            .any(|surface| surface["id"] == "compile-region:prefill_attention")
     );
 
     Command::cargo_bin("sock")
@@ -221,6 +235,25 @@ fn scoped_prefill_build_emits_minimal_closure() {
         let relative_path = artifact["relative_path"].as_str().expect("relative path");
         dir.path().join(relative_path).exists()
     }));
+
+    let integration: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join("vllm_integration.json"))
+            .expect("read vllm integration"),
+    )
+    .expect("parse vllm integration");
+    let surfaces = integration["surfaces"]
+        .as_array()
+        .expect("integration surfaces");
+    assert!(
+        surfaces
+            .iter()
+            .any(|surface| surface["id"] == "compile-region:prefill_attention")
+    );
+    assert!(
+        !surfaces
+            .iter()
+            .any(|surface| surface["id"] == "compile-region:decode_attention")
+    );
 }
 
 #[test]

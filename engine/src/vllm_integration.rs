@@ -1,0 +1,638 @@
+use std::collections::BTreeSet;
+
+use sock_core::{
+    AdapterError, AdapterSurvey, ArtifactRequirement, CacheOwnershipSurface, CompileRegion,
+    EngineAdapter, IntegrationScopeKind, SourceAnchor, SourceEvidence, VllmCallableTarget,
+    VllmIntegrationDocument, VllmIntegrationSurface,
+};
+use thiserror::Error;
+
+use crate::{PlanningOutcome, vllm, vllm_adapter::VllmAdapter};
+
+#[derive(Debug, Error)]
+pub enum VllmIntegrationError {
+    #[error("adapter survey failed: {0}")]
+    Adapter(#[from] AdapterError),
+    #[error("missing vLLM integration mapping for scope {scope}")]
+    MissingSurface { scope: String },
+}
+
+pub fn build_vllm_integration_document(
+    outcome: &PlanningOutcome,
+) -> Result<VllmIntegrationDocument, VllmIntegrationError> {
+    let survey = VllmAdapter::default().survey()?;
+    let mut surface_ids = BTreeSet::new();
+    let mut surfaces = Vec::new();
+
+    for region in &outcome.plan.compile_regions {
+        let surface = integration_surface_for_region(region, &survey)?;
+        if surface_ids.insert(surface.id.clone()) {
+            surfaces.push(surface);
+        }
+    }
+
+    for cache_surface in relevant_cache_surfaces(&outcome.plan.artifact_requirements, &survey) {
+        let surface = integration_surface_for_cache(cache_surface, &survey)?;
+        if surface_ids.insert(surface.id.clone()) {
+            surfaces.push(surface);
+        }
+    }
+
+    surfaces.sort_by(|left, right| left.id.cmp(&right.id));
+
+    Ok(VllmIntegrationDocument {
+        schema_version: sock_core::SchemaVersion::current(),
+        plan_identity: outcome.plan.structural_identity.plan_identity.clone(),
+        engine_root: vllm::root().display().to_string(),
+        engine_revision: vllm::revision().to_owned(),
+        surfaces,
+    })
+}
+
+fn integration_surface_for_region(
+    region: &CompileRegion,
+    survey: &AdapterSurvey,
+) -> Result<VllmIntegrationSurface, VllmIntegrationError> {
+    let integrated = match region.name.as_str() {
+        "transformer_block_body" => VllmIntegrationSurface {
+            id: format!("compile-region:{}", region.name),
+            scope_kind: IntegrationScopeKind::CompileRegion,
+            scope_name: region.name.clone(),
+            backend: Some(region.family),
+            cache_namespace: Some("compile-cache".to_owned()),
+            warmup_scope: Some("transformer_block_body".to_owned()),
+            rationale: "Compiled transformer-body partitions should follow vLLM's own piecewise compilation and standalone artifact storage path.".to_owned(),
+            preserved_inputs: vec![
+                "CompilationConfig".to_owned(),
+                "VLLM_DISABLE_COMPILE_CACHE".to_owned(),
+                "VLLM_COMPILE_CACHE_SAVE_FORMAT".to_owned(),
+            ],
+            preserved_abstractions: vec![
+                "Graph and region boundaries".to_owned(),
+                "Cache ownership boundaries".to_owned(),
+                "Layer identity in static forward context".to_owned(),
+            ],
+            primary: callable(
+                "vllm.compilation.piecewise_backend",
+                "PiecewiseBackend.compile_all_ranges",
+                "Compile every selected range through vLLM's piecewise backend instead of flattening region compilation into a sock-owned pipeline.",
+                "vllm/vllm/compilation/piecewise_backend.py",
+                &["def compile_all_ranges(self) -> None:"],
+            )?,
+            auxiliary: vec![
+                callable(
+                    "vllm.compilation.caching",
+                    "StandaloneCompiledArtifacts.insert",
+                    "Deduplicate standalone compiled artifacts exactly the way vLLM stores them.",
+                    "vllm/vllm/compilation/caching.py",
+                    &["class StandaloneCompiledArtifacts:", "def insert(self, submod_name: str, shape: str, entry: bytes) -> None:"],
+                )?,
+                callable(
+                    "vllm.compilation.caching",
+                    "aot_compile_hash_factors",
+                    "Shape compile-cache identity with vLLM's own hash factors.",
+                    "vllm/vllm/compilation/caching.py",
+                    &["def aot_compile_hash_factors(vllm_config: VllmConfig) -> list[str]:"],
+                )?,
+            ],
+        },
+        "prefill_attention" => VllmIntegrationSurface {
+            id: format!("compile-region:{}", region.name),
+            scope_kind: IntegrationScopeKind::CompileRegion,
+            scope_name: region.name.clone(),
+            backend: Some(region.family),
+            cache_namespace: Some("compile-cache".to_owned()),
+            warmup_scope: Some("prefill_attention".to_owned()),
+            rationale: "Prefill specialization should preserve vLLM's sparse-MLA Triton warmup path rather than substituting a sock-owned prefill kernel path.".to_owned(),
+            preserved_inputs: vec![
+                "CompilationConfig".to_owned(),
+                "--cudagraph-capture-sizes".to_owned(),
+            ],
+            preserved_abstractions: vec![
+                "Graph and region boundaries".to_owned(),
+                "Custom-op boundaries".to_owned(),
+            ],
+            primary: callable(
+                "vllm.model_executor.warmup.sparse_mla_triton_warmup",
+                "sparse_mla_triton_warmup_if_needed",
+                "Use vLLM's native sparse-MLA Triton warmup orchestrator for prefill-owned metadata kernels.",
+                "vllm/vllm/model_executor/warmup/sparse_mla_triton_warmup.py",
+                &["def sparse_mla_triton_warmup_if_needed(worker: \"Worker\") -> None:"],
+            )?,
+            auxiliary: vec![
+                callable(
+                    "vllm.model_executor.warmup.sparse_mla_triton_warmup",
+                    "_warm_sparse_swa_prefill_metadata_kernel",
+                    "Warm sparse SWA prefill metadata kernels on the exact vendored path.",
+                    "vllm/vllm/model_executor/warmup/sparse_mla_triton_warmup.py",
+                    &["_warm_sparse_swa_prefill_metadata_kernel"],
+                )?,
+                callable(
+                    "vllm.model_executor.warmup.sparse_mla_triton_warmup",
+                    "_warm_prefill_chunk_metadata_kernel",
+                    "Warm chunked prefill metadata kernels using vLLM's own indexing path.",
+                    "vllm/vllm/model_executor/warmup/sparse_mla_triton_warmup.py",
+                    &["_warm_prefill_chunk_metadata_kernel"],
+                )?,
+            ],
+        },
+        "decode_attention" => VllmIntegrationSurface {
+            id: format!("compile-region:{}", region.name),
+            scope_kind: IntegrationScopeKind::CompileRegion,
+            scope_name: region.name.clone(),
+            backend: Some(region.family),
+            cache_namespace: Some("cuda-graph-cache".to_owned()),
+            warmup_scope: Some("decode_attention".to_owned()),
+            rationale: "Decode specialization should stay tied to vLLM's CUDA-graph and mixed-batch dummy-run path so capture boundaries match the real engine.".to_owned(),
+            preserved_inputs: vec![
+                "--cudagraph-capture-sizes".to_owned(),
+                "--max-cudagraph-capture-size".to_owned(),
+                "CompilationConfig".to_owned(),
+            ],
+            preserved_abstractions: vec![
+                "Graph and region boundaries".to_owned(),
+                "Layer identity in static forward context".to_owned(),
+            ],
+            primary: callable(
+                "vllm.model_executor.warmup.kernel_warmup",
+                "kernel_warmup",
+                "Run decode-owned startup through vLLM's kernel warmup orchestrator.",
+                "vllm/vllm/model_executor/warmup/kernel_warmup.py",
+                &["def kernel_warmup(worker: \"Worker\"):", "create_mixed_batch=True"],
+            )?,
+            auxiliary: vec![
+                callable(
+                    "vllm.v1.worker.gpu_model_runner",
+                    "GPUModelRunner._dummy_run",
+                    "Preserve vLLM's mixed prefill/decode dummy-run path for decode capture materialization.",
+                    "vllm/vllm/v1/worker/gpu_model_runner.py",
+                    &["def _dummy_run(", "create_mixed_batch: bool = False,"],
+                )?,
+                callable(
+                    "vllm.v1.attention.backends.gdn_attn",
+                    "GDNAttentionMetadataBuilder.__init__",
+                    "Decode CUDA-graph buffers and capture bounds come from the vendored attention metadata builder.",
+                    "vllm/vllm/v1/attention/backends/gdn_attn.py",
+                    &["self.use_full_cuda_graph: bool =", "self.decode_cudagraph_max_bs: int = ("],
+                )?,
+            ],
+        },
+        "kv_cache_update" => VllmIntegrationSurface {
+            id: format!("compile-region:{}", region.name),
+            scope_kind: IntegrationScopeKind::CompileRegion,
+            scope_name: region.name.clone(),
+            backend: Some(region.family),
+            cache_namespace: Some("flashinfer-autotune-cache".to_owned()),
+            warmup_scope: Some("kv_cache_update".to_owned()),
+            rationale: "FlashInfer KV-update specialization should remain on vLLM's mixed prefill/decode autotune and warmup path so tactic ownership stays engine-native.".to_owned(),
+            preserved_inputs: vec![
+                "--enable-flashinfer-autotune".to_owned(),
+                "VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR".to_owned(),
+                "VLLM_HAS_FLASHINFER_CUBIN".to_owned(),
+            ],
+            preserved_abstractions: vec![
+                "Cache ownership boundaries".to_owned(),
+                "Graph and region boundaries".to_owned(),
+            ],
+            primary: callable(
+                "vllm.model_executor.warmup.flashinfer_sparse_mla_warmup",
+                "deepseek_v4_sparse_mla_attention_warmup",
+                "Use vLLM's DSv4 sparse-MLA warmup as the concrete integration seam for KV-update specialization.",
+                "vllm/vllm/model_executor/warmup/flashinfer_sparse_mla_warmup.py",
+                &["def deepseek_v4_sparse_mla_attention_warmup(worker: \"Worker\") -> None:", "run_mixed_prefill_decode_warmup"],
+            )?,
+            auxiliary: vec![
+                callable(
+                    "vllm.model_executor.warmup.flashinfer_sparse_mla_warmup",
+                    "run_mixed_prefill_decode_warmup",
+                    "Preserve vLLM's mixed-batch warmup path for KV update and attention setup.",
+                    "vllm/vllm/model_executor/warmup/flashinfer_sparse_mla_warmup.py",
+                    &["run_mixed_prefill_decode_warmup"],
+                )?,
+                callable(
+                    "vllm.model_executor.warmup.flashinfer_autotune_cache",
+                    "resolve_flashinfer_autotune_file",
+                    "Resolve FlashInfer tactic cache paths exactly the way vLLM does.",
+                    "vllm/vllm/model_executor/warmup/flashinfer_autotune_cache.py",
+                    &["def resolve_flashinfer_autotune_file(runner: \"GPUModelRunner\") -> Path:"],
+                )?,
+            ],
+        },
+        "moe_specialty_path" => VllmIntegrationSurface {
+            id: format!("compile-region:{}", region.name),
+            scope_kind: IntegrationScopeKind::CompileRegion,
+            scope_name: region.name.clone(),
+            backend: Some(region.family),
+            cache_namespace: Some("compile-cache".to_owned()),
+            warmup_scope: Some("moe_specialty_path".to_owned()),
+            rationale: "MoE specialty compilation should preserve vLLM's own Inductor fallback policy and namespace handling instead of inventing a parallel fallback model.".to_owned(),
+            preserved_inputs: vec!["CompilationConfig".to_owned(), "current_platform".to_owned()],
+            preserved_abstractions: vec![
+                "Custom-op boundaries".to_owned(),
+                "Cache ownership boundaries".to_owned(),
+            ],
+            primary: callable(
+                "vllm.env_override",
+                "_patch_inductor_fallback_allow_list",
+                "Keep vLLM's custom-op fallback allow-list patch as the concrete seam for MoE specialty fallback behavior.",
+                "vllm/vllm/env_override.py",
+                &["def _patch_inductor_fallback_allow_list() -> None:", "_VLLM_FALLBACK_NAMESPACE_PREFIXES"],
+            )?,
+            auxiliary: vec![callable(
+                "vllm.env_override",
+                "_VllmFallbackAllowList.__contains__",
+                "Preserve vendored namespace membership checks for vLLM custom-op fallbacks.",
+                "vllm/vllm/env_override.py",
+                &["def __contains__(self, item):", "item.startswith(_VLLM_FALLBACK_NAMESPACE_PREFIXES)"],
+            )?],
+        },
+        other => {
+            return Err(VllmIntegrationError::MissingSurface {
+                scope: other.to_owned(),
+            })
+        }
+    };
+
+    Ok(apply_survey_context(integrated, survey))
+}
+
+fn integration_surface_for_cache(
+    cache_surface: &CacheOwnershipSurface,
+    survey: &AdapterSurvey,
+) -> Result<VllmIntegrationSurface, VllmIntegrationError> {
+    let integrated = match cache_surface.name.as_str() {
+        "compile-cache" => VllmIntegrationSurface {
+            id: "cache-surface:compile-cache".to_owned(),
+            scope_kind: IntegrationScopeKind::CacheSurface,
+            scope_name: cache_surface.name.clone(),
+            backend: None,
+            cache_namespace: Some(cache_surface.name.clone()),
+            warmup_scope: None,
+            rationale: cache_surface.rationale.clone(),
+            preserved_inputs: vec![
+                "CompilationConfig".to_owned(),
+                "VLLM_DISABLE_COMPILE_CACHE".to_owned(),
+                "VLLM_COMPILE_CACHE_SAVE_FORMAT".to_owned(),
+            ],
+            preserved_abstractions: vec![
+                "Graph and region boundaries".to_owned(),
+                "Cache ownership boundaries".to_owned(),
+            ],
+            primary: callable(
+                "vllm.compilation.caching",
+                "aot_compile_hash_factors",
+                "Compile-cache identity must follow vLLM's own AoT hash factors.",
+                "vllm/vllm/compilation/caching.py",
+                &["def aot_compile_hash_factors(vllm_config: VllmConfig) -> list[str]:"],
+            )?,
+            auxiliary: vec![
+                callable(
+                    "vllm.compilation.caching",
+                    "StandaloneCompiledArtifacts.insert",
+                    "Compiled artifact storage should preserve vLLM's standalone artifact layout.",
+                    "vllm/vllm/compilation/caching.py",
+                    &[
+                        "class StandaloneCompiledArtifacts:",
+                        "def insert(self, submod_name: str, shape: str, entry: bytes) -> None:",
+                    ],
+                )?,
+                callable(
+                    "vllm.compilation.backends",
+                    "CompilationConfig.cache_dir",
+                    "Keep vLLM's compilation backend cache-dir ownership intact.",
+                    "vllm/vllm/compilation/backends.py",
+                    &["self.compilation_config.cache_dir = cache_dir"],
+                )?,
+            ],
+        },
+        "flashinfer-autotune-cache" => VllmIntegrationSurface {
+            id: "cache-surface:flashinfer-autotune-cache".to_owned(),
+            scope_kind: IntegrationScopeKind::CacheSurface,
+            scope_name: cache_surface.name.clone(),
+            backend: None,
+            cache_namespace: Some(cache_surface.name.clone()),
+            warmup_scope: Some("kv_cache_update".to_owned()),
+            rationale: cache_surface.rationale.clone(),
+            preserved_inputs: vec![
+                "--enable-flashinfer-autotune".to_owned(),
+                "VLLM_FLASHINFER_AUTOTUNE_CACHE_DIR".to_owned(),
+                "VLLM_HAS_FLASHINFER_CUBIN".to_owned(),
+            ],
+            preserved_abstractions: vec!["Cache ownership boundaries".to_owned()],
+            primary: callable(
+                "vllm.model_executor.warmup.flashinfer_autotune_cache",
+                "resolve_flashinfer_autotune_file",
+                "FlashInfer autotune cache location and ownership should stay on vLLM's native path.",
+                "vllm/vllm/model_executor/warmup/flashinfer_autotune_cache.py",
+                &["def resolve_flashinfer_autotune_file(runner: \"GPUModelRunner\") -> Path:"],
+            )?,
+            auxiliary: vec![callable(
+                "vllm.model_executor.warmup.flashinfer_autotune_cache",
+                "write_flashinfer_autotune_cache",
+                "Persist FlashInfer tactic results through vLLM's atomic cache writer.",
+                "vllm/vllm/model_executor/warmup/flashinfer_autotune_cache.py",
+                &[
+                    "def write_flashinfer_autotune_cache(cache_path: Path, contents: bytes) -> None:",
+                ],
+            )?],
+        },
+        "cuda-graph-cache" => VllmIntegrationSurface {
+            id: "cache-surface:cuda-graph-cache".to_owned(),
+            scope_kind: IntegrationScopeKind::CacheSurface,
+            scope_name: cache_surface.name.clone(),
+            backend: None,
+            cache_namespace: Some(cache_surface.name.clone()),
+            warmup_scope: Some("decode_attention".to_owned()),
+            rationale: cache_surface.rationale.clone(),
+            preserved_inputs: vec![
+                "--cudagraph-capture-sizes".to_owned(),
+                "--max-cudagraph-capture-size".to_owned(),
+                "CompilationConfig".to_owned(),
+            ],
+            preserved_abstractions: vec!["Graph and region boundaries".to_owned()],
+            primary: callable(
+                "vllm.v1.attention.backends.gdn_attn",
+                "GDNAttentionMetadataBuilder.__init__",
+                "Decode graph-cache ownership should track vLLM's own decode capture sizing path.",
+                "vllm/vllm/v1/attention/backends/gdn_attn.py",
+                &[
+                    "self.use_full_cuda_graph: bool =",
+                    "self.decode_cudagraph_max_bs: int = (",
+                ],
+            )?,
+            auxiliary: vec![callable(
+                "vllm.model_executor.warmup.kernel_warmup",
+                "kernel_warmup",
+                "Kernel warmup is the concrete startup seam that materializes decode capture state.",
+                "vllm/vllm/model_executor/warmup/kernel_warmup.py",
+                &[
+                    "def kernel_warmup(worker: \"Worker\"):",
+                    "create_mixed_batch=True",
+                ],
+            )?],
+        },
+        other => {
+            return Err(VllmIntegrationError::MissingSurface {
+                scope: other.to_owned(),
+            });
+        }
+    };
+
+    Ok(apply_survey_context(integrated, survey))
+}
+
+fn relevant_cache_surfaces<'a>(
+    requirements: &[ArtifactRequirement],
+    survey: &'a AdapterSurvey,
+) -> Vec<&'a CacheOwnershipSurface> {
+    let scopes = requirements
+        .iter()
+        .map(|requirement| requirement.scope.as_str())
+        .collect::<BTreeSet<_>>();
+    survey
+        .cache_ownership_surfaces
+        .iter()
+        .filter(|surface| {
+            surface
+                .artifact_scopes
+                .iter()
+                .any(|scope| scopes.contains(scope.as_str()))
+        })
+        .collect()
+}
+
+fn apply_survey_context(
+    mut surface: VllmIntegrationSurface,
+    survey: &AdapterSurvey,
+) -> VllmIntegrationSurface {
+    surface
+        .preserved_inputs
+        .retain(|name| survey.config_inputs.iter().any(|input| &input.name == name));
+    surface.preserved_abstractions.retain(|name| {
+        survey
+            .preserved_abstractions
+            .iter()
+            .any(|entry| &entry.name == name)
+    });
+    surface
+}
+
+fn callable(
+    module: &str,
+    callable: &str,
+    summary: &str,
+    file: &'static str,
+    anchor_patterns: &[&'static str],
+) -> Result<VllmCallableTarget, AdapterError> {
+    let evidence = evidence(file, summary, anchor_patterns)?;
+    Ok(VllmCallableTarget {
+        module: module.to_owned(),
+        callable: callable.to_owned(),
+        summary: summary.to_owned(),
+        evidence,
+    })
+}
+
+fn evidence(
+    file: &'static str,
+    summary: &str,
+    anchor_patterns: &[&'static str],
+) -> Result<SourceEvidence, AdapterError> {
+    let mut index = SourceIndex::default();
+    let anchors = anchor_patterns
+        .iter()
+        .map(|pattern| index.anchor(file, pattern))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(SourceEvidence {
+        summary: summary.to_owned(),
+        anchors,
+    })
+}
+
+#[derive(Default)]
+struct SourceIndex;
+
+impl SourceIndex {
+    fn anchor(
+        &mut self,
+        file: &'static str,
+        pattern: &'static str,
+    ) -> Result<SourceAnchor, AdapterError> {
+        let path = vllm::root().join(file.strip_prefix("vllm/").unwrap_or(file));
+        let content =
+            std::fs::read_to_string(&path).map_err(|source| AdapterError::ReadSource {
+                file: path.display().to_string(),
+                source,
+            })?;
+        let line = content
+            .lines()
+            .position(|line| line.contains(pattern))
+            .map(|idx| idx + 1)
+            .ok_or_else(|| AdapterError::MissingPattern {
+                file: file.to_owned(),
+                pattern: pattern.to_owned(),
+            })?;
+        Ok(SourceAnchor {
+            file: file.to_owned(),
+            line,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Planner, PlannerHostSnapshot};
+    use sock_core::{
+        AcceleratorVendor, BackendFamily, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer,
+        CoveragePlane, EngineSource, ExecutionTopology, FailureMode, GuaranteeLevel,
+        GuaranteeTarget, ModelRef, OperatingSystem, RawRequest, RequestedEnvironment, ShapePoint,
+        ShapePolicy, ShapeRange, TargetEngine, WarmupPolicy,
+    };
+
+    fn host() -> PlannerHostSnapshot {
+        PlannerHostSnapshot {
+            operating_system: OperatingSystem::Linux,
+            accelerator_vendor: AcceleratorVendor::Nvidia,
+            gpu_arches: vec!["sm90".to_owned()],
+            cuda_version: "12.4".to_owned(),
+            driver_version: "550.54".to_owned(),
+            python_abi: "cp311".to_owned(),
+            libc_abi: "glibc-2.35".to_owned(),
+            flashinfer_prebuilt_available: true,
+        }
+    }
+
+    fn request() -> RawRequest {
+        RawRequest {
+            engine: TargetEngine::Vllm,
+            model: ModelRef {
+                repository: "meta-llama/Llama-3.1-8B-Instruct".to_owned(),
+                revision: "main".to_owned(),
+            },
+            engine_source: EngineSource {
+                kind: "vendored".to_owned(),
+                revision: vllm::revision().to_owned(),
+            },
+            environment: RequestedEnvironment {
+                operating_system: OperatingSystem::Linux,
+                accelerator_vendor: AcceleratorVendor::Nvidia,
+                gpu_arches: vec!["sm90".to_owned()],
+                cuda_version: "12.4".to_owned(),
+                driver_version: "550.54".to_owned(),
+                python_abi: "cp311".to_owned(),
+                libc_abi: "glibc-2.35".to_owned(),
+            },
+            topology: ExecutionTopology {
+                tensor_parallelism: 2,
+                pipeline_parallelism: 1,
+                replicas: 1,
+            },
+            backend_policy: BackendPolicy {
+                preferred_families: vec![
+                    BackendFamily::FlashInfer,
+                    BackendFamily::Triton,
+                    BackendFamily::CudaGraphs,
+                ],
+                packaging_strategy: sock_core::PackagingStrategy::PreferPrebuiltThenAot,
+                runtime_jit_policy: sock_core::RuntimeJitPolicy {
+                    disposition: sock_core::RuntimeJitDisposition::Forbidden,
+                    max_residual_node_count: 0,
+                },
+                correctness_target: GuaranteeTarget {
+                    level: GuaranteeLevel::ShapeBoundedAot,
+                    failure_mode: FailureMode::FailClosed,
+                },
+                performance_target: GuaranteeTarget {
+                    level: GuaranteeLevel::WarmupBounded,
+                    failure_mode: FailureMode::FailClosed,
+                },
+            },
+            shape_policy: ShapePolicy {
+                correctness_range: ShapeRange {
+                    min_batch_size: 1,
+                    max_batch_size: 8,
+                    min_sequence_length: 1,
+                    max_sequence_length: 4096,
+                },
+                performance_range: ShapeRange {
+                    min_batch_size: 1,
+                    max_batch_size: 4,
+                    min_sequence_length: 1,
+                    max_sequence_length: 2048,
+                },
+                hot_shapes: vec![ShapePoint {
+                    batch_size: 1,
+                    sequence_length: 128,
+                    plane: CoveragePlane::Performance,
+                }],
+                cuda_graph_shapes: vec![ShapePoint {
+                    batch_size: 1,
+                    sequence_length: 128,
+                    plane: CoveragePlane::CudaGraph,
+                }],
+            },
+            cache_policy: CachePolicy {
+                namespace: "prod".to_owned(),
+                allow_cross_machine_reuse: false,
+            },
+            warmup_policy: WarmupPolicy {
+                max_warmup_steps: 6,
+                verify_cuda_graph_capture: true,
+            },
+            layered_config: vec![
+                ConfigLayer {
+                    name: "env".to_owned(),
+                    precedence: 0,
+                    entries: vec![ConfigEntry {
+                        key: "VLLM_USE_V1".to_owned(),
+                        value: "1".to_owned(),
+                    }],
+                },
+                ConfigLayer {
+                    name: "project".to_owned(),
+                    precedence: 1,
+                    entries: vec![ConfigEntry {
+                        key: "tensor_parallel_size".to_owned(),
+                        value: "2".to_owned(),
+                    }],
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn integration_document_resolves_real_vllm_surfaces() {
+        let planner = Planner::new(host());
+        let outcome = planner.resolve(request()).expect("plan");
+        let doc = build_vllm_integration_document(&outcome).expect("integration doc");
+
+        assert!(!doc.surfaces.is_empty());
+        assert!(
+            doc.surfaces
+                .iter()
+                .any(|surface| surface.id == "compile-region:prefill_attention")
+        );
+        assert!(
+            doc.surfaces
+                .iter()
+                .any(|surface| surface.id == "cache-surface:flashinfer-autotune-cache")
+        );
+
+        for surface in &doc.surfaces {
+            assert!(!surface.primary.evidence.anchors.is_empty());
+            for anchor in surface.primary.evidence.anchors.iter().chain(
+                surface
+                    .auxiliary
+                    .iter()
+                    .flat_map(|call| call.evidence.anchors.iter()),
+            ) {
+                let path =
+                    vllm::root().join(anchor.file.strip_prefix("vllm/").unwrap_or(&anchor.file));
+                let content = std::fs::read_to_string(path).expect("source file should exist");
+                assert!(anchor.line >= 1);
+                assert!(anchor.line <= content.lines().count());
+            }
+        }
+    }
+}

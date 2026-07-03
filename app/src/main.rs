@@ -13,6 +13,7 @@ use sock_core::{
 };
 use sock_engine::{
     BuildReadiness, BuildScope, MaterializationExecutor, PlannerHostSnapshot, PlanningOutcome,
+    build_vllm_integration_document,
 };
 
 #[derive(Debug, Parser)]
@@ -113,6 +114,11 @@ fn main() -> Result<()> {
             let outcome = plan_with_scope(&scope.into_scope())?;
             let bundle = replay_bundle(&outcome);
             let materialization = MaterializationExecutor::new().execute(&outcome, &out)?;
+            let vllm_integration = build_vllm_integration_document(&outcome)?;
+            std::fs::write(
+                out.join("vllm_integration.json"),
+                canonical_json(&vllm_integration)?.as_bytes(),
+            )?;
             let metadata = bundle.write_to(&out)?;
             emit_build(&out, &bundle, &metadata, &materialization, format)?;
         }
