@@ -7,13 +7,15 @@ use sock_core::{
     BackendCapability, BackendCapabilityRegistry, BackendExtensionFingerprint, BackendFamily,
     BackendSelection, CanonicalError, CapabilityProvenance, CapabilityWitness, CompileRegion,
     CompileRegionKind, CoveragePlane, CoverageState, CoverageWitness, EngineAdapter,
-    ExecutionTopology, GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel,
-    HazardClass, LeaderAssignment, MaterializationGraph, MaterializationNode,
-    MaterializationNodeKind, MaterializationWave, NormalizedRequest, OperatingSystem,
-    PackagingStrategy, PassTrace, PortabilityFingerprint, QueueKind, RangeIntent, RankDisposition,
-    RawRequest, ResidualRuntimeRisk, ResolvedBuildPlan, RewritePassContract, RewritePhase,
-    RuntimeJitDisposition, ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapeRange,
-    StructuralIdentity, ValidationStatus, WarmupObligation, WaveEstimate, canonical_hash,
+    ExecutionTopology, FanoutStrategy, GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence,
+    GuaranteeLevel, HazardClass, LeaderAssignment, MaterializationGraph, MaterializationNode,
+    MaterializationNodeKind, MaterializationWave, NodeExecutionContract, NormalizedRequest,
+    OperatingSystem, PackagingStrategy, PassTrace, PortabilityFingerprint, QueueDiscipline,
+    QueueKind, RangeIntent, RankDisposition, RawRequest, ResidualRuntimeRisk, ResolvedBuildPlan,
+    RewritePassContract, RewritePhase, RuntimeJitDisposition, RuntimeRoi, ServePhase,
+    ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapeRange, StructuralIdentity, ValidationStatus,
+    WarmupContradiction, WarmupCoverageProof, WarmupObligation, WaveEstimate,
+    WaveExecutionContract, canonical_hash,
 };
 use thiserror::Error;
 
@@ -727,6 +729,7 @@ impl Planner {
                         rank_scope: all_ranks.clone(),
                         requires_capture: node.plane == CoveragePlane::CudaGraph,
                         requires_autotune: region.family == BackendFamily::FlashInfer,
+                        proof: warmup_proof(node, region, &all_ranks),
                     });
                 }
             }
@@ -827,6 +830,13 @@ impl Planner {
                 expected_bytes_written: requirement.expected_bytes,
                 expected_transfer_ms: requirement.expected_transfer_ms,
                 residual_jit_risk_removed: 1,
+                execution_contract: NodeExecutionContract {
+                    queue,
+                    discipline: node_discipline(requirement.rank_disposition, queue),
+                    serve_phase: ServePhase::EarlyServeReady,
+                    fanout_strategy: artifact_fanout_strategy(requirement),
+                    dependency_barrier: Vec::new(),
+                },
             });
             if total_rank_count(topology) > 1
                 && requirement.rank_disposition == RankDisposition::Shared
@@ -847,21 +857,29 @@ impl Planner {
                     expected_bytes_written: requirement.expected_bytes,
                     expected_transfer_ms: requirement.expected_transfer_ms,
                     residual_jit_risk_removed: 1,
+                    execution_contract: NodeExecutionContract {
+                        queue: QueueKind::ArtifactIo,
+                        discipline: QueueDiscipline::LeaderThenBroadcast,
+                        serve_phase: ServePhase::EarlyServeReady,
+                        fanout_strategy: FanoutStrategy::BroadcastFromLeader,
+                        dependency_barrier: vec![format!("artifact:{}", requirement.scope)],
+                    },
                 });
             }
         }
         for obligation in warmup_obligations {
+            let dependency_nodes = warmup_dependency_nodes(
+                topology,
+                artifact_requirements,
+                &obligation.required_artifacts,
+            );
             nodes.push(MaterializationNode {
                 name: format!("warmup:{}:{}", obligation.node_name, obligation.region_name),
                 wave: if obligation.blocking { 3 } else { 4 },
                 kind: MaterializationNodeKind::Warmup,
                 queue: QueueKind::Warmup,
                 plane: obligation.plane,
-                dependency_nodes: obligation
-                    .required_artifacts
-                    .iter()
-                    .map(|artifact| format!("artifact:{artifact}"))
-                    .collect(),
+                dependency_nodes: dependency_nodes.clone(),
                 consumes: obligation.required_artifacts.clone(),
                 produces: vec![format!(
                     "coverage:{}:{}",
@@ -874,6 +892,17 @@ impl Planner {
                 expected_bytes_written: Some(0),
                 expected_transfer_ms: Some(0),
                 residual_jit_risk_removed: 1,
+                execution_contract: NodeExecutionContract {
+                    queue: QueueKind::Warmup,
+                    discipline: QueueDiscipline::ParallelPerRank,
+                    serve_phase: if obligation.blocking {
+                        ServePhase::PreServeBlocking
+                    } else {
+                        ServePhase::DeferredPerformance
+                    },
+                    fanout_strategy: FanoutStrategy::None,
+                    dependency_barrier: dependency_nodes,
+                },
             });
         }
         let leader_assignments = artifact_requirements
@@ -893,11 +922,18 @@ impl Planner {
             nodes,
             waves,
             leader_assignments,
-            early_serve_frontier: vec!["correctness-range".to_owned()],
+            early_serve_frontier: warmup_obligations
+                .iter()
+                .filter(|obligation| obligation.blocking)
+                .map(|obligation| {
+                    format!("warmup:{}:{}", obligation.node_name, obligation.region_name)
+                })
+                .collect(),
             late_bindings: vec![(
                 "performance".to_owned(),
                 "strict-no-surprise-jit".to_owned(),
             )],
+            runtime_roi: artifact_requirements.iter().map(runtime_roi).collect(),
         }
     }
 
@@ -1417,6 +1453,16 @@ fn build_waves(nodes: &[MaterializationNode]) -> Vec<MaterializationWave> {
                     .sum(),
             },
             hazard_repairs: Vec::new(),
+            execution_contract: WaveExecutionContract {
+                wave_name: format!("wave-{wave}-{queue:?}"),
+                queue,
+                discipline: wave_discipline(&members),
+                serve_phase: wave_serve_phase(&members),
+                fulfills: members
+                    .iter()
+                    .map(|node| node.replay_boundary.clone())
+                    .collect(),
+            },
         })
         .collect()
 }
@@ -1445,6 +1491,135 @@ fn pass(
             .map(str::to_owned)
             .collect(),
         violations: Vec::new(),
+    }
+}
+
+fn warmup_proof(
+    node: &ShapeEnvelopeNode,
+    region: &CompileRegion,
+    all_ranks: &[u16],
+) -> WarmupCoverageProof {
+    WarmupCoverageProof {
+        proof_id: format!("warmup:{}:{}", node.name, region.name),
+        node_name: node.name.clone(),
+        region_name: region.name.clone(),
+        plane: node.plane,
+        required_artifacts: vec![region.name.clone()],
+        rank_scope: all_ranks.to_vec(),
+        blocking: node.plane == CoveragePlane::Correctness,
+        expected_states: coverage_states_for_plane(node.plane)
+            .into_iter()
+            .map(|state| format!("{state:?}"))
+            .collect(),
+        contradiction_triggers: vec![
+            WarmupContradiction {
+                trigger: "shape_escape".to_owned(),
+                invalidates_node: node.name.clone(),
+                next_action: "expand the warmup envelope or downgrade the serve guarantee"
+                    .to_owned(),
+            },
+            WarmupContradiction {
+                trigger: "artifact_identity_change".to_owned(),
+                invalidates_node: region.name.clone(),
+                next_action: "re-materialize the artifact and re-run warmup".to_owned(),
+            },
+        ],
+        serve_phase: if node.plane == CoveragePlane::Correctness {
+            ServePhase::PreServeBlocking
+        } else {
+            ServePhase::DeferredPerformance
+        },
+    }
+}
+
+fn artifact_fanout_strategy(requirement: &ArtifactRequirement) -> FanoutStrategy {
+    match requirement.rank_disposition {
+        RankDisposition::Shared => FanoutStrategy::BroadcastFromLeader,
+        RankDisposition::RankLocal => FanoutStrategy::RebuildPerRank,
+    }
+}
+
+fn warmup_dependency_nodes(
+    topology: &ExecutionTopology,
+    artifact_requirements: &[ArtifactRequirement],
+    required_artifacts: &[String],
+) -> Vec<String> {
+    required_artifacts
+        .iter()
+        .map(|artifact| {
+            let dependency = artifact_requirements
+                .iter()
+                .find(|requirement| requirement.scope == *artifact)
+                .filter(|requirement| {
+                    requirement.rank_disposition == RankDisposition::Shared
+                        && total_rank_count(topology) > 1
+                })
+                .map(|_| format!("fanout:{artifact}"))
+                .unwrap_or_else(|| format!("artifact:{artifact}"));
+            dependency
+        })
+        .collect()
+}
+
+fn node_discipline(rank_disposition: RankDisposition, queue: QueueKind) -> QueueDiscipline {
+    match (rank_disposition, queue) {
+        (RankDisposition::Shared, QueueKind::ArtifactIo) => QueueDiscipline::LeaderThenBroadcast,
+        (RankDisposition::Shared, _) => QueueDiscipline::Serial,
+        (RankDisposition::RankLocal, _) => QueueDiscipline::ParallelPerRank,
+    }
+}
+
+fn runtime_roi(requirement: &ArtifactRequirement) -> RuntimeRoi {
+    let compile_ms = requirement.expected_compile_ms.unwrap_or(0);
+    let transfer_ms = requirement.expected_transfer_ms.unwrap_or(0);
+    let rebuild_ms = compile_ms.saturating_mul(2);
+    let preferred_strategy =
+        if requirement.rank_disposition == RankDisposition::Shared && transfer_ms < rebuild_ms {
+            FanoutStrategy::BroadcastFromLeader
+        } else if requirement.rank_disposition == RankDisposition::Shared {
+            FanoutStrategy::RebuildPerRank
+        } else {
+            FanoutStrategy::RebuildPerRank
+        };
+
+    RuntimeRoi {
+        artifact_scope: requirement.scope.clone(),
+        compile_ms,
+        transfer_ms,
+        rebuild_ms,
+        preferred_strategy,
+    }
+}
+
+fn wave_discipline(members: &[&MaterializationNode]) -> QueueDiscipline {
+    if members
+        .iter()
+        .any(|node| node.execution_contract.discipline == QueueDiscipline::LeaderThenBroadcast)
+    {
+        QueueDiscipline::LeaderThenBroadcast
+    } else if members
+        .iter()
+        .all(|node| node.execution_contract.discipline == QueueDiscipline::ParallelPerRank)
+    {
+        QueueDiscipline::ParallelPerRank
+    } else {
+        QueueDiscipline::Serial
+    }
+}
+
+fn wave_serve_phase(members: &[&MaterializationNode]) -> ServePhase {
+    if members
+        .iter()
+        .any(|node| node.execution_contract.serve_phase == ServePhase::PreServeBlocking)
+    {
+        ServePhase::PreServeBlocking
+    } else if members
+        .iter()
+        .any(|node| node.execution_contract.serve_phase == ServePhase::EarlyServeReady)
+    {
+        ServePhase::EarlyServeReady
+    } else {
+        ServePhase::DeferredPerformance
     }
 }
 

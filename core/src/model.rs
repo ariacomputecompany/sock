@@ -11,6 +11,9 @@ use crate::backend::{
 use crate::identity::StructuralIdentity;
 use crate::request::{GuaranteeTarget, NormalizedRequest};
 use crate::rewrite::PassTrace;
+use crate::runtime::{
+    NodeExecutionContract, RuntimeRoi, WarmupCoverageProof, WaveExecutionContract,
+};
 use crate::verification::{GuaranteeEvidence, ValidationIssue, VerificationReport};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -271,6 +274,7 @@ pub struct WarmupObligation {
     pub rank_scope: Vec<u16>,
     pub requires_capture: bool,
     pub requires_autotune: bool,
+    pub proof: WarmupCoverageProof,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -304,6 +308,7 @@ pub struct MaterializationNode {
     pub expected_bytes_written: Option<u64>,
     pub expected_transfer_ms: Option<u64>,
     pub residual_jit_risk_removed: u16,
+    pub execution_contract: NodeExecutionContract,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -329,6 +334,7 @@ pub struct MaterializationWave {
     pub node_names: Vec<String>,
     pub estimate: WaveEstimate,
     pub hazard_repairs: Vec<String>,
+    pub execution_contract: WaveExecutionContract,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -338,6 +344,7 @@ pub struct MaterializationGraph {
     pub leader_assignments: Vec<LeaderAssignment>,
     pub early_serve_frontier: Vec<String>,
     pub late_bindings: Vec<(String, String)>,
+    pub runtime_roi: Vec<RuntimeRoi>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -475,6 +482,40 @@ impl ResolvedBuildPlan {
                 severity: ValidationSeverity::Error,
                 code: "artifact_scope_missing".to_owned(),
                 message: "Artifact manifest contains an unscoped artifact".to_owned(),
+            });
+        }
+
+        for obligation in &self.warmup_obligations {
+            if obligation.proof.node_name != obligation.node_name
+                || obligation.proof.region_name != obligation.region_name
+            {
+                issues.push(ValidationIssue {
+                    severity: ValidationSeverity::Error,
+                    code: "warmup_proof_mismatch".to_owned(),
+                    message: format!(
+                        "Warmup proof does not match obligation {}:{}",
+                        obligation.node_name, obligation.region_name
+                    ),
+                });
+            }
+        }
+
+        if self
+            .materialization_graph
+            .early_serve_frontier
+            .iter()
+            .any(|frontier| {
+                !self
+                    .materialization_graph
+                    .nodes
+                    .iter()
+                    .any(|node| &node.name == frontier)
+            })
+        {
+            issues.push(ValidationIssue {
+                severity: ValidationSeverity::Error,
+                code: "early_serve_frontier_invalid".to_owned(),
+                message: "Early-serve frontier references unknown materialization nodes".to_owned(),
             });
         }
 

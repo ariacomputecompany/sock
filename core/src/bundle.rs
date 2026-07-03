@@ -193,14 +193,15 @@ mod tests {
         ArtifactRequirement, BackendCandidate, BackendExtensionFingerprint, BackendFamily,
         BackendPolicy, BackendSelection, CachePolicy, CapabilityWitness, CompileRegion,
         ConfigEntry, ConfigLayer, CoveragePlane, CoverageState, CoverageWitness,
-        DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode, GuaranteeDimension,
-        GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel, GuaranteeTarget,
+        DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode, FanoutStrategy,
+        GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel, GuaranteeTarget,
         MaterializationGraph, MaterializationNode, MaterializationNodeKind, MaterializationWave,
-        ModelRef, PortabilityFingerprint, QueueKind, RangeIntent, RankDisposition, RawRequest,
-        RequestedEnvironment, RewritePassContract, RewritePhase, RewriteTraceDocument,
-        SchemaVersion, ShapeEnvelope, ShapeEnvelopeNode, ShapePoint, ShapePolicy, ShapeRange,
-        SourceEvidence, StructuralIdentity, TargetEngine, WarmupObligation, WarmupPolicy,
-        WaveEstimate, canonical_hash,
+        ModelRef, NodeExecutionContract, PortabilityFingerprint, QueueDiscipline, QueueKind,
+        RangeIntent, RankDisposition, RawRequest, RequestedEnvironment, RewritePassContract,
+        RewritePhase, RewriteTraceDocument, RuntimeRoi, SchemaVersion, ServePhase, ShapeEnvelope,
+        ShapeEnvelopeNode, ShapePoint, ShapePolicy, ShapeRange, SourceEvidence, StructuralIdentity,
+        TargetEngine, WarmupContradiction, WarmupCoverageProof, WarmupObligation, WarmupPolicy,
+        WaveEstimate, WaveExecutionContract, canonical_hash,
     };
 
     use super::{ReplayBundle, ReplayBundleError, ReplayBundleMetadata, digest};
@@ -471,6 +472,22 @@ mod tests {
                 rank_scope: vec![0, 1],
                 requires_capture: false,
                 requires_autotune: true,
+                proof: WarmupCoverageProof {
+                    proof_id: "warmup:correctness-range:prefill_attention".to_owned(),
+                    node_name: "correctness-range".to_owned(),
+                    region_name: "prefill_attention".to_owned(),
+                    plane: CoveragePlane::Correctness,
+                    required_artifacts: vec!["prefill_attention".to_owned()],
+                    rank_scope: vec![0, 1],
+                    blocking: true,
+                    expected_states: vec!["Compiled".to_owned(), "Executed".to_owned()],
+                    contradiction_triggers: vec![WarmupContradiction {
+                        trigger: "shape_escape".to_owned(),
+                        invalidates_node: "correctness-range".to_owned(),
+                        next_action: "expand warmup".to_owned(),
+                    }],
+                    serve_phase: ServePhase::PreServeBlocking,
+                },
             },
             WarmupObligation {
                 node_name: "performance-range".to_owned(),
@@ -482,6 +499,26 @@ mod tests {
                 rank_scope: vec![0, 1],
                 requires_capture: false,
                 requires_autotune: true,
+                proof: WarmupCoverageProof {
+                    proof_id: "warmup:performance-range:decode_attention".to_owned(),
+                    node_name: "performance-range".to_owned(),
+                    region_name: "decode_attention".to_owned(),
+                    plane: CoveragePlane::Performance,
+                    required_artifacts: vec!["prefill_attention".to_owned()],
+                    rank_scope: vec![0, 1],
+                    blocking: false,
+                    expected_states: vec![
+                        "Compiled".to_owned(),
+                        "Executed".to_owned(),
+                        "VerifiedNoNewCompile".to_owned(),
+                    ],
+                    contradiction_triggers: vec![WarmupContradiction {
+                        trigger: "shape_escape".to_owned(),
+                        invalidates_node: "performance-range".to_owned(),
+                        next_action: "expand warmup".to_owned(),
+                    }],
+                    serve_phase: ServePhase::DeferredPerformance,
+                },
             },
         ];
         let materialization_graph = MaterializationGraph {
@@ -501,6 +538,13 @@ mod tests {
                 expected_bytes_written: Some(24_000_000),
                 expected_transfer_ms: Some(0),
                 residual_jit_risk_removed: 1,
+                execution_contract: NodeExecutionContract {
+                    queue: QueueKind::Compile,
+                    discipline: QueueDiscipline::Serial,
+                    serve_phase: ServePhase::EarlyServeReady,
+                    fanout_strategy: FanoutStrategy::BroadcastFromLeader,
+                    dependency_barrier: Vec::new(),
+                },
             }],
             waves: vec![MaterializationWave {
                 name: "wave-0".to_owned(),
@@ -514,10 +558,24 @@ mod tests {
                     residual_jit_risk_removed: 1,
                 },
                 hazard_repairs: Vec::new(),
+                execution_contract: WaveExecutionContract {
+                    wave_name: "wave-0".to_owned(),
+                    queue: QueueKind::Compile,
+                    discipline: QueueDiscipline::Serial,
+                    serve_phase: ServePhase::EarlyServeReady,
+                    fulfills: vec!["artifact:prefill_attention".to_owned()],
+                },
             }],
             leader_assignments: Vec::new(),
-            early_serve_frontier: vec!["verify:correctness".to_owned()],
+            early_serve_frontier: vec!["import:prefill_attention".to_owned()],
             late_bindings: vec![("cache_root".to_owned(), "host://cache/sock".to_owned())],
+            runtime_roi: vec![RuntimeRoi {
+                artifact_scope: "prefill_attention".to_owned(),
+                compile_ms: 2500,
+                transfer_ms: 0,
+                rebuild_ms: 5000,
+                preferred_strategy: FanoutStrategy::BroadcastFromLeader,
+            }],
         };
         let artifact_manifest = vec![crate::ArtifactManifestEntry {
             identity: "flashinfer:CompiledGraph:prefill_attention".to_owned(),

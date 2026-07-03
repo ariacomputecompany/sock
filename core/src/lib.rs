@@ -9,6 +9,7 @@ pub mod model;
 pub mod operator;
 pub mod request;
 pub mod rewrite;
+pub mod runtime;
 pub mod verification;
 
 pub use adapter::*;
@@ -28,4 +29,5 @@ pub use operator::{
 };
 pub use request::*;
 pub use rewrite::*;
+pub use runtime::*;
 pub use verification::*;
