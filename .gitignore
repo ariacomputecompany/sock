@@ -10,3 +10,7 @@ target/
 *.rendered.json
 artifacts/
 dist/
+.venv/
+.venv-codex/
+**/.venv/
+**/.venv-codex/
