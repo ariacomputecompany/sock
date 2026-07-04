@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "explore-vllm-serving-entrypoints",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nfor path in \\\n  vllm/benchmarks/benchmark_serving_structured_output.py \\\n  vllm/vllm/entrypoints/openai/responses/serving.py \\\n  vllm/vllm/entrypoints/openai/run_batch.py \\\n  vllm/tests/entrypoints/anthropic/test_anthropic_messages_conversion.py \\\n  vllm/vllm/engine/arg_utils.py \\\n  vllm/vllm/benchmarks/serve.py\n do\n  [ -f \"$path\" ]\n done\nrg -n 'structured_outputs|run_batch|serving|anthropic|arg_utils|benchmark' \\\n  vllm/benchmarks/benchmark_serving_structured_output.py \\\n  vllm/vllm/entrypoints/openai/responses/serving.py \\\n  vllm/vllm/entrypoints/openai/run_batch.py \\\n  vllm/tests/entrypoints/anthropic/test_anthropic_messages_conversion.py \\\n  vllm/vllm/engine/arg_utils.py \\\n  vllm/vllm/benchmarks/serve.py >/dev/null\nfozzy explore tests/explore.materialization_surface_matrix.fozzy.json --json >/dev/null\nprintf 'explore-vllm-serving-entrypoints\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "explore-vllm-serving-entrypoints\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

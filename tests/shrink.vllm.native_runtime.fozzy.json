@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "shrink-vllm-native-runtime",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nrg -n 'gemm_fp8|_custom_ops|all_reduce_utils|shm_broadcast|shm_object_storage|kv_events' \\\n  vllm/csrc/cpu/sgl-kernels/gemm_fp8.cpp \\\n  vllm/vllm/_custom_ops.py \\\n  vllm/vllm/distributed/device_communicators/all_reduce_utils.py \\\n  vllm/vllm/distributed/device_communicators/shm_broadcast.py \\\n  vllm/vllm/distributed/device_communicators/shm_object_storage.py \\\n  vllm/vllm/distributed/kv_events.py >/dev/null\ntrace_dir=$(mktemp -d)\ntrace_path=\"$trace_dir/native.trace.fozzy\"\nfozzy run tests/shrink.bundle_tamper_verify.fozzy.json --det --record \"$trace_path\" --json >/dev/null\nfozzy shrink \"$trace_path\" --json | jq -e '.outTrace and .summary.mode == \"run\"' >/dev/null\nprintf 'shrink-vllm-native-runtime\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "shrink-vllm-native-runtime\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "shrink-vllm-serving-entrypoints",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nrg -n 'benchmark_serving_structured_output|responses/serving.py|run_batch.py|anthropic_messages_conversion|benchmarks/serve.py' \\\n  vllm/benchmarks/benchmark_serving_structured_output.py \\\n  vllm/vllm/entrypoints/openai/responses/serving.py \\\n  vllm/vllm/entrypoints/openai/run_batch.py \\\n  vllm/tests/entrypoints/anthropic/test_anthropic_messages_conversion.py \\\n  vllm/vllm/benchmarks/serve.py >/dev/null\ntrace_dir=$(mktemp -d)\ntrace_path=\"$trace_dir/serving.trace.fozzy\"\nfozzy run tests/trace.measure_prefill_path.fozzy.json --det --record \"$trace_path\" --json >/dev/null\nfozzy shrink \"$trace_path\" --json | jq -e '.outTrace and .summary.mode == \"run\"' >/dev/null\nprintf 'shrink-vllm-serving-entrypoints\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "shrink-vllm-serving-entrypoints\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

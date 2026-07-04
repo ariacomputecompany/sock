@@ -16,3 +16,9 @@ Working rule:
 - execute in order unless a later item becomes a strict prerequisite
 - remove completed items instead of annotating them
 - treat any runtime-adjacent drift as an escalation out of Lane A
+
+Remaining hotspot closeout:
+
+- identify the final `4` required suite-map hotspots still counted as uncovered in `fozzy map suites`
+- add targeted Fozzy scenarios only if those `4` are real product hotspots rather than mapper accounting noise
+- rerun `scripts/verify_fozzy_program.sh` and confirm the final covered/uncovered hotspot state after that tail work

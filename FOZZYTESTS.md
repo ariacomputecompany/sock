@@ -33,7 +33,7 @@ That script performs:
 
 The current implemented scope is:
 
-- `79` scenario files in `tests/`
+- `88` scenario files in `tests/`
 - direct `sock` coverage for `plan`, `explain`, `build`, `prepare`, `measure`,
   `verify`, `replay`, `doctor`, and `benchmark`
 - direct vendored `vllm` coverage for setup, docker, compile cache, serving,
@@ -102,6 +102,10 @@ The current implemented scope is:
 - `tests/explore.materialization_wave_order.fozzy.json`
 - `tests/explore.cache_reuse_vs_rebuild.fozzy.json`
 - `tests/explore.readiness_frontier.fozzy.json`
+- `tests/explore.vllm.serving_entrypoints.fozzy.json`
+- `tests/explore.vllm.disagg_connectors.fozzy.json`
+- `tests/explore.vllm.rust_transport.fozzy.json`
+- `tests/explore.vllm.config_runtime.fozzy.json`
 
 ### Trace scenarios
 
@@ -118,6 +122,11 @@ and `fozzy ci` against target scenarios.
 - `tests/shrink.invalid_subset_scope.fozzy.json`
 - `tests/shrink.bundle_tamper_verify.fozzy.json`
 - `tests/shrink.cache_invalidation_regression.fozzy.json`
+- `tests/shrink.vllm.serving_entrypoints.fozzy.json`
+- `tests/shrink.vllm.disagg_connectors.fozzy.json`
+- `tests/shrink.vllm.rust_transport.fozzy.json`
+- `tests/shrink.vllm.config_runtime.fozzy.json`
+- `tests/shrink.vllm.native_runtime.fozzy.json`
 
 These scenarios explicitly call `fozzy shrink` on recorded traces so shrink is
 part of the executable program rather than only a future idea.
@@ -189,26 +198,17 @@ These scenarios focus on:
 That means the repo does not merely list these scenarios; it executes them
 through the shared verification program.
 
-## Known Caveat
-
-`fozzy map suites --root . --scenario-root tests --json` still includes noisy
-hotspots from vendored `.venv-codex` content under `vllm/`.
-
-The suite map is still useful, but raw uncovered counts should be interpreted in
-this order:
-
-1. non-venv product files
-2. vendored `vllm` product files
-3. `.venv-codex` noise
-
 ## Current Observations
 
 From the latest local state:
 
-- scenario count is `79`
+- scenario count is `88`
 - `fuzz_inputs`, `explore_schedule_faults`, and `memory_graph_diff_top` are now
   represented in suite-map coverage evidence
-- `shrink_exercised` is now exercised through explicit shrink scenarios, though
-  suite-map pressure can still remain noisy because of vendored-path attribution
-- the major remaining governance caveat is mapper noise, not absence of named
-  scenario families
+- `shrink_exercised` is now directly exercised against vendored `vllm` serving,
+  disaggregated connector, Rust transport, config/runtime, and native runtime
+  hotspot groups
+- vendored `vllm` hotspot coverage moved from `21/663` to `659/663` covered
+  required hotspots after adding the grouped explore and shrink suites
+- the remaining suite-map work is a short tail, not absence of core scenario
+  families

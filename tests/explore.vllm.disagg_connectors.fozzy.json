@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "explore-vllm-disagg-connectors",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nfor path in \\\n  vllm/examples/disaggregated/disaggregated_encoder/disagg_epd_proxy.py \\\n  vllm/examples/disaggregated/disaggregated_serving/disagg_proxy_demo.py \\\n  vllm/examples/disaggregated/disaggregated_serving/moriio_toy_proxy_server.py \\\n  vllm/tests/v1/kv_connector/unit/test_mooncake_store_worker.py \\\n  vllm/tests/v1/kv_connector/unit/test_nixl_connector.py \\\n  vllm/tests/v1/kv_connector/unit/test_offloading_connector.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/moriio/moriio_connector.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/moriio/moriio_engine.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_worker.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/hf3fs/hf3fs_metadata_server.py\n do\n  [ -f \"$path\" ]\n done\nrg -n 'proxy|mooncake|nixl|offloading|moriio|hf3fs|kv_connector' \\\n  vllm/examples/disaggregated/disaggregated_encoder/disagg_epd_proxy.py \\\n  vllm/examples/disaggregated/disaggregated_serving/disagg_proxy_demo.py \\\n  vllm/examples/disaggregated/disaggregated_serving/moriio_toy_proxy_server.py \\\n  vllm/tests/v1/kv_connector/unit/test_mooncake_store_worker.py \\\n  vllm/tests/v1/kv_connector/unit/test_nixl_connector.py \\\n  vllm/tests/v1/kv_connector/unit/test_offloading_connector.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/mooncake_connector.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/mooncake/store/worker.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/moriio/moriio_connector.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/moriio/moriio_engine.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/nixl/base_worker.py \\\n  vllm/vllm/distributed/kv_transfer/kv_connector/v1/hf3fs/hf3fs_metadata_server.py >/dev/null\nfozzy explore tests/explore.readiness_frontier.fozzy.json --json >/dev/null\nprintf 'explore-vllm-disagg-connectors\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "explore-vllm-disagg-connectors\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

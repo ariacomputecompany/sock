@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "shrink-vllm-rust-transport",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nrg -n 'START_DP_WAVE|transport|frame|route|client' \\\n  vllm/rust/src/engine-core-client/src/client.rs \\\n  vllm/rust/src/engine-core-client/src/client/imp.rs \\\n  vllm/rust/src/engine-core-client/src/tests/client.rs \\\n  vllm/rust/src/engine-core-client/src/transport.rs \\\n  vllm/rust/src/server/src/routes/tests.rs \\\n  vllm/tests/v1/engine/test_engine_core_client.py >/dev/null\ntrace_dir=$(mktemp -d)\ntrace_path=\"$trace_dir/rust-transport.trace.fozzy\"\nfozzy run tests/trace.build_prefill_scope.fozzy.json --det --record \"$trace_path\" --json >/dev/null\nfozzy shrink \"$trace_path\" --json | jq -e '.outTrace and .summary.mode == \"run\"' >/dev/null\nprintf 'shrink-vllm-rust-transport\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "shrink-vllm-rust-transport\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}
