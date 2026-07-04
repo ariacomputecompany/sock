@@ -17,8 +17,9 @@ Working rule:
 - remove completed items instead of annotating them
 - treat any runtime-adjacent drift as an escalation out of Lane A
 
-Remaining hotspot closeout:
+Hotspot implementation status:
 
-- identify the final `4` required suite-map hotspots still counted as uncovered in `fozzy map suites`
-- add targeted Fozzy scenarios only if those `4` are real product hotspots rather than mapper accounting noise
-- rerun `scripts/verify_fozzy_program.sh` and confirm the final covered/uncovered hotspot state after that tail work
+- no remaining `sock` hotspot scenario work is open in this lane
+- the only unresolved item is external mapper observability: `fozzy map suites`
+  reports `uncoveredHotspotCount=4` while hard-capping visible output to `100`
+  rows and ignoring requested `offset` and `limit`

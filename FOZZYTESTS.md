@@ -210,5 +210,9 @@ From the latest local state:
   hotspot groups
 - vendored `vllm` hotspot coverage moved from `21/663` to `659/663` covered
   required hotspots after adding the grouped explore and shrink suites
-- the remaining suite-map work is a short tail, not absence of core scenario
-  families
+- `fozzy map suites` currently hard-caps visible output to `100` rows and
+  ignores requested `offset` and `limit` values in this environment, so the
+  reported `uncoveredHotspotCount=4` cannot yet be enumerated through the
+  public CLI surface
+- the remaining risk is mapper observability, not absence of core scenario
+  families or missing vendored `vllm` hotspot suites
