@@ -3,16 +3,15 @@
   "name": "vllm-native-gemm-fp8-shape-fuzz",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nrg -n 'block_fp8|gemm_fp8_blockwise|paged_mqa_logits' vllm/tools/profiler/nsys_profile_tools/vllm_engine_model.json vllm/csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_blockwise_sm100_fp8_dispatch.cuh vllm/vllm/v1/attention/ops/rocm_aiter_mla_sparse.py >/dev/null\nprintf 'vllm-native-gemm-fp8-shape-fuzz\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-native-gemm-fp8-shape-fuzz\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-native-gemm-fp8-shape-fuzz\n",
+      "expect_stderr": ""
     }
   ]
 }

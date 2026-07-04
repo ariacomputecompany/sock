@@ -3,16 +3,15 @@
   "name": "fuzz-cli-output-modes",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nplan_txt=$(cargo run --quiet --bin sock -- plan)\nexplain_txt=$(cargo run --quiet --bin sock -- explain)\ndoctor_txt=$(cargo run --quiet --bin sock -- doctor)\nprintf '%s' \"$plan_txt\" | grep -q '^plan '\nprintf '%s' \"$explain_txt\" | grep -q 'request contract:'\nprintf '%s' \"$doctor_txt\" | grep -q '^host os='\ncargo run --quiet --bin sock -- plan --format json | jq -e '.structural_identity.plan_identity' >/dev/null\ncargo run --quiet --bin sock -- explain --format json | jq -e '.verification.status' >/dev/null\ncargo run --quiet --bin sock -- doctor --format json | jq -e '.operating_system' >/dev/null\nprintf 'fuzz-cli-output-modes\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "fuzz-cli-output-modes\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "fuzz-cli-output-modes\n",
+      "expect_stderr": ""
     }
   ]
 }

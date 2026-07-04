@@ -3,16 +3,15 @@
   "name": "prepare-distributed-flashinfer-startup",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nbundle_dir=$(mktemp -d)\nprepare_out=$(cargo run --quiet --bin sock -- prepare distributed-flashinfer-startup --out \"$bundle_dir\")\nprintf '%s' \"$prepare_out\" | grep -q 'intent=distributed_flashinfer_startup'\nprintf '%s' \"$prepare_out\" | grep -q 'readiness=Correctness'\ngrep -q '\"closure_outcome\":\"full_compile_closure\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"requested_readiness\":\"correctness\"' \"$bundle_dir/materialization_report.json\"\nprintf 'prepared-distributed\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "prepared-distributed\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "prepared-distributed\n",
+      "expect_stderr": ""
     }
   ]
 }

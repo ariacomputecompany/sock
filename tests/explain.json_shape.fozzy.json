@@ -3,16 +3,15 @@
   "name": "explain-json-shape",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nexplain_json=$(mktemp)\ncargo run --quiet --bin sock -- explain --format json > \"$explain_json\"\npython3 - \"$explain_json\" <<'PY'\nimport json, sys\nobj = json.load(open(sys.argv[1]))\nassert sorted(obj.keys()) == ['backend_decision', 'diagnostics', 'optimization_explain', 'plan', 'rewrite_trace', 'soc_plan', 'verification', 'vllm_integration']\nassert obj['plan']['structural_identity']['plan_identity']\nassert obj['rewrite_trace']['passes']\nassert obj['diagnostics']['diagnostics']\nPY\nprintf 'explain-json-shape\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "explain-json-shape\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "explain-json-shape\n",
+      "expect_stderr": ""
     }
   ]
 }

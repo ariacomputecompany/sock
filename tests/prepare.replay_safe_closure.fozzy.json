@@ -3,16 +3,15 @@
   "name": "prepare-replay-safe-closure",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nbundle_dir=$(mktemp -d)\nprepare_out=$(cargo run --quiet --bin sock -- prepare replay-safe-closure --out \"$bundle_dir\")\nprintf '%s' \"$prepare_out\" | grep -q 'intent=replay_safe_closure'\nprintf '%s' \"$prepare_out\" | grep -q 'readiness=Performance'\ngrep -q '\"closure_outcome\":\"full_compile_closure\"' \"$bundle_dir/materialization_report.json\"\ngrep -q '\"verify_replay_compile_free\":true' \"$bundle_dir/materialization_report.json\"\nprintf 'prepared-replay-safe\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "prepared-replay-safe\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "prepared-replay-safe\n",
+      "expect_stderr": ""
     }
   ]
 }

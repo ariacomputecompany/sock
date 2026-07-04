@@ -3,16 +3,15 @@
   "name": "memory-cache-root-churn",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nfirst_bundle=$(mktemp -d)\nsecond_bundle=$(mktemp -d)\ncache_root=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$first_bundle\" --cache-root \"$cache_root\" --region prefill_attention --readiness correctness >/dev/null\nsecond_out=$(cargo run --quiet --bin sock -- build --out \"$second_bundle\" --cache-root \"$cache_root\" --region prefill_attention --readiness correctness)\nprintf '%s' \"$second_out\" | grep -q 'reused=2'\npython3 - \"$first_bundle/materialization_report.json\" \"$second_bundle/materialization_report.json\" <<'PY'\nimport json, sys\nfirst = json.load(open(sys.argv[1]))\nsecond = json.load(open(sys.argv[2]))\nassert first['executed_artifact_count'] >= second['executed_artifact_count']\nassert second['reused_artifact_count'] >= first['reused_artifact_count']\nPY\nprintf 'memory-cache-root-churn\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "memory-cache-root-churn\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "memory-cache-root-churn\n",
+      "expect_stderr": ""
     }
   ]
 }

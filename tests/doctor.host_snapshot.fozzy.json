@@ -3,16 +3,15 @@
   "name": "doctor-host-snapshot",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\ndoctor_json=$(mktemp)\ncargo run --quiet --bin sock -- doctor --format json > \"$doctor_json\"\npython3 - \"$doctor_json\" <<'PY'\nimport json, sys\nobj = json.load(open(sys.argv[1]))\nassert obj['operating_system'] == 'Linux'\nassert obj['accelerator_vendor'] == 'Nvidia'\nassert obj['gpu_arches'] == ['sm90']\nassert obj['cuda_version'] == '12.4'\nassert obj['driver_version'] == '550.54'\nassert obj['python_abi'] == 'cp311'\nassert obj['libc_abi'].startswith('glibc-')\nPY\nprintf 'doctor-host-snapshot\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "doctor-host-snapshot\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "doctor-host-snapshot\n",
+      "expect_stderr": ""
     }
   ]
 }

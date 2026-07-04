@@ -3,16 +3,15 @@
   "name": "vllm-native-gemm-fp8-memory",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\n[ -f vllm/benchmarks/benchmark_pin_memory.py ]\n[ -f vllm/tests/kernels/moe/test_batched_deepgemm.py ]\nrg -n 'pin_memory|memory|deepgemm' vllm/benchmarks/benchmark_pin_memory.py vllm/tests/kernels/moe/test_batched_deepgemm.py >/dev/null\nprintf 'vllm-native-gemm-fp8-memory\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-native-gemm-fp8-memory\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-native-gemm-fp8-memory\n",
+      "expect_stderr": ""
     }
   ]
 }

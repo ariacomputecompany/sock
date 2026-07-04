@@ -3,16 +3,15 @@
   "name": "vllm-disagg-proxy-boot",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\n[ -f vllm/examples/disaggregated/disaggregated_serving/disagg_proxy_demo.py ]\n[ -f vllm/examples/disaggregated/disaggregated_serving/moriio_toy_proxy_server.py ]\n[ -f vllm/tests/v1/kv_connector/nixl_integration/toy_proxy_server.py ]\nprintf 'vllm-disagg-proxy-boot\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-disagg-proxy-boot\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-disagg-proxy-boot\n",
+      "expect_stderr": ""
     }
   ]
 }

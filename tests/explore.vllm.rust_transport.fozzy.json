@@ -3,16 +3,15 @@
   "name": "explore-vllm-rust-transport",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nfor path in \\\n  vllm/rust/src/engine-core-client/src/client.rs \\\n  vllm/rust/src/engine-core-client/src/client/imp.rs \\\n  vllm/rust/src/engine-core-client/src/tests/client.rs \\\n  vllm/rust/src/engine-core-client/src/transport.rs \\\n  vllm/rust/src/server/src/routes/tests.rs \\\n  vllm/tests/v1/engine/test_engine_core_client.py\n do\n  [ -f \"$path\" ]\n done\nrg -n 'START_DP_WAVE|route|transport|frame|client|engine_core' \\\n  vllm/rust/src/engine-core-client/src/client.rs \\\n  vllm/rust/src/engine-core-client/src/client/imp.rs \\\n  vllm/rust/src/engine-core-client/src/tests/client.rs \\\n  vllm/rust/src/engine-core-client/src/transport.rs \\\n  vllm/rust/src/server/src/routes/tests.rs \\\n  vllm/tests/v1/engine/test_engine_core_client.py >/dev/null\nfozzy explore tests/explore.materialization_wave_order.fozzy.json --json >/dev/null\nprintf 'explore-vllm-rust-transport\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "explore-vllm-rust-transport\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "explore-vllm-rust-transport\n",
+      "expect_stderr": ""
     }
   ]
 }

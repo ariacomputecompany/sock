@@ -3,16 +3,15 @@
   "name": "vllm-disagg-retry-faults",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\n[ -f vllm/tests/v1/kv_connector/nixl_integration/test_edge_cases.py ]\n[ -f vllm/tests/v1/kv_connector/nixl_integration/test_multi_connector_edge_cases.py ]\nrg -n 'edge case|retry|probe' vllm/tests/v1/kv_connector/nixl_integration/test_edge_cases.py vllm/tests/v1/kv_connector/nixl_integration/nixl_side_channel_probe.py >/dev/null\nprintf 'vllm-disagg-retry-faults\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-disagg-retry-faults\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-disagg-retry-faults\n",
+      "expect_stderr": ""
     }
   ]
 }

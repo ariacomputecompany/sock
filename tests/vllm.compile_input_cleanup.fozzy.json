@@ -3,16 +3,15 @@
   "name": "vllm-compile-input-cleanup",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\npython3 -m py_compile vllm/vllm/compilation/caching.py vllm/vllm/compilation/backends.py\ncd vllm\n.venv-codex/bin/python -m pytest --noconftest tests/test_aot_artifact_manifest_light.py -q -k 'comments or unreachable_python_helpers or reachable_global_dependencies or torch_internal_moves or transient_placeholder_names' >/tmp/vllm-compile-input-cleanup.txt\ngrep -q '5 passed' /tmp/vllm-compile-input-cleanup.txt\ncd ..\ngrep -q 'reachable_symbols_by_path' vllm/vllm/compilation/caching.py\ngrep -q 'python_ast_reachable' vllm/vllm/compilation/caching.py\ngrep -q 'inspect.getsourcefile' vllm/vllm/compilation/backends.py\nprintf 'vllm-compile-input-cleanup\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-compile-input-cleanup\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-compile-input-cleanup\n",
+      "expect_stderr": ""
     }
   ]
 }

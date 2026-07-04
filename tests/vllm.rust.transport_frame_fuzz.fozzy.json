@@ -3,16 +3,15 @@
   "name": "vllm-rust-transport-frame-fuzz",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nrg -n 'from_frame|to_frame|expected 2 frames|aux frame index out of range|decode_engine_core_outputs' vllm/rust/src/engine-core-client/src/protocol/request.rs vllm/rust/src/engine-core-client/src/transport.rs vllm/rust/src/engine-core-client/src/protocol/logprobs/array.rs vllm/rust/src/engine-core-client/src/protocol/output.rs >/dev/null\nprintf 'vllm-rust-transport-frame-fuzz\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-rust-transport-frame-fuzz\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-rust-transport-frame-fuzz\n",
+      "expect_stderr": ""
     }
   ]
 }

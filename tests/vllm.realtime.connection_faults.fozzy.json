@@ -3,16 +3,15 @@
   "name": "vllm-realtime-connection-faults",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\n[ -f vllm/tests/entrypoints/speech_to_text/realtime/test_realtime_validation.py ]\n[ -f vllm/tests/entrypoints/openai/test_uds.py ]\nrg -n 'probe_failure_threshold|timeout|validation' vllm/tests/entrypoints/speech_to_text/realtime/test_realtime_validation.py >/dev/null\nprintf 'vllm-realtime-connection-faults\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-realtime-connection-faults\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-realtime-connection-faults\n",
+      "expect_stderr": ""
     }
   ]
 }

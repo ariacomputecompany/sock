@@ -3,16 +3,15 @@
   "name": "vllm-dp-supervisor-control-plane",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\n[ -f vllm/vllm/entrypoints/openai/dp_supervisor.py ]\n[ -f vllm/tests/entrypoints/openai/test_dp_supervisor.py ]\nrg -n '_build_dp_supervisor_app|probe_failure_threshold|run_dp_supervisor' vllm/vllm/entrypoints/openai/dp_supervisor.py >/dev/null\nprintf 'vllm-dp-supervisor-control-plane\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-dp-supervisor-control-plane\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-dp-supervisor-control-plane\n",
+      "expect_stderr": ""
     }
   ]
 }

@@ -3,16 +3,15 @@
   "name": "shrink-invalid-subset-scope",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\ntrace_dir=$(mktemp -d)\ntrace_path=\"$trace_dir/invalid-subset.trace.fozzy\"\nfozzy run tests/build.invalid_subset_scope.fozzy.json --det --record \"$trace_path\" --json >/dev/null\nshrink_json=\"$trace_dir/shrink.json\"\nfozzy shrink \"$trace_path\" --json > \"$shrink_json\"\npython3 - \"$shrink_json\" <<'PY'\nimport json, sys\nobj = json.load(open(sys.argv[1]))\nassert obj['outTrace'].endswith('.min.fozzy')\nassert obj['summary']['status'] in ('pass', 'fail')\nPY\nprintf 'shrink-invalid-subset-scope\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "shrink-invalid-subset-scope\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "shrink-invalid-subset-scope\n",
+      "expect_stderr": ""
     }
   ]
 }

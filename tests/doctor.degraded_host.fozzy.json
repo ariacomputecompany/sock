@@ -3,16 +3,15 @@
   "name": "doctor-degraded-host",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nrg -n 'host\\.flashinfer_prebuilt_available = false;' engine/src/planner.rs >/dev/null\nrg -n 'flashinfer_prebuilt_available: true' app/src/lib.rs engine/src/planner.rs >/dev/null\nrg -n 'supported_operating_systems: vec!\\[OperatingSystem::Linux\\]' engine/src/planner.rs >/dev/null\nprintf 'doctor-degraded-host\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "doctor-degraded-host\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "doctor-degraded-host\n",
+      "expect_stderr": ""
     }
   ]
 }

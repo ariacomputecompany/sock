@@ -3,16 +3,15 @@
   "name": "vllm-structured-output",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\n[ -f vllm/benchmarks/benchmark_serving_structured_output.py ]\n[ -f vllm/tests/entrypoints/openai/chat_completion/test_chat.py ]\n[ -f vllm/tests/entrypoints/openai/responses/test_structured_output.py ]\nrg -n 'structured_outputs' vllm/vllm/entrypoints/openai/chat_completion/protocol.py vllm/vllm/entrypoints/openai/completion/protocol.py >/dev/null\nprintf 'vllm-structured-output\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-structured-output\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-structured-output\n",
+      "expect_stderr": ""
     }
   ]
 }

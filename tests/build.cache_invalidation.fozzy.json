@@ -3,16 +3,15 @@
   "name": "build-cache-invalidation",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nbundle_dir=$(mktemp -d)\ncache_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness >/dev/null\ncache_file=$(find \"$cache_dir\" -name artifact.json | head -n 1)\nnamespace_dir=$(dirname \"$(dirname \"$cache_file\")\")\nstale_dir=\"$namespace_dir/stale-prefill-sibling\"\nunrelated_dir=\"$namespace_dir/unrelated-sibling\"\npython3 - \"$cache_file\" \"$stale_dir\" \"$unrelated_dir\" <<'PY'\nimport json, pathlib, sys\ncache_file = pathlib.Path(sys.argv[1])\nstale_dir = pathlib.Path(sys.argv[2])\nunrelated_dir = pathlib.Path(sys.argv[3])\ndoc = json.loads(cache_file.read_text())\nstale = dict(doc)\nstale[\"storage_key\"] = \"stale-prefill-sibling\"\nstale[\"manifest_identity\"] = \"stale-prefill-sibling\"\nstale_dir.mkdir(parents=True, exist_ok=True)\n(stale_dir / \"artifact.json\").write_text(json.dumps(stale))\nunrelated = dict(doc)\nunrelated[\"storage_key\"] = \"unrelated-sibling\"\nunrelated[\"manifest_identity\"] = \"unrelated-sibling\"\nunrelated[\"invalidation_domain\"] = \"other_domain\"\nunrelated_dir.mkdir(parents=True, exist_ok=True)\n(unrelated_dir / \"artifact.json\").write_text(json.dumps(unrelated))\ncorrupted = dict(doc)\ncorrupted[\"manifest_identity\"] = \"corrupted-primary\"\ncache_file.write_text(json.dumps(corrupted))\nPY\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --cache-root \"$cache_dir\" --region prefill_attention --readiness correctness >/dev/null\n[ ! -d \"$stale_dir\" ]\n[ -d \"$unrelated_dir\" ]\nprintf 'cache-invalidated\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "cache-invalidated\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "cache-invalidated\n",
+      "expect_stderr": ""
     }
   ]
 }

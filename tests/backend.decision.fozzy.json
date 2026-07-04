@@ -3,16 +3,15 @@
   "name": "backend-decision",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nbundle_dir=$(mktemp -d)\nexplain_json=$(mktemp)\nbuild_json=$(mktemp)\nreplay_json=$(mktemp)\ncargo run --quiet --bin sock -- explain --format json > \"$explain_json\"\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --format json > \"$build_json\"\ncargo run --quiet --bin sock -- replay --bundle \"$bundle_dir\" --format json > \"$replay_json\"\npython3 - \"$explain_json\" \"$build_json\" \"$replay_json\" \"$bundle_dir/backend_decision.json\" \"$bundle_dir/buildplan.json\" <<'PY'\nimport json, sys\nexplain = json.load(open(sys.argv[1]))\nbuild = json.load(open(sys.argv[2]))\nreplay = json.load(open(sys.argv[3]))\nbundle_backend = json.load(open(sys.argv[4]))\nbuildplan = json.load(open(sys.argv[5]))\nexplain_backend = explain['backend_decision']\nassert explain_backend == build['backend_decision']\nassert explain_backend == replay['backend_decision']\nassert explain_backend == bundle_backend\nentries = {entry['family']: entry for entry in explain_backend['entries']}\nassert entries['FlashInfer']['selected_for_deployment'] is True\nassert entries['FlashInfer']['runtime_reachable'] is True\nassert entries['Triton']['build_technically_possible'] is True\nassert entries['Triton']['runtime_reachable'] is False\nassert buildplan['structural_identity']['backend_decision_identity']\nassert any(manifest['binary_name'] == 'flashinfer_extension.so' for manifest in explain_backend['extension_manifests'])\nPY\nprintf 'backend-decision\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "backend-decision\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "backend-decision\n",
+      "expect_stderr": ""
     }
   ]
 }

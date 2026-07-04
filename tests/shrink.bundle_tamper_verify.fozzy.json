@@ -3,16 +3,15 @@
   "name": "shrink-bundle-tamper-verify",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\ntrace_dir=$(mktemp -d)\ntrace_path=\"$trace_dir/bundle-tamper.trace.fozzy\"\nfozzy run tests/verify.fail_closed.fozzy.json --det --record \"$trace_path\" --json >/dev/null\nfozzy shrink \"$trace_path\" --json | jq -e '.outTrace and .summary.mode == \"run\"' >/dev/null\nprintf 'shrink-bundle-tamper-verify\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "shrink-bundle-tamper-verify\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "shrink-bundle-tamper-verify\n",
+      "expect_stderr": ""
     }
   ]
 }

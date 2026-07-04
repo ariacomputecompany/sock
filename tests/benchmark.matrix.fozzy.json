@@ -3,16 +3,15 @@
   "name": "benchmark-matrix",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nbenchmark_dir=$(mktemp -d)\nbenchmark_out=$(cargo run --quiet --bin sock -- benchmark --out \"$benchmark_dir\")\nprintf '%s' \"$benchmark_out\" | grep -q 'benchmark_matrix entries=4'\nprintf '%s' \"$benchmark_out\" | grep -q 'benchmark selected_backend_flashinfer_prefill'\ngrep -q '\"benchmark_program_version\":1' \"$benchmark_dir/benchmark_matrix.json\"\ngrep -q '\"verification_manifest_path\":\"fozzy/verification_program.json\"' \"$benchmark_dir/benchmark_matrix.json\"\ngrep -q '\"benchmark_trace_scenario\":\"tests/benchmark.matrix.fozzy.json\"' \"$benchmark_dir/benchmark_matrix.json\"\ngrep -q '\"selected_backend_only\":true' \"$benchmark_dir/benchmark_matrix.json\"\ngrep -q '\"warm_start_latency_ms\":' \"$benchmark_dir/benchmark_matrix.json\"\ngrep -q '\"cold_unique_artifact_bytes_delta\":' \"$benchmark_dir/benchmark_matrix.json\"\ngrep -q '\"trace_references\":' \"$benchmark_dir/benchmark_matrix.json\"\nprintf 'benchmarked\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "benchmarked\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "benchmarked\n",
+      "expect_stderr": ""
     }
   ]
 }

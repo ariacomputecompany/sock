@@ -3,16 +3,15 @@
   "name": "trace-build-prefill-scope",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\ntrace_dir=$(mktemp -d)\ntrace_path=\"$trace_dir/build-prefill.trace.fozzy\"\nfozzy run tests/build.prefill_scope.fozzy.json --det --record \"$trace_path\" --proc-backend host --fs-backend host --http-backend host --json >/dev/null\nfozzy trace verify \"$trace_path\" --strict --json >/dev/null\nfozzy replay \"$trace_path\" --json >/dev/null\nfozzy ci \"$trace_path\" --strict --json >/dev/null\nprintf 'trace-build-prefill-scope\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "trace-build-prefill-scope\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "trace-build-prefill-scope\n",
+      "expect_stderr": ""
     }
   ]
 }

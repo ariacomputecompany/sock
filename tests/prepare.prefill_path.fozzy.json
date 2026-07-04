@@ -3,28 +3,26 @@
   "name": "prepare-prefill-path",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nbundle_dir=$(mktemp -d)\nprepare_out=$(cargo run --quiet --bin sock -- prepare prefill-path --out \"$bundle_dir\")\nprintf '%s' \"$prepare_out\" | grep -q 'intent=prefill_path'\nprintf '%s' \"$prepare_out\" | grep -q 'regions=prefill_attention'\nprintf '%s' \"$prepare_out\" | grep -q 'readiness=Correctness'\ngrep -q '\"name\":\"prefill_attention\"' \"$bundle_dir/buildplan.json\"\nprintf 'prepared\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "prepared\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "prepared\n",
+      "expect_stderr": ""
     },
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nbundle_dir=$(mktemp -d)\nprepare_out=$(cargo run --quiet --bin sock -- prepare prefill-path --out \"$bundle_dir\")\nprintf '%s' \"$prepare_out\" | grep -q 'intent=prefill_path'\nprintf '%s' \"$prepare_out\" | grep -q 'regions=prefill_attention'\nprintf '%s' \"$prepare_out\" | grep -q 'readiness=Correctness'\ngrep -q '\"name\":\"prefill_attention\"' \"$bundle_dir/buildplan.json\"\nprintf 'prepared\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "prepared\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "prepared\n",
+      "expect_stderr": ""
     }
   ]
 }

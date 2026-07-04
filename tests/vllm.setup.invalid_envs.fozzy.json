@@ -3,16 +3,15 @@
   "name": "vllm-setup-invalid-envs",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nrg -n 'VLLM_TARGET_DEVICE|VLLM_USE_PRECOMPILED|VLLM_USE_PRECOMPILED_RUST|VLLM_MAIN_CUDA_VERSION' vllm/setup.py vllm/tests/test_envs.py >/dev/null\nrg -n 'Unsupported VLLM build profile' vllm/vllm/build_profiles.py vllm/tests/test_build_profiles.py >/dev/null\nprintf 'vllm-setup-invalid-envs\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-setup-invalid-envs\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-setup-invalid-envs\n",
+      "expect_stderr": ""
     }
   ]
 }

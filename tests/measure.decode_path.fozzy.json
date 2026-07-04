@@ -3,16 +3,15 @@
   "name": "measure-decode-path",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nmeasure_dir=$(mktemp -d)\nif cargo run --quiet --bin sock -- measure decode-path --out \"$measure_dir\" >\"$measure_dir/stdout.txt\" 2>\"$measure_dir/stderr.txt\"; then\n  echo 'decode-path measure unexpectedly succeeded' >&2\n  exit 1\nfi\ngrep -q 'compile-region:decode_attention' \"$measure_dir/stderr.txt\"\ngrep -q 'Full worker startup context' \"$measure_dir/stderr.txt\"\nprintf 'measure-decode-fail-closed\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "measure-decode-fail-closed\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "measure-decode-fail-closed\n",
+      "expect_stderr": ""
     }
   ]
 }

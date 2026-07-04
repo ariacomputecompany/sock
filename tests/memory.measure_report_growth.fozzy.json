@@ -3,16 +3,15 @@
   "name": "memory-measure-report-growth",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\nmeasure_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- measure prefill-path --out \"$measure_dir\" >/dev/null\npython3 - \"$measure_dir/measurement_report.json\" <<'PY'\nimport json, sys\nobj = json.load(open(sys.argv[1]))\nassert obj['broad_cold']['unique_artifact_bytes'] > obj['scoped_cold']['unique_artifact_bytes']\nassert obj['scoped_vs_broad']['bytes_written_delta'] > 0\nassert obj['warm_vs_cold']['reused_artifact_delta'] >= 0\nPY\nprintf 'memory-measure-report-growth\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "memory-measure-report-growth\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "memory-measure-report-growth\n",
+      "expect_stderr": ""
     }
   ]
 }

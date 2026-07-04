@@ -3,16 +3,15 @@
   "name": "vllm-rust-client-smoke",
   "steps": [
     {
-      "type": "proc_when",
+      "type": "proc_spawn",
       "cmd": "sh",
       "args": [
         "-c",
         "set -eu\n[ -f vllm/rust/src/llm/examples/external_engine_smoke.rs ]\n[ -f vllm/rust/src/engine-core-client/src/client.rs ]\n[ -f vllm/rust/src/engine-core-client/src/tests/client.rs ]\nprintf 'vllm-rust-client-smoke\\n'"
       ],
-      "exit_code": 0,
-      "stdout": "vllm-rust-client-smoke\n",
-      "stderr": "",
-      "times": 1
+      "expect_exit": 0,
+      "expect_stdout": "vllm-rust-client-smoke\n",
+      "expect_stderr": ""
     }
   ]
 }
