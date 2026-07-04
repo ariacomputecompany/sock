@@ -21,6 +21,9 @@
     "tests/explain.pass.fozzy.json",
     "tests/explain.scoped_prefill.fozzy.json",
     "tests/explain.replay_alignment.fozzy.json",
+    "tests/fuzz.cli_surface_matrix.fozzy.json",
+    "tests/explore.materialization_surface_matrix.fozzy.json",
+    "tests/memory.bundle_materialization.fozzy.json",
     "tests/build.prefill_scope.fozzy.json",
     "tests/build.prefill_warmup_scope.fozzy.json",
     "tests/build.decode_backend_scope.fozzy.json",
@@ -45,6 +48,12 @@
     "tests/replay.pass.fozzy.json",
     "tests/doctor.pass.fozzy.json",
     "tests/doctor.json.fozzy.json",
+    "tests/backend.decision.fozzy.json",
+    "tests/benchmark.matrix.fozzy.json",
+    "tests/canonical.identity.fozzy.json",
+    "tests/optimization.levels.fozzy.json",
+    "tests/replay.proof.fozzy.json",
+    "tests/vllm.compile_input_cleanup.fozzy.json",
     "tests/vllm.build_safe_native.fozzy.json"
   ],
   "contradiction_scenarios": [
@@ -52,6 +61,17 @@
     "tests/build.invalid_subset_scope.fozzy.json",
     "tests/verify.fail_closed.fozzy.json",
     "tests/replay.operator_gates.fozzy.json"
+  ],
+  "fuzz_targets": [
+    "tests/fuzz.cli_surface_matrix.fozzy.json",
+    "tests/build.decode_backend_scope.fozzy.json",
+    "tests/build.flashinfer_cache_scope.fozzy.json",
+    "tests/doctor.json.fozzy.json"
+  ],
+  "explore_targets": [
+    "tests/explore.materialization_surface_matrix.fozzy.json",
+    "tests/prepare.distributed_flashinfer_startup.fozzy.json",
+    "tests/measure.replay_safe_closure.fozzy.json"
   ],
   "host_trace_targets": [
     {
@@ -77,6 +97,16 @@
     {
       "scenario": "tests/replay.pass.fozzy.json",
       "trace_path": ".fozzy-traces/replay-pass.trace.fozzy"
+    }
+  ],
+  "memory_trace_targets": [
+    {
+      "scenario": "tests/memory.bundle_materialization.fozzy.json",
+      "trace_path": ".fozzy-traces/memory-bundle-materialization.trace.fozzy"
+    },
+    {
+      "scenario": "tests/benchmark.matrix.fozzy.json",
+      "trace_path": ".fozzy-traces/benchmark-matrix.trace.fozzy"
     }
   ]
 }

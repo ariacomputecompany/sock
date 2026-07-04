@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "memory-bundle-materialization",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nroot=$(mktemp -d)\nbundle_dir=\"$root/bundle\"\nmeasure_dir=\"$root/measure\"\nbenchmark_dir=\"$root/benchmark\"\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --region prefill_attention --readiness correctness >/dev/null\ncargo run --quiet --bin sock -- measure prefill-path --out \"$measure_dir\" >/dev/null\ncargo run --quiet --bin sock -- benchmark --out \"$benchmark_dir\" >/dev/null\npython3 - \"$bundle_dir/materialization_report.json\" \"$measure_dir/measurement_report.json\" \"$benchmark_dir/benchmark_matrix.json\" <<'PY'\nimport json, sys\nmaterialization = json.load(open(sys.argv[1]))\nmeasurement = json.load(open(sys.argv[2]))\nbenchmark = json.load(open(sys.argv[3]))\nassert materialization['executed_artifact_count'] >= 1\nassert materialization['reused_artifact_count'] >= 0\nassert len(materialization['nodes']) >= materialization['executed_artifact_count']\nassert materialization['waves']\nassert measurement['phase_timings']['cold_materialization_ms'] >= measurement['phase_timings']['warm_materialization_ms']\nassert measurement['cold_unique_artifact_bytes_delta'] >= 0\nassert measurement['warm_unique_artifact_bytes_delta'] >= 0\nassert benchmark['benchmark_program_version'] == 1\nassert benchmark['entries']\nassert benchmark['trace_references']\nassert benchmark['cold_unique_artifact_bytes_delta'] >= 0\nPY\nprintf 'memory-bundle-materialization\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "memory-bundle-materialization\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

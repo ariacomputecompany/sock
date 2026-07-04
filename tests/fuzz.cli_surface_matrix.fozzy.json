@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "fuzz-cli-surface-matrix",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nworkdir=$(mktemp -d)\nexplain_json=\"$workdir/explain.json\"\ndoctor_json=\"$workdir/doctor.json\"\nbackend_plan_json=\"$workdir/backend-plan.json\"\ncache_plan_json=\"$workdir/cache-plan.json\"\ncargo run --quiet --bin sock -- explain --format json > \"$explain_json\"\ncargo run --quiet --bin sock -- doctor --format json > \"$doctor_json\"\ncargo run --quiet --bin sock -- plan --format json --backend-family cuda-graphs --readiness performance > \"$backend_plan_json\"\ncargo run --quiet --bin sock -- plan --format json --cache-namespace flashinfer-autotune-cache --readiness correctness > \"$cache_plan_json\"\npython3 - \"$explain_json\" \"$doctor_json\" \"$backend_plan_json\" \"$cache_plan_json\" <<'PY'\nimport json, sys\nexplain = json.load(open(sys.argv[1]))\ndoctor = json.load(open(sys.argv[2]))\nbackend_plan = json.load(open(sys.argv[3]))\ncache_plan = json.load(open(sys.argv[4]))\nassert explain['plan']['structural_identity']['plan_identity']\nassert explain['verification']['status'] == 'Passed'\nassert explain['backend_decision']['entries']\nassert doctor['operating_system'] == 'Linux'\nassert doctor['accelerator_vendor'] == 'Nvidia'\nassert doctor['gpu_arches']\nbackend_regions = [region['name'] for region in backend_plan['compile_regions']]\nassert 'decode_attention' in backend_regions, backend_regions\nassert 'prefill_attention' not in backend_regions, backend_regions\ncache_regions = [region['name'] for region in cache_plan['compile_regions']]\nassert cache_regions == ['kv_cache_update'], cache_regions\nPY\nfor readiness in correctness early-serve; do\n  bundle_dir=\"$workdir/build-$readiness\"\n  build_out=$(cargo run --quiet --bin sock -- build --out \"$bundle_dir\" --region prefill_attention --readiness \"$readiness\")\n  printf '%s' \"$build_out\" | grep -q 'bundle='\n  grep -q '\"requested_regions\":\\[\"prefill_attention\"\\]' \"$bundle_dir/materialization_report.json\"\n  grep -q '\"scope_name\":\"prefill_attention\"' \"$bundle_dir/vllm_entrypoints.json\"\ndone\nif cargo run --quiet --bin sock -- build --out \"$workdir/invalid-decode\" --backend-family cuda-graphs --readiness performance >\"$workdir/invalid-decode.out\" 2>\"$workdir/invalid-decode.err\"; then\n  echo 'invalid decode-only build unexpectedly succeeded' >&2\n  exit 1\nfi\ngrep -q 'compile-region:decode_attention' \"$workdir/invalid-decode.err\"\nif cargo run --quiet --bin sock -- build --out \"$workdir/invalid-cache\" --cache-namespace flashinfer-autotune-cache --readiness correctness >\"$workdir/invalid-cache.out\" 2>\"$workdir/invalid-cache.err\"; then\n  echo 'invalid cache-only build unexpectedly succeeded' >&2\n  exit 1\nfi\ngrep -q 'compile-region:kv_cache_update' \"$workdir/invalid-cache.err\"\nprintf 'fuzz-cli-surface-matrix\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "fuzz-cli-surface-matrix\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

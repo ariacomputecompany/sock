@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "explore-materialization-surface-matrix",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nroot=$(mktemp -d)\nprepare_prefill=\"$root/prepare-prefill\"\nprepare_decode=\"$root/prepare-decode\"\nprepare_distributed=\"$root/prepare-distributed\"\nprepare_replay_safe=\"$root/prepare-replay-safe\"\nmeasure_prefill=\"$root/measure-prefill\"\nmeasure_distributed=\"$root/measure-distributed\"\nmeasure_replay_safe=\"$root/measure-replay-safe\"\ncargo run --quiet --bin sock -- prepare prefill-path --out \"$prepare_prefill\" >/dev/null\ncargo run --quiet --bin sock -- prepare decode-path --out \"$prepare_decode\" >/dev/null\ncargo run --quiet --bin sock -- prepare distributed-flashinfer-startup --out \"$prepare_distributed\" >/dev/null\ncargo run --quiet --bin sock -- prepare replay-safe-closure --out \"$prepare_replay_safe\" >/dev/null\ncargo run --quiet --bin sock -- measure prefill-path --out \"$measure_prefill\" >/dev/null\ncargo run --quiet --bin sock -- measure distributed-flashinfer-startup --out \"$measure_distributed\" >/dev/null\ncargo run --quiet --bin sock -- measure replay-safe-closure --out \"$measure_replay_safe\" >/dev/null\npython3 - \"$prepare_prefill/buildplan.json\" \"$prepare_decode/buildplan.json\" \"$prepare_distributed/materialization_report.json\" \"$prepare_replay_safe/materialization_report.json\" \"$measure_prefill/measurement_report.json\" \"$measure_distributed/measurement_report.json\" \"$measure_replay_safe/measurement_report.json\" <<'PY'\nimport json, sys\nprepare_prefill = json.load(open(sys.argv[1]))\nprepare_decode = json.load(open(sys.argv[2]))\nprepare_distributed = json.load(open(sys.argv[3]))\nprepare_replay_safe = json.load(open(sys.argv[4]))\nmeasure_prefill = json.load(open(sys.argv[5]))\nmeasure_distributed = json.load(open(sys.argv[6]))\nmeasure_replay_safe = json.load(open(sys.argv[7]))\nprefill_regions = [region['name'] for region in prepare_prefill['compile_regions']]\ndecode_regions = [region['name'] for region in prepare_decode['compile_regions']]\nassert prefill_regions == ['prefill_attention'], prefill_regions\nassert decode_regions == ['decode_attention'], decode_regions\nassert prepare_distributed['closure_outcome'] == 'full_compile_closure'\nassert prepare_replay_safe['verify_replay_compile_free'] is True\nfor report, intent in [\n    (measure_prefill, 'prefill_path'),\n    (measure_distributed, 'distributed_flashinfer_startup'),\n    (measure_replay_safe, 'replay_safe_closure'),\n]:\n    assert report['intent'] == intent, report['intent']\n    assert report['closure_outcome'] == 'full_compile_closure', report['closure_outcome']\n    assert report['phase_timings']['cold_materialization_ms'] >= report['phase_timings']['warm_materialization_ms']\n    assert report['cold_unique_artifact_bytes_delta'] >= 0\n    assert report['warm_unique_artifact_bytes_delta'] >= 0\nPY\nprintf 'explore-materialization-surface-matrix\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "explore-materialization-surface-matrix\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}
