@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "vllm-openai-api-basic",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\n[ -f vllm/vllm/entrypoints/openai/api_server.py ]\n[ -f vllm/tests/entrypoints/openai/chat_completion/test_chat.py ]\n[ -f vllm/tests/entrypoints/openai/completion/test_completion.py ]\nrg -n '/v1/models|/v1/completions|/v1/chat/completions' vllm/rust/src/server/src/routes.rs >/dev/null\nprintf 'vllm-openai-api-basic\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "vllm-openai-api-basic\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

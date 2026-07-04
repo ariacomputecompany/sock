@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "vllm-transport-partition-events",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\n[ -f vllm/rust/src/engine-core-client/src/transport.rs ]\n[ -f vllm/tests/v1/kv_connector/nixl_integration/test_edge_cases.py ]\nrg -n 'START_DP_WAVE|output frame|expected 2 frames|decode output message' vllm/rust/src/engine-core-client/src/transport.rs >/dev/null\nrg -n 'partition|edge case' vllm/tests/v1/kv_connector/nixl_integration/test_edge_cases.py >/dev/null\nprintf 'vllm-transport-partition-events\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "vllm-transport-partition-events\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

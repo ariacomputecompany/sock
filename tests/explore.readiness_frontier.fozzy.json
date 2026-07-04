@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "explore-readiness-frontier",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\ncorrect_dir=$(mktemp -d)\nearly_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$correct_dir\" --region prefill_attention --readiness correctness >/dev/null\ncargo run --quiet --bin sock -- build --out \"$early_dir\" --region prefill_attention --readiness early-serve >/dev/null\npython3 - \"$correct_dir/materialization_report.json\" \"$early_dir/materialization_report.json\" <<'PY'\nimport json, sys\ncorrect = json.load(open(sys.argv[1]))\nearly = json.load(open(sys.argv[2]))\nassert correct['readiness']['requested_readiness'] == 'correctness'\nassert early['readiness']['requested_readiness'] == 'early_serve'\nassert correct['readiness']['blocking_warmups_complete'] is True\nassert early['readiness']['achieved_readiness'] == 'early_serve'\nPY\nprintf 'explore-readiness-frontier\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "explore-readiness-frontier\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

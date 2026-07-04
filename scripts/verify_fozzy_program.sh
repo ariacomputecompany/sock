@@ -30,6 +30,7 @@ for key in (
     "contradiction_scenarios",
     "fuzz_targets",
     "explore_targets",
+    "scenario_run_targets",
 ):
     for scenario in manifest.get(key, []):
         if scenario not in seen:
@@ -67,6 +68,9 @@ for scenario in manifest["contradiction_scenarios"]:
     ])
 
 run(["fozzy", "test", "--det", "--strict-verify", *manifest["deterministic_scenarios"], "--json"])
+
+for scenario in manifest.get("scenario_run_targets", []):
+    run(["fozzy", "run", scenario, "--det", "--json"])
 
 for scenario in manifest.get("fuzz_targets", []):
     run(["fozzy", "fuzz", scenario, "--json"])

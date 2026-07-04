@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "fuzz-cli-scope-matrix",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nfor args in \\\n  '--region prefill_attention --readiness correctness' \\\n  '--backend-family cuda-graphs --readiness performance' \\\n  '--cache-namespace flashinfer-autotune-cache --readiness correctness'\ndo\n  plan_json=$(mktemp)\n  cargo run --quiet --bin sock -- plan --format json $args > \"$plan_json\"\n  python3 - \"$plan_json\" <<'PY'\nimport json, sys\nobj = json.load(open(sys.argv[1]))\nassert obj['structural_identity']['plan_identity']\nassert obj['compile_regions']\nPY\ndone\nprintf 'fuzz-cli-scope-matrix\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "fuzz-cli-scope-matrix\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "vllm-serve-startup-smoke",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\n[ -f vllm/vllm/benchmarks/serve.py ]\n[ -f vllm/vllm/entrypoints/cli/serve.py ]\n[ -f vllm/tests/entrypoints/openai/chat_completion/test_serving_chat.py ]\nrg -n 'run_dp_supervisor|serve' vllm/vllm/entrypoints/cli/serve.py >/dev/null\nprintf 'vllm-serve-startup-smoke\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "vllm-serve-startup-smoke\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

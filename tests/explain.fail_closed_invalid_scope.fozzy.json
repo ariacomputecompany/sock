@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "explain-fail-closed-invalid-scope",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbackend_json=$(mktemp)\ncache_json=$(mktemp)\ncargo run --quiet --bin sock -- explain --format json --backend-family cuda-graphs --readiness performance > \"$backend_json\"\ncargo run --quiet --bin sock -- explain --format json --cache-namespace flashinfer-autotune-cache --readiness correctness > \"$cache_json\"\npython3 - \"$backend_json\" \"$cache_json\" <<'PY'\nimport json, sys\nbackend = json.load(open(sys.argv[1]))\ncache = json.load(open(sys.argv[2]))\nassert [r['name'] for r in backend['plan']['compile_regions']] == ['decode_attention']\nassert [r['name'] for r in cache['plan']['compile_regions']] == ['kv_cache_update']\nassert backend['verification']['status'] == 'Passed'\nassert cache['verification']['status'] == 'Passed'\nassert any(d['code'] == 'residual_runtime_compile_risk' for d in backend['diagnostics']['diagnostics'])\nassert any(d['code'] == 'residual_runtime_compile_risk' for d in cache['diagnostics']['diagnostics'])\nPY\nprintf 'explain-invalid-scope\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "explain-invalid-scope\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "vllm-rust-route-contracts",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\n[ -f vllm/rust/src/server/src/routes.rs ]\n[ -f vllm/rust/src/server/src/routes/http_client_tests.rs ]\nrg -n '/health|/v1/models|/v1/completions|/v1/chat/completions|/tokenize|/detokenize' vllm/rust/src/server/src/routes.rs >/dev/null\nprintf 'vllm-rust-route-contracts\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "vllm-rust-route-contracts\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

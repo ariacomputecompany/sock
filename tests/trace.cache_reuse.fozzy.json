@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "trace-cache-reuse",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\ntrace_dir=$(mktemp -d)\ntrace_path=\"$trace_dir/cache-reuse.trace.fozzy\"\nfozzy run tests/build.reuse_decision.fozzy.json --det --record \"$trace_path\" --json >/dev/null\nfozzy trace verify \"$trace_path\" --strict --json >/dev/null\nfozzy replay \"$trace_path\" --json >/dev/null\nfozzy ci \"$trace_path\" --strict --json >/dev/null\nprintf 'trace-cache-reuse\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "trace-cache-reuse\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

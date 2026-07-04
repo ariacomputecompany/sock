@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "vllm-docker-build-args",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nrg -n 'ARG CUDA_VERSION|ARG VLLM_USE_PRECOMPILED|ENV VLLM_TARGET_DEVICE|FLASHINFER_VERSION' vllm/docker/Dockerfile >/dev/null\nrg -n 'ENV VLLM_TARGET_DEVICE=rocm' vllm/docker/Dockerfile.rocm >/dev/null\nrg -n 'VLLM_TARGET_DEVICE=cpu python3 setup.py bdist_wheel' vllm/docker/Dockerfile.cpu >/dev/null\nprintf 'vllm-docker-build-args\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "vllm-docker-build-args\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "vllm-rust-client-retry-faults",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nrg -n 'retryable request-level internal error occurred|fails fast on the first transport error' vllm/rust/src/llm/src/output.rs vllm/rust/src/engine-core-client/src/client.rs >/dev/null\nprintf 'vllm-rust-client-retry-faults\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "vllm-rust-client-retry-faults\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

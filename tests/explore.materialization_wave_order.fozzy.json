@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "explore-materialization-wave-order",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nbundle_dir=$(mktemp -d)\ncargo run --quiet --bin sock -- build --out \"$bundle_dir\" --region prefill_attention --readiness correctness >/dev/null\npython3 - \"$bundle_dir/materialization_report.json\" <<'PY'\nimport json, sys\nobj = json.load(open(sys.argv[1]))\nwave_ids = [wave['wave_index'] for wave in obj['waves']]\nassert wave_ids == sorted(wave_ids), wave_ids\nassert all(wave['node_names'] for wave in obj['waves'])\nassert obj['nodes']\nPY\nprintf 'explore-materialization-wave-order\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "explore-materialization-wave-order\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

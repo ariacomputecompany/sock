@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "vllm-serve-invalid-config",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\n[ -f vllm/tests/test_force_first_config.py ]\n[ -f vllm/tests/entrypoints/openai/chat_completion/test_chat_error.py ]\nrg -n 'invalid config|cached index is reused|Malformed direct structured_outputs structural tags should be rejected' vllm/tests/test_force_first_config.py vllm/tests/entrypoints/openai/chat_completion/test_chat_error.py >/dev/null\nprintf 'vllm-serve-invalid-config\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "vllm-serve-invalid-config\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

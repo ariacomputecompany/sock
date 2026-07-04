@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "vllm-setup-profile-matrix",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nrg -n 'BUILD_PROFILE = build_profiles.resolve_build_profile' vllm/setup.py >/dev/null\nrg -n 'test_default_profile_is_full|test_minimal_dev_profile_disables_optional_cuda_packs|test_targeted_profiles_select_only_requested_backend_targets|test_unknown_build_profile_raises' vllm/tests/test_build_profiles.py >/dev/null\nrg -n 'supported_build_profiles|resolve_build_profile|profile_family' vllm/vllm/build_profiles.py >/dev/null\nprintf 'vllm-setup-profile-matrix\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "vllm-setup-profile-matrix\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

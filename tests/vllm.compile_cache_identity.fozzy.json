@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "vllm-compile-cache-identity",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nrg -n 'compile cache|cache key factors|disable compile cache|fresh_cache' vllm/tests/compile vllm/vllm/v1/spec_decode/draft_model.py >/dev/null\nrg -n 'torch_compile' vllm/docs/design/torch_compile.md >/dev/null\nprintf 'vllm-compile-cache-identity\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "vllm-compile-cache-identity\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "name": "shrink-cache-invalidation-regression",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\ntrace_dir=$(mktemp -d)\ntrace_path=\"$trace_dir/cache-invalidation.trace.fozzy\"\nfozzy run tests/build.cache_invalidation.fozzy.json --det --record \"$trace_path\" --json >/dev/null\nfozzy shrink \"$trace_path\" --json | jq -e '.summary.identity.tracePath | endswith(\".min.fozzy\")' >/dev/null\nprintf 'shrink-cache-invalidation-regression\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "shrink-cache-invalidation-regression\n",
+      "stderr": "",
+      "times": 1
+    }
+  ]
+}
