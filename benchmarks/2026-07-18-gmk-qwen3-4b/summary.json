@@ -26,6 +26,28 @@
     "warmup_runs": 1,
     "measured_runs": 5
   },
+  "expanded_suite": {
+    "summary_artifact": "benchmarks/2026-07-18-gmk-qwen3-4b/suite-summary.json",
+    "raw_sock_artifact": "tmp/bench-suite-sock-fixed-qwen3-4b.json",
+    "raw_upstream_artifact": "tmp/bench-suite-upstream-rocm-wheel-qwen3-4b.json",
+    "script": "scripts/sock_endpoint_bench_suite.py",
+    "cases": [
+      "tiny_fact_64",
+      "short_codegen_128",
+      "medium_architecture_256",
+      "long_cosmology_512",
+      "long_context_summary_256",
+      "extended_generation_768"
+    ],
+    "concurrency_levels": [
+      1,
+      2,
+      4
+    ],
+    "warmup_runs_per_case_concurrency": 1,
+    "measured_runs_per_case_concurrency": 2,
+    "conclusion": "sock and patched official upstream ROCm are statistical parity for this Qwen3-4B eager endpoint workload"
+  },
   "sock": {
     "runtime": {
       "vllm": "0.25.1",
@@ -42,6 +64,16 @@
       "gpu_kv_cache_tokens": 496672,
       "max_concurrency_at_1024_tokens": 485.03,
       "attention_backend": "TRITON_ATTN"
+    },
+    "rocm_backend_selection_fix": {
+      "issue": "ROCm custom attention rejected block_size=None during backend probing even though the runtime block size is materialized later.",
+      "fix": "Allow unmaterialized block_size during ROCm eligibility checks while still rejecting concrete non-16 block sizes on gfx1x.",
+      "validated_by": "vllm/tests/rocm/test_custom_paged_attention.py::test_rocm_custom_paged_attention_accepts_unmaterialized_block_size"
+    },
+    "fixed_startup": {
+      "status": "healthy",
+      "ready_after_s": 56,
+      "attention_backend": "ROCM_ATTN"
     },
     "fresh_restart_throughput": {
       "completion_tok_per_s": {
@@ -104,9 +136,84 @@
       "error_excerpt": "ImportError: cannot import name 'direct_register_custom_op' from partially initialized module 'vllm.utils.torch_utils'"
     }
   },
+  "upstream_rocm_wheel": {
+    "runtime": {
+      "source": "python -m pip install 'vllm==0.25.1+rocm723' --extra-index-url https://wheels.vllm.ai/rocm/752a3a504485790a2e8491cacbb35c137339ad34/rocm723",
+      "vllm": "0.25.1+rocm723",
+      "torch": "2.11.0+gitd0c8b1f",
+      "torch_version_hip": "7.2.53211",
+      "cuda_available": true,
+      "device_count": 1
+    },
+    "required_local_patches": [
+      {
+        "file": "vllm/platforms/interface.py",
+        "reason": "Avoid import-time distributed-rank lookup from warning_once while torch_utils is initializing.",
+        "change": "Scope WSL pin-memory warning_once to process."
+      },
+      {
+        "file": "vllm/platforms/__init__.py",
+        "reason": "amdsmi fails under WSL with AMDSMI_STATUS_DRIVER_NOT_LOADED even though PyTorch HIP can see the GPU.",
+        "change": "When VLLM_TARGET_DEVICE=rocm, activate ROCm via PyTorch HIP fallback if a visible HIP device exists."
+      },
+      {
+        "file": "vllm/platforms/rocm.py",
+        "reason": "Avoid a second import-time distributed-rank lookup while resolving GCN arch after amdsmi failure.",
+        "change": "Use logger.warning for the torch.cuda GCN arch fallback warning."
+      }
+    ],
+    "startup": {
+      "status": "healthy",
+      "ready_after_s": 52,
+      "checkpoint_size_gib": 7.49,
+      "model_memory_gib": 7.56,
+      "available_kv_cache_memory_gib": 68.21,
+      "gpu_kv_cache_tokens": 496672,
+      "max_concurrency_at_1024_tokens": 485.03,
+      "attention_backend": "ROCM_ATTN"
+    },
+    "throughput": {
+      "completion_tok_per_s": {
+        "min": 24.9711,
+        "mean": 25.2333,
+        "median": 25.2652,
+        "max": 25.5303,
+        "p90": 25.5303
+      },
+      "total_tok_per_s": {
+        "min": 27.2634,
+        "mean": 27.5497,
+        "median": 27.5845,
+        "max": 27.8739,
+        "p90": 27.8739
+      },
+      "elapsed_s": {
+        "min": 20.0546,
+        "mean": 20.2917,
+        "median": 20.265,
+        "max": 20.5037,
+        "p90": 20.5037
+      },
+      "completion_tokens": {
+        "min": 512,
+        "mean": 512,
+        "median": 512,
+        "max": 512,
+        "p90": 512
+      },
+      "total_tokens": {
+        "min": 559,
+        "mean": 559,
+        "median": 559,
+        "max": 559,
+        "p90": 559
+      }
+    }
+  },
   "claim_status": {
     "cleaner_dx_to_runnable_inference": "proven_on_this_machine",
-    "shorter_time_to_runnable_endpoint": "proven_against_pypi_vanilla_on_this_machine",
-    "higher_throughput_than_vanilla": "blocked_until_vanilla_rocm_baseline_runs"
+    "shorter_time_to_runnable_endpoint": "proven_against_pypi_vanilla_and_slightly_faster_than_patched_upstream_rocm",
+    "higher_throughput_than_vanilla": "not_proven_on_qwen3_4b_eager_endpoint_workload_expanded_suite_shows_patched_upstream_rocm_parity",
+    "least_dependency_rocm_dx": "strongly_supported_official_upstream_rocm_requires_manual_index_env_and_local_wsl_amdsmi_patches"
   }
 }

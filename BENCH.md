@@ -10,9 +10,9 @@ summaries should be promoted into `benchmarks/<run-id>/summary.json`.
 
 | Claim | Current evidence | Status |
 | --- | --- | --- |
-| Cleaner DX to runnable inference | `sock serve` reaches a live OpenAI-compatible endpoint on the AMD WSL/ROCm machine with the repo-local runtime defaults. Upstream `pip install vllm && vllm serve ...` exits before serving. | Proven on this machine |
-| Shorter time to runnable inference | Fresh `sock serve` restart reached `/health` in 48 seconds for Qwen3-4B at `max_model_len=1024`. Vanilla PyPI vLLM never reached `/health`; it exited in about 2 seconds at import time. | Proven for runnable endpoint; clean install/build timing still needs a timed cold setup run |
-| Higher throughput than vanilla | sock produced stable endpoint throughput around 25.2 completion tok/s. Vanilla PyPI vLLM did not run on the ROCm target, so throughput comparison is blocked until we have a true ROCm-capable upstream baseline. | Sock measured; vanilla blocked |
+| Cleaner DX to runnable inference | `sock serve` reaches a live OpenAI-compatible endpoint on the AMD WSL/ROCm machine with the repo-local runtime defaults. PyPI vanilla installs a CUDA stack and fails. Official upstream ROCm wheel needs explicit ROCm/WSL env plus three local import/detection patches before it serves. | Proven on this machine |
+| Shorter time to runnable inference | Fresh `sock serve` restart reached `/health` in 48 seconds. Patched official upstream ROCm wheel reached `/health` in 52 seconds after manual install/env/patching. PyPI vanilla never reached `/health`. | Proven for runnable endpoint on this workload |
+| Higher throughput than vanilla | The expanded 6-case suite over concurrency 1, 2, and 4 shows sock and patched official upstream ROCm at statistical parity for this Qwen3-4B eager endpoint workload. | Not proven here; measured parity |
 
 ### Hardware And Runtime
 
@@ -26,6 +26,7 @@ summaries should be promoted into `benchmarks/<run-id>/summary.json`.
 | Python ABI | `cp312` |
 | sock runtime | vendored runtime, `vllm 0.25.1`, `torch 2.11.0+gitd0c8b1f`, HIP `7.2.53211`, `device_count=1` |
 | vanilla runtime attempted | PyPI `vllm 0.25.1`, `torch 2.11.0`, CUDA `13.0`, HIP `null`, `device_count=0` |
+| upstream ROCm runtime attempted | Official ROCm wheel `vllm 0.25.1+rocm723`, `torch 2.11.0+gitd0c8b1f`, HIP `7.2.53211`, `device_count=1` |
 
 ### Model And Server Settings
 
@@ -39,7 +40,8 @@ summaries should be promoted into `benchmarks/<run-id>/summary.json`.
 | `enforce_eager` | `true` |
 | `max_tokens` | `512` |
 | `temperature` | `0.2` |
-| Benchmark shape | 1 warmup request + 5 measured requests |
+| Initial benchmark shape | 1 warmup request + 5 measured requests |
+| Expanded suite shape | 6 prompt classes, 1 warmup batch per case/concurrency, 2 measured batches per case/concurrency, concurrency 1/2/4 |
 
 ### sock Results
 
@@ -67,6 +69,13 @@ Startup result:
 | GPU KV cache size | 496,672 tokens |
 | Max concurrency at 1024 tokens | 485.03x |
 | Attention backend selected | `TRITON_ATTN` after `ROCM_ATTN` and `TURBOQUANT` were rejected |
+
+This initial baseline exposed a production backend-selection bug: ROCm custom
+attention rejected `block_size=None` during backend probing even though the
+runtime block size is materialized later. The fix allows unmaterialized
+`block_size` during eligibility checks while still rejecting concrete non-16
+block sizes on gfx1x. After the fix, `sock serve` naturally selects
+`ROCM_ATTN`.
 
 Endpoint throughput after fresh restart:
 
@@ -122,6 +131,124 @@ Failure excerpt:
 ImportError: cannot import name 'direct_register_custom_op' from partially initialized module 'vllm.utils.torch_utils'
 ```
 
+### Upstream ROCm Wheel Results
+
+Official upstream ROCm setup attempted:
+
+```bash
+python3 -m venv /home/deepsaint/work/bench-upstream-vllm-rocm-wheel/.venv
+source /home/deepsaint/work/bench-upstream-vllm-rocm-wheel/.venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install 'vllm==0.25.1+rocm723' \
+  --extra-index-url https://wheels.vllm.ai/rocm/752a3a504485790a2e8491cacbb35c137339ad34/rocm723
+```
+
+The official ROCm wheel installs the correct GPU stack and reports
+`torch.version.hip="7.2.53211"`, `torch.cuda.is_available()=true`, and
+`device_count=1`. It still did not serve out of the box on WSL because amdsmi
+fails with `AMDSMI_STATUS_DRIVER_NOT_LOADED`.
+
+Local patches required before upstream would serve:
+
+| File | Patch |
+| --- | --- |
+| `vllm/platforms/interface.py` | Scope the WSL pin-memory `warning_once` to `process` so it does not import distributed rank state during `torch_utils` initialization. |
+| `vllm/platforms/__init__.py` | When `VLLM_TARGET_DEVICE=rocm` and amdsmi fails, activate ROCm if PyTorch HIP is present and sees a device. |
+| `vllm/platforms/rocm.py` | Use plain `logger.warning` for the amdsmi GCN arch fallback to avoid another import-time distributed-state cycle. |
+
+Patched upstream ROCm command:
+
+```bash
+VLLM_TARGET_DEVICE=rocm \
+VLLM_USE_V2_MODEL_RUNNER=0 \
+VLLM_WSL2_ENABLE_PIN_MEMORY=0 \
+VLLM_WORKER_MULTIPROC_METHOD=spawn \
+PYTHONNOUSERSITE=1 \
+PYTHONHASHSEED=0 \
+TOKENIZERS_PARALLELISM=false \
+vllm serve Qwen/Qwen3-4B \
+  --host 127.0.0.1 \
+  --port 8001 \
+  --max-model-len 1024 \
+  --gpu-memory-utilization 0.8 \
+  --enforce-eager \
+  --disable-log-stats
+```
+
+Patched upstream startup result:
+
+| Metric | Value |
+| --- | --- |
+| Health status | healthy |
+| Time to `/health` | 52 seconds |
+| Checkpoint size | 7.49 GiB |
+| Model memory | 7.56 GiB |
+| Available KV cache memory | 68.21 GiB |
+| GPU KV cache size | 496,672 tokens |
+| Max concurrency at 1024 tokens | 485.03x |
+| Attention backend selected | `ROCM_ATTN` after `TURBOQUANT` was rejected |
+
+Patched upstream endpoint throughput:
+
+| Metric | Min | Mean | Median | Max | P90 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Completion tok/s | 24.9711 | 25.2333 | 25.2652 | 25.5303 | 25.5303 |
+| Total tok/s | 27.2634 | 27.5497 | 27.5845 | 27.8739 | 27.8739 |
+| Elapsed seconds | 20.0546 | 20.2917 | 20.2650 | 20.5037 | 20.5037 |
+| Completion tokens | 512 | 512 | 512 | 512 | 512 |
+| Total tokens | 559 | 559 | 559 | 559 | 559 |
+
+Comparison:
+
+| Runtime | Time to health | Mean completion tok/s | Mean total tok/s | Notes |
+| --- | ---: | ---: | ---: | --- |
+| sock vendored runtime | 48s | 25.2355 | 27.5520 | Runs via `sock serve` with repo-local runtime defaults |
+| patched upstream ROCm wheel | 52s | 25.2333 | 27.5497 | Needs manual ROCm wheel install, explicit env, and three WSL/amdsmi patches |
+| PyPI vanilla | n/a | n/a | n/a | Installs CUDA stack and fails before serving |
+
+### Expanded Suite Results
+
+The expanded suite uses `scripts/sock_endpoint_bench_suite.py` against both
+OpenAI-compatible endpoints. It runs six prompt classes from tiny factual output
+through long-form generation and long-context summarization, with concurrency
+levels 1, 2, and 4. Each case/concurrency pair uses one warmup batch and two
+measured batches.
+
+Post-fix startup comparison:
+
+| Runtime | Time to health | Attention backend | Notes |
+| --- | ---: | --- | --- |
+| sock vendored runtime | 56s | `ROCM_ATTN` | Default backend selection after the `block_size=None` fix |
+| patched upstream ROCm wheel | 52s | `ROCM_ATTN` | Manual ROCm wheel/env/patch path |
+
+Mean completion tok/s by case and concurrency:
+
+| Case | Concurrency | sock | patched upstream | sock delta |
+| --- | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 25.2527 | 25.2995 | -0.185% |
+| `tiny_fact_64` | 2 | 46.8422 | 44.2165 | +5.938% |
+| `tiny_fact_64` | 4 | 93.7006 | 93.9555 | -0.271% |
+| `short_codegen_128` | 1 | 25.2840 | 25.0988 | +0.738% |
+| `short_codegen_128` | 2 | 49.5227 | 49.4282 | +0.191% |
+| `short_codegen_128` | 4 | 95.1425 | 95.0075 | +0.142% |
+| `medium_architecture_256` | 1 | 25.1850 | 25.5831 | -1.556% |
+| `medium_architecture_256` | 2 | 50.5021 | 49.8364 | +1.336% |
+| `medium_architecture_256` | 4 | 94.7088 | 94.2985 | +0.435% |
+| `long_cosmology_512` | 1 | 25.1013 | 25.0967 | +0.018% |
+| `long_cosmology_512` | 2 | 49.7113 | 49.6695 | +0.084% |
+| `long_cosmology_512` | 4 | 92.6525 | 93.3443 | -0.741% |
+| `long_context_summary_256` | 1 | 25.1928 | 24.5416 | +2.653% |
+| `long_context_summary_256` | 2 | 48.0964 | 48.0434 | +0.110% |
+| `long_context_summary_256` | 4 | 90.5848 | 91.6758 | -1.190% |
+| `extended_generation_768` | 1 | 24.9289 | 25.1307 | -0.803% |
+| `extended_generation_768` | 2 | 49.1037 | 48.8041 | +0.614% |
+| `extended_generation_768` | 4 | 91.7100 | 91.9298 | -0.239% |
+
+Expanded-suite conclusion: throughput is effectively parity for this specific
+eager Qwen3-4B shape. sock wins the product/DX thesis here because it owns the
+least-dependency ROCm path, the backend-selection policy, and the production fix
+that made the default ROCm path choose `ROCM_ATTN` cleanly.
+
 ### Raw Artifacts
 
 | Artifact | Purpose |
@@ -133,6 +260,12 @@ ImportError: cannot import name 'direct_register_custom_op' from partially initi
 | `tmp/bench-sock-qwen3-4b.json` | Full earlier warm-server sock endpoint benchmark responses |
 | `tmp/bench-vanilla-naive-serve.log` | Naive vanilla failure log |
 | `tmp/bench-vanilla-rocm-env-serve.log` | Vanilla with ROCm env hints failure log |
+| `tmp/bench-upstream-rocm-wheel-patched-env2-serve.log` | Patched official upstream ROCm wheel serve log |
+| `tmp/bench-upstream-rocm-wheel-qwen3-4b.json` | Full patched upstream ROCm endpoint benchmark responses |
+| `tmp/bench-suite-upstream-rocm-wheel-qwen3-4b.json` | Full expanded-suite upstream ROCm responses |
+| `tmp/bench-suite-sock-fixed-qwen3-4b.json` | Full expanded-suite fixed sock responses |
+| `benchmarks/2026-07-18-gmk-qwen3-4b/suite-summary.json` | Tracked compact expanded-suite comparison |
+| `benchmarks/2026-07-18-gmk-qwen3-4b/upstream-rocm-wsl.patch` | Tracked upstream patch needed to make official ROCm wheel serve under WSL |
 
 ### Sitrep
 
@@ -140,10 +273,21 @@ sock has a real production endpoint baseline on the GMK AMD machine:
 `Qwen/Qwen3-4B` serves reliably at `max_model_len=1024` and produces about
 25 completion tok/s for a 512-token long-form prompt.
 
-The DX claim is already strong: the sock path reaches live inference, while the
-straight vanilla PyPI path downloads a CUDA-oriented stack, sees no GPU, and
-fails before serving. The throughput-over-vanilla claim is not yet measurable
-against PyPI vanilla because vanilla is not runnable here. To prove that claim
-cleanly, the next benchmark target should be an upstream-source ROCm build with
-the same ROCm PyTorch class as sock, then run the same `scripts/sock_endpoint_bench.py`
-matrix against both endpoints.
+The DX claim is strong: the sock path reaches live inference, while the straight
+vanilla PyPI path downloads a CUDA-oriented stack, sees no GPU, and fails before
+serving. The official upstream ROCm wheel can be made runnable on this WSL AMD
+machine, but only after manual wheel-index selection, explicit ROCm/WSL runtime
+environment, and three local patches that sock already carries.
+
+The throughput claim is not proven on this Qwen3-4B eager endpoint workload.
+Once upstream is repaired enough to run, it reaches statistical parity with sock
+across the expanded prompt/concurrency suite. The engineering win from this pass
+is stronger than a narrow tok/s headline: the robust benchmark found a real
+default ROCm backend-selection bug, sock now selects `ROCM_ATTN` cleanly, and the
+upstream comparison requires manual dependency/index/env/patch work that sock is
+designed to erase.
+
+The next performance proof should target modes where sock intentionally differs
+from upstream, such as broader context, compilation/cache warmup behavior,
+non-eager paths, larger batch curves, and backend-selection policy under mixed
+model shapes.

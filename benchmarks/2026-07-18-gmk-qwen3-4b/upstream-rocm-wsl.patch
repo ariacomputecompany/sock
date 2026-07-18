@@ -1,0 +1,60 @@
+diff --git a/vllm/platforms/interface.py b/vllm/platforms/interface.py
+--- a/vllm/platforms/interface.py
++++ b/vllm/platforms/interface.py
+@@
+             logger.warning_once(
+                 "Using 'pin_memory=False' as WSL is detected. "
+-                "This may slow down performance."
++                "This may slow down performance.",
++                scope="process",
+             )
+diff --git a/vllm/platforms/__init__.py b/vllm/platforms/__init__.py
+--- a/vllm/platforms/__init__.py
++++ b/vllm/platforms/__init__.py
+@@
+ logger = logging.getLogger(__name__)
++_rocm_torch_fallback_warned = False
+@@
+ def rocm_platform_plugin() -> str | None:
++    global _rocm_torch_fallback_warned
+     is_rocm = False
+     logger.debug("Checking if ROCm platform is available.")
+@@
+     except Exception as e:
+         logger.debug("ROCm platform is not available because: %s", str(e))
++        if envs.VLLM_TARGET_DEVICE == "rocm":
++            try:
++                import torch
++
++                has_hip_runtime = getattr(torch.version, "hip", None) is not None
++                has_visible_device = torch.cuda.device_count() > 0
++                if has_hip_runtime and has_visible_device:
++                    is_rocm = True
++                    message = (
++                        "ROCm target was requested explicitly and amdsmi failed; "
++                        "activating ROCm platform via PyTorch HIP fallback."
++                    )
++                    if _rocm_torch_fallback_warned:
++                        logger.debug(message)
++                    else:
++                        logger.warning(message)
++                        _rocm_torch_fallback_warned = True
++            except Exception as fallback_error:
++                logger.debug(
++                    "ROCm PyTorch HIP fallback is not available because: %s",
++                    str(fallback_error),
++                )
+    return "vllm.platforms.rocm.RocmPlatform" if is_rocm else None
+diff --git a/vllm/platforms/rocm.py b/vllm/platforms/rocm.py
+--- a/vllm/platforms/rocm.py
++++ b/vllm/platforms/rocm.py
+@@
+     try:
+         return _query_gcn_arch_from_amdsmi()
+     except Exception as e:
+         logger.debug("Failed to get GCN arch via amdsmi: %s", e)
+-        logger.warning_once(
++        logger.warning(
+             "Failed to get GCN arch via amdsmi, falling back to torch.cuda. "
+             "This will initialize CUDA and may cause "
+             "issues if CUDA_VISIBLE_DEVICES is not set yet."

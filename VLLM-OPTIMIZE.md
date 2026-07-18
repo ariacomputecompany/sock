@@ -28,9 +28,9 @@ North stars:
 
 Scope:
 
-- Vendored `vllm` source in `/Users/deepsaint/Desktop/sock/vllm`.
-- SOC integration and planning surface in `/Users/deepsaint/Desktop/sock/engine`.
-- tinygrad-inspired compiler/runtime simplification ideas from `/Users/deepsaint/Desktop/sock/TINYGRADREF.md`.
+- Vendored `vllm` source in `vllm/`.
+- SOC integration and planning surface in `engine/`.
+- tinygrad-inspired compiler/runtime simplification ideas from `TINYGRADREF.md`.
 
 Important grounding signals from the current tree:
 
@@ -184,7 +184,7 @@ They should be executed according to the ranked lane order above, not by raw sec
 
 ## 1. Canonical Compile Identity
 
-- [ ] Align this work with the tinygrad-inspired structural interning guidance in `/Users/deepsaint/Desktop/sock/TINYGRADREF.md`.
+- [ ] Align this work with the tinygrad-inspired structural interning guidance in `TINYGRADREF.md`.
 
 ## 2. Compile-Affecting Input Cleanup
 

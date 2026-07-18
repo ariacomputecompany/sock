@@ -346,7 +346,7 @@ if (
 def rocm_custom_paged_attention_rejection_reasons(
     qtype: torch.dtype,
     head_size: int,
-    block_size: int,
+    block_size: int | None,
     gqa_ratio: int,
     max_seq_len: int,
     sliding_window: int,
@@ -382,7 +382,7 @@ def rocm_custom_paged_attention_rejection_reasons(
         reasons.append(f"qtype {qtype} is unsupported")
     if head_size != 128:
         reasons.append(f"head_size={head_size} requires Triton on gfx1x")
-    if block_size != 16:
+    if block_size is not None and block_size != 16:
         reasons.append(f"block_size={block_size} requires Triton on gfx1x")
     if not 3 <= gqa_ratio <= 16:
         reasons.append(f"gqa_ratio={gqa_ratio} is unsupported on gfx1x")
