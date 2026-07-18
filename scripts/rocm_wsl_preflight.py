@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -72,17 +73,24 @@ def main() -> None:
 
     import torch
 
-    print(f"python={sys.executable}")
-    print(f"torch_version={torch.__version__}")
-    print(f"hip_version={torch.version.hip!r}")
-    print(f"cuda_available={torch.cuda.is_available()}")
+    summary: dict[str, object] = {
+        "python": sys.executable,
+        "torch_version": torch.__version__,
+        "hip_version": torch.version.hip,
+        "cuda_available": torch.cuda.is_available(),
+        "rocm_path": os.environ.get("ROCM_PATH") or "/opt/rocm",
+        "ld_library_path": os.environ.get("LD_LIBRARY_PATH", ""),
+        "hf_token_present": bool(os.environ.get("HF_TOKEN")),
+    }
 
     if not torch.cuda.is_available():
-        raise SystemExit("ROCm device is not visible to torch.")
+        summary["error"] = "ROCm device is not visible to torch."
+        if args.json:
+            print(json.dumps(summary, sort_keys=True))
+            raise SystemExit(1)
+        raise SystemExit(summary["error"])
 
-    print(f"device_name={torch.cuda.get_device_name(0)}")
-    print(f"rocm_path={os.environ.get('ROCM_PATH') or '/opt/rocm'}")
-    print(f"ld_library_path={os.environ.get('LD_LIBRARY_PATH', '')}")
+    summary["device_name"] = torch.cuda.get_device_name(0)
 
     hip_header = None
     for candidate in (
@@ -92,38 +100,44 @@ def main() -> None:
         if candidate.exists():
             hip_header = candidate
             break
+    summary["hip_header"] = str(hip_header) if hip_header is not None else None
+    summary["hip_header_missing"] = hip_header is None
     if hip_header is None:
-        print(
-            "missing_hip_header=1 install_hint='sudo apt-get install -y libamdhip64-dev libhsa-runtime-dev'"
+        summary["hip_header_install_hint"] = (
+            "sudo apt-get install -y libamdhip64-dev libhsa-runtime-dev"
         )
-    else:
-        print(f"hip_header={hip_header}")
 
     import tvm_ffi._optional_torch_c_dlpack as dlpack_mod
 
-    print(f"dlpack_loaded={dlpack_mod._LIB is not None}")
+    summary["dlpack_loaded"] = dlpack_mod._LIB is not None
     if dlpack_mod._LIB is not None:
-        print(f"dlpack_library={dlpack_mod._LIB._name}")
+        summary["dlpack_library"] = dlpack_mod._LIB._name
     elif args.build_dlpack:
         ok, detail = ensure_dlpack_addon()
-        print(f"dlpack_rebuild_ok={ok}")
-        print(f"dlpack_rebuild_detail={detail}")
+        summary["dlpack_rebuild_ok"] = ok
+        summary["dlpack_rebuild_detail"] = detail
         if ok:
             import importlib
 
             dlpack_mod = importlib.reload(dlpack_mod)
-            print(f"dlpack_loaded_after_rebuild={dlpack_mod._LIB is not None}")
+            summary["dlpack_loaded_after_rebuild"] = dlpack_mod._LIB is not None
             if dlpack_mod._LIB is not None:
-                print(f"dlpack_library={dlpack_mod._LIB._name}")
+                summary["dlpack_library"] = dlpack_mod._LIB._name
 
-    if os.environ.get("HF_TOKEN"):
-        print("hf_token=present")
-    else:
-        print("hf_token=missing")
+    summary["wsl_detected"] = (
+        "microsoft" in Path("/proc/version").read_text(encoding="utf-8").lower()
+    )
+    if summary["wsl_detected"]:
+        summary["wsl_pin_memory_note"] = (
+            "vllm will force pin_memory=False on WSL"
+        )
 
-    if "microsoft" in Path("/proc/version").read_text(encoding="utf-8").lower():
-        print("wsl_detected=1")
-        print("wsl_pin_memory=vllm will force pin_memory=False on WSL")
+    if args.json:
+        print(json.dumps(summary, sort_keys=True))
+        return
+
+    for key, value in summary.items():
+        print(f"{key}={value}")
 
 
 if __name__ == "__main__":
