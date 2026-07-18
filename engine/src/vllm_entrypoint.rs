@@ -260,7 +260,7 @@ def _load_factory(spec: str):
 
 
 def _maybe_reexec_repo_python(engine_root: str):
-    if os.environ.get("SOCK_VLLM_ENTRYPOINT_PYTHON_BOOTSTRAPPED") == "1":
+    if os.environ.get("SOCK_ENTRYPOINT_PYTHON_BOOTSTRAPPED") == "1":
         return
     engine_root_path = Path(engine_root).resolve()
     venv_root = engine_root_path / ".venv"
@@ -272,7 +272,7 @@ def _maybe_reexec_repo_python(engine_root: str):
     if current_python == repo_python.resolve() and current_prefix == venv_root.resolve():
         return
     env = os.environ.copy()
-    env["SOCK_VLLM_ENTRYPOINT_PYTHON_BOOTSTRAPPED"] = "1"
+    env["SOCK_ENTRYPOINT_PYTHON_BOOTSTRAPPED"] = "1"
     os.execve(
         str(repo_python),
         [str(repo_python), *sys.argv],
@@ -316,7 +316,7 @@ def main() -> int:
     if context_kind != "none":
         context_factory = args.context_factory
         if not context_factory and context_kind == "worker":
-            context_factory = "scripts.sock_vllm_entrypoints:build_worker_context"
+            context_factory = "scripts.runtime_entrypoints:build_worker_context"
         if not context_factory:
             raise SystemExit("--context-factory is required for this surface")
         context = _load_factory(context_factory)(document)
@@ -346,7 +346,7 @@ if __name__ == "__main__":
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Planner, PlannerHostSnapshot, build_vllm_integration_document, vllm};
+    use crate::{build_vllm_integration_document, vllm, Planner, PlannerHostSnapshot};
     use sock_core::{
         AcceleratorVendor, BackendFamily, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer,
         CoveragePlane, EngineSource, ExecutionTopology, FailureMode, GuaranteeLevel,
@@ -476,24 +476,18 @@ mod tests {
         let entrypoints =
             build_vllm_entrypoint_document(&outcome, &integration).expect("entrypoints");
 
-        assert!(
-            entrypoints
-                .entrypoints
-                .iter()
-                .any(|entrypoint| entrypoint.scope_name == "prefill_attention")
-        );
-        assert!(
-            entrypoints
-                .entrypoints
-                .iter()
-                .any(|entrypoint| entrypoint.scope_name == "decode_attention")
-        );
-        assert!(
-            entrypoints
-                .entrypoints
-                .iter()
-                .all(|entrypoint| entrypoint.wrapper_path.starts_with("vllm-entrypoints/"))
-        );
+        assert!(entrypoints
+            .entrypoints
+            .iter()
+            .any(|entrypoint| entrypoint.scope_name == "prefill_attention"));
+        assert!(entrypoints
+            .entrypoints
+            .iter()
+            .any(|entrypoint| entrypoint.scope_name == "decode_attention"));
+        assert!(entrypoints
+            .entrypoints
+            .iter()
+            .all(|entrypoint| entrypoint.wrapper_path.starts_with("vllm-entrypoints/")));
         let decode = entrypoints
             .entrypoints
             .iter()

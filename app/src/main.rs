@@ -795,7 +795,7 @@ fn emit_doctor(host: &PlannerHostSnapshot, format: OutputMode) -> Result<()> {
 fn run_vendored_vllm_cli(args: Vec<OsString>) -> Result<()> {
     let repo_root = repo_root()?;
     let python = vendored_python(&repo_root);
-    let script = repo_root.join("scripts").join("sock_vllm_cli.py");
+    let script = repo_root.join("scripts").join("runtime_cli.py");
     let host = default_host_snapshot();
 
     let mut command = ProcessCommand::new(&python);
@@ -850,18 +850,18 @@ fn configure_vllm_cli_env(
 
     match host.accelerator_vendor {
         AcceleratorVendor::Amd => {
-            command.env("SOCK_VLLM_RUNTIME_PROFILE", "rocm-wsl");
+            command.env("SOCK_RUNTIME_PROFILE", "rocm-wsl");
             command.env("VLLM_TARGET_DEVICE", "rocm");
             command.env("VLLM_USE_V2_MODEL_RUNNER", "0");
             command.env("VLLM_WSL2_ENABLE_PIN_MEMORY", "0");
             command.env("VLLM_WORKER_MULTIPROC_METHOD", "spawn");
         }
         AcceleratorVendor::Nvidia => {
-            command.env("SOCK_VLLM_RUNTIME_PROFILE", "cuda");
+            command.env("SOCK_RUNTIME_PROFILE", "cuda");
             command.env("VLLM_TARGET_DEVICE", "cuda");
         }
         AcceleratorVendor::Unknown => {
-            command.env("SOCK_VLLM_RUNTIME_PROFILE", "python");
+            command.env("SOCK_RUNTIME_PROFILE", "python");
         }
     }
 }

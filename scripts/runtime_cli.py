@@ -15,7 +15,7 @@ from scripts.sock_runtime_env import (
 
 
 def apply_sock_runtime_profile() -> None:
-    profile = os.environ.get("SOCK_VLLM_RUNTIME_PROFILE", "").strip().lower()
+    profile = os.environ.get("SOCK_RUNTIME_PROFILE", "").strip().lower()
     if profile in {"rocm", "rocm-wsl", "amd"}:
         apply_rocm_wsl_runtime_defaults()
     else:

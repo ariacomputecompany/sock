@@ -45,15 +45,15 @@ def _env_bool(name: str, default: bool) -> bool:
 
 def runtime_config_from_env() -> dict[str, Any]:
     return {
-        "model": os.environ.get("SOCK_VLLM_MODEL", "Qwen/Qwen2.5-0.5B-Instruct"),
-        "max_model_len": _env_int("SOCK_VLLM_MAX_MODEL_LEN", 512),
+        "model": os.environ.get("SOCK_MODEL", "Qwen/Qwen2.5-0.5B-Instruct"),
+        "max_model_len": _env_int("SOCK_MAX_MODEL_LEN", 512),
         "gpu_memory_utilization": _env_float(
-            "SOCK_VLLM_GPU_MEMORY_UTILIZATION", 0.5
+            "SOCK_GPU_MEMORY_UTILIZATION", 0.5
         ),
-        "enforce_eager": _env_bool("SOCK_VLLM_ENFORCE_EAGER", True),
-        "trust_remote_code": _env_bool("SOCK_VLLM_TRUST_REMOTE_CODE", False),
+        "enforce_eager": _env_bool("SOCK_ENFORCE_EAGER", True),
+        "trust_remote_code": _env_bool("SOCK_TRUST_REMOTE_CODE", False),
         "distributed_executor_backend": os.environ.get(
-            "SOCK_VLLM_EXECUTOR_BACKEND", "uni"
+            "SOCK_EXECUTOR_BACKEND", "uni"
         ),
     }
 
@@ -93,7 +93,7 @@ def build_worker_context(document: dict[str, Any]):
 
     # Keep the owning executor/config alive for the lifetime of the returned worker context.
     setattr(worker, "_sock_executor_owner", executor)
-    setattr(worker, "_sock_vllm_config", vllm_config)
+    setattr(worker, "_sock_engine_config", vllm_config)
     setattr(worker, "_sock_entrypoint_document", document)
     setattr(worker, "_sock_cleanup", lambda: _cleanup_worker_context(executor))
     return worker

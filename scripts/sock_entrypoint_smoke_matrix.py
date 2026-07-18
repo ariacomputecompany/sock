@@ -93,9 +93,9 @@ def run_wrapper(
 ) -> dict[str, Any]:
     log_path = bundle_dir / f"{args.scope_name}.log"
     env = subprocess_env(rocm_wsl=True)
-    env["SOCK_VLLM_MODEL"] = model
-    env["SOCK_VLLM_MAX_MODEL_LEN"] = str(args.max_model_len)
-    env["SOCK_VLLM_GPU_MEMORY_UTILIZATION"] = str(args.gpu_memory_utilization)
+    env["SOCK_MODEL"] = model
+    env["SOCK_MAX_MODEL_LEN"] = str(args.max_model_len)
+    env["SOCK_GPU_MEMORY_UTILIZATION"] = str(args.gpu_memory_utilization)
 
     start = time.perf_counter()
     with log_path.open("w", encoding="utf-8") as log_handle:
