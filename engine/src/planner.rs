@@ -88,7 +88,8 @@ impl Planner {
                 secondary: Vec::new(),
             }
         };
-        let compile_regions = self.compile_regions(&selected_backends, &adapter_survey, scope);
+        let compile_regions =
+            self.compile_regions(&selected_backends, &backend_registry, &adapter_survey, scope);
         if compile_regions.is_empty() {
             return Err(PlanError::Validation(
                 "scoped build request resolved to an empty compile-region closure".to_owned(),
@@ -336,7 +337,10 @@ impl Planner {
             BackendCapability {
                 family: BackendFamily::Triton,
                 supported_operating_systems: vec![OperatingSystem::Linux],
-                supported_accelerator_vendors: vec![sock_core::AcceleratorVendor::Nvidia],
+                supported_accelerator_vendors: vec![
+                    sock_core::AcceleratorVendor::Nvidia,
+                    sock_core::AcceleratorVendor::Amd,
+                ],
                 allowed_acquisitions: vec![ArtifactAcquisition::LocalAotBuild],
                 required_witnesses: Vec::new(),
                 legal_portability: vec![
@@ -391,11 +395,18 @@ impl Planner {
         witnesses: &[CapabilityWitness],
         registry: &BackendCapabilityRegistry,
     ) -> Result<BackendSelection, PlanError> {
-        let linux_nvidia = normalized.environment.operating_system == OperatingSystem::Linux
-            && normalized.environment.accelerator_vendor == sock_core::AcceleratorVendor::Nvidia;
-        if !linux_nvidia {
+        let linux_supported = normalized.environment.operating_system == OperatingSystem::Linux
+            && matches!(
+                normalized.environment.accelerator_vendor,
+                sock_core::AcceleratorVendor::Nvidia | sock_core::AcceleratorVendor::Amd
+            );
+        if !linux_supported {
             return Err(PlanError::Validation(
-                "V1 planning is locked to vLLM on NVIDIA/Linux".to_owned(),
+                format!(
+                    "planning is unsupported for operating_system={:?} accelerator_vendor={:?}",
+                    normalized.environment.operating_system,
+                    normalized.environment.accelerator_vendor
+                ),
             ));
         }
         let mut viable = Vec::new();
@@ -435,6 +446,7 @@ impl Planner {
     fn compile_regions(
         &self,
         selected_backends: &BackendSelection,
+        registry: &BackendCapabilityRegistry,
         adapter_survey: &AdapterSurvey,
         scope: &BuildScope,
     ) -> Vec<CompileRegion> {
@@ -446,6 +458,7 @@ impl Planner {
             .filter(|region| scope.allows_cache_namespace(&region.cache_namespace))
             .filter(|region| scope.allows_warmup_scope(&region.warmup_scope))
             .filter(|region| scope.allows_rank_disposition(region.rank_disposition))
+            .filter(|region| backend_binding_is_supported(region.backend_binding, registry))
             .filter(|region| {
                 scope.allows_backend_family(resolve_backend_binding(
                     region.backend_binding,
@@ -1160,6 +1173,16 @@ impl Planner {
                 }) || surface.backend_family == "torch.compile"
             })
             .map(|surface| {
+                let declared_required_warmup_scopes = surface
+                    .required_warmup_scopes
+                    .iter()
+                    .filter(|scope| {
+                        compile_regions
+                            .iter()
+                            .any(|region| &region.name == *scope)
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
                 let affected_regions = surface
                     .affected_regions
                     .iter()
@@ -1193,7 +1216,7 @@ impl Planner {
                     trigger_inputs: surface.trigger_inputs.clone(),
                     affected_regions,
                     required_artifacts,
-                    declared_required_warmup_scopes: surface.required_warmup_scopes.clone(),
+                    declared_required_warmup_scopes,
                     required_warmup_proofs,
                     topology_context: surface.topology_context.clone(),
                     bounded_by: bounded_by(
@@ -1810,6 +1833,16 @@ fn resolve_backend_binding(
     }
 }
 
+fn backend_binding_is_supported(
+    binding: AdapterBackendBinding,
+    registry: &BackendCapabilityRegistry,
+) -> bool {
+    match binding {
+        AdapterBackendBinding::Primary => true,
+        AdapterBackendBinding::Fixed(family) => registry.entries.iter().any(|entry| entry.family == family),
+    }
+}
+
 fn surface_applies(backend_family: &str, selected_backends: &BackendSelection) -> bool {
     match backend_family {
         "flashinfer" => selected_backends.primary.family == BackendFamily::FlashInfer,
@@ -1922,7 +1955,7 @@ fn contradiction_reasons(
     let mut contradictions = Vec::new();
     if surface.topology_sensitive
         && normalized.topology.tensor_parallelism == 1
-        && surface.topology_context.contains("distributed")
+        && topology_context_requires_distributed_ranks(&surface.topology_context)
     {
         contradictions.push(
             "surface claims distributed-only topology sensitivity but planned topology is single-rank"
@@ -1930,6 +1963,17 @@ fn contradiction_reasons(
         );
     }
     contradictions
+}
+
+fn topology_context_requires_distributed_ranks(topology_context: &str) -> bool {
+    let normalized = topology_context.to_ascii_lowercase();
+    let mentions_distributed = normalized.contains("distributed");
+    let admits_single_rank = normalized.contains("single-rank")
+        || normalized.contains("single rank")
+        || normalized.contains("single node")
+        || normalized.contains("single-node");
+
+    mentions_distributed && !admits_single_rank
 }
 
 fn region_acquisition(
@@ -2442,6 +2486,49 @@ mod tests {
                 .nodes
                 .iter()
                 .any(|node| node.intent == RangeIntent::UncoveredResidual)
+        );
+    }
+
+    #[test]
+    fn distributed_only_topology_detection_ignores_mixed_single_rank_contexts() {
+        assert!(topology_context_requires_distributed_ranks(
+            "Distributed attention backends with rank-coupled warmup reuse."
+        ));
+        assert!(!topology_context_requires_distributed_ranks(
+            "Single-rank and distributed attention backends that rely on warmup dummy runs."
+        ));
+    }
+
+    #[test]
+    fn amd_triton_plan_filters_unmaterializable_runtime_jit_warmup_scopes() {
+        let mut amd_host = host();
+        amd_host.accelerator_vendor = AcceleratorVendor::Amd;
+        amd_host.gpu_arches = vec!["gfx1151".to_owned()];
+        amd_host.cuda_version = "7.14.0".to_owned();
+        amd_host.driver_version = "7.14.0".to_owned();
+        amd_host.flashinfer_prebuilt_available = false;
+
+        let mut amd_request = request();
+        amd_request.environment.accelerator_vendor = AcceleratorVendor::Amd;
+        amd_request.environment.gpu_arches = vec!["gfx1151".to_owned()];
+        amd_request.environment.cuda_version = "7.14.0".to_owned();
+        amd_request.environment.driver_version = "7.14.0".to_owned();
+        amd_request.topology.tensor_parallelism = 1;
+        amd_request.backend_policy.preferred_families = vec![BackendFamily::Triton];
+        amd_request.layered_config[1].entries[0].value = "1".to_owned();
+
+        let planner = Planner::new(amd_host);
+        let outcome = planner.resolve(amd_request).expect("amd triton plan");
+
+        assert!(
+            outcome
+                .verification
+                .runtime_jit_evidence
+                .iter()
+                .all(|evidence| !evidence
+                    .declared_required_warmup_scopes
+                    .iter()
+                    .any(|scope| scope == "decode_attention"))
         );
     }
 }

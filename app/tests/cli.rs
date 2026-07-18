@@ -3,10 +3,15 @@ use predicates::prelude::*;
 use serde_json::Value;
 use tempfile::tempdir;
 
+fn sock_cmd() -> Command {
+    let mut cmd = Command::cargo_bin("sock").expect("sock binary");
+    cmd.env("SOCK_HOST_PROFILE", "nvidia-sm90");
+    cmd
+}
+
 #[test]
 fn plan_summary_is_stable() {
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .arg("plan")
         .assert()
         .success()
@@ -19,8 +24,7 @@ fn plan_summary_is_stable() {
 
 #[test]
 fn explain_includes_trace_and_diagnostics() {
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .arg("explain")
         .assert()
         .success()
@@ -40,8 +44,7 @@ fn explain_includes_trace_and_diagnostics() {
 
 #[test]
 fn o0_explain_reduces_cuda_graph_and_performance_scope() {
-    let output = Command::cargo_bin("sock")
-        .expect("sock binary")
+    let output = sock_cmd()
         .args(["explain", "--format", "json", "-O", "o0"])
         .assert()
         .success()
@@ -75,8 +78,7 @@ fn o0_explain_reduces_cuda_graph_and_performance_scope() {
 fn prepare_prefill_path_uses_common_intent_contract() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "prepare",
             "prefill-path",
@@ -125,8 +127,7 @@ fn prepare_prefill_path_uses_common_intent_contract() {
 fn build_verify_and_replay_bundle_round_trip() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args(["build", "--out"])
         .arg(dir.path())
         .assert()
@@ -282,8 +283,7 @@ fn build_verify_and_replay_bundle_round_trip() {
             .any(|manifest| manifest["binary_name"] == "flashinfer_extension.so")
     );
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args(["verify", "--bundle"])
         .arg(dir.path())
         .assert()
@@ -294,8 +294,7 @@ fn build_verify_and_replay_bundle_round_trip() {
             "verify compile_free=true forbidden_queues=Compile,Assemble,ArtifactIo,Warmup",
         ));
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args(["replay", "--bundle"])
         .arg(dir.path())
         .assert()
@@ -319,8 +318,7 @@ fn build_verify_and_replay_bundle_round_trip() {
 fn soc_plan_maps_cache_namespaces_to_artifacts_and_warmups() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -361,8 +359,7 @@ fn soc_plan_maps_cache_namespaces_to_artifacts_and_warmups() {
 fn tampered_bundle_is_rejected() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args(["build", "--out"])
         .arg(dir.path())
         .assert()
@@ -370,8 +367,7 @@ fn tampered_bundle_is_rejected() {
 
     std::fs::write(dir.path().join("diagnostics.json"), "{}").expect("tamper diagnostics");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args(["verify", "--bundle"])
         .arg(dir.path())
         .assert()
@@ -383,15 +379,13 @@ fn tampered_bundle_is_rejected() {
 fn repeated_build_reuses_materialized_artifacts() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args(["build", "--out"])
         .arg(dir.path())
         .assert()
         .success();
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args(["build", "--out"])
         .arg(dir.path())
         .assert()
@@ -448,8 +442,7 @@ fn repeated_build_reuses_materialized_artifacts() {
 fn build_reports_split_cache_ownership_surfaces() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args(["build", "--out"])
         .arg(dir.path())
         .assert()
@@ -483,8 +476,7 @@ fn shared_cache_root_reuses_artifacts_across_bundle_roots() {
     let second_dir = tempdir().expect("tempdir");
     let cache_dir = tempdir().expect("cache tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -499,8 +491,7 @@ fn shared_cache_root_reuses_artifacts_across_bundle_roots() {
         .assert()
         .success();
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -543,8 +534,7 @@ fn invalidation_evicts_only_affected_cache_closure() {
     let bundle_dir = tempdir().expect("tempdir");
     let cache_dir = tempdir().expect("cache tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -614,8 +604,7 @@ fn invalidation_evicts_only_affected_cache_closure() {
     )
     .expect("write corrupted primary");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -641,8 +630,7 @@ fn invalidation_evicts_only_affected_cache_closure() {
 fn scoped_prefill_build_emits_minimal_closure() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -800,8 +788,7 @@ fn scoped_prefill_build_emits_minimal_closure() {
 fn early_serve_build_skips_warmup_and_records_runtime_jit_contradictions() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -861,8 +848,7 @@ fn early_serve_build_skips_warmup_and_records_runtime_jit_contradictions() {
 fn backend_family_scope_selects_decode_closure() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -884,8 +870,7 @@ fn backend_family_scope_selects_decode_closure() {
 fn cache_namespace_scope_selects_flashinfer_kv_update_closure() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -907,8 +892,7 @@ fn cache_namespace_scope_selects_flashinfer_kv_update_closure() {
 fn warmup_scope_selects_prefill_closure() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "build",
             "--out",
@@ -936,8 +920,7 @@ fn warmup_scope_selects_prefill_closure() {
 fn measure_reports_phase_and_duplication_telemetry() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "measure",
             "prefill-path",
@@ -998,8 +981,7 @@ fn measure_reports_phase_and_duplication_telemetry() {
 fn benchmark_matrix_is_versioned_and_tied_to_manifests() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    sock_cmd()
         .args([
             "benchmark",
             "--out",

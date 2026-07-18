@@ -9,8 +9,8 @@ use sock_app::{
     rewrite_trace_for,
 };
 use sock_core::{
-    BackendFamily, BenchmarkCaseArtifactPaths, BenchmarkMatrixEntry, BenchmarkMatrixReport,
-    BenchmarkTraceReference, BuildMeasurementReport, DiagnosticsDocument,
+    AcceleratorVendor, BackendFamily, BenchmarkCaseArtifactPaths, BenchmarkMatrixEntry,
+    BenchmarkMatrixReport, BenchmarkTraceReference, BuildMeasurementReport, DiagnosticsDocument,
     MaterializationExecutionReport, MeasurementCaseReport, MeasurementComparisonReport,
     MeasurementPhaseTimings, OptimizationExplainDocument, OptimizationLevel, ReplayBundle,
     ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
@@ -529,7 +529,7 @@ fn emit_benchmark(out: &Path, format: OutputMode) -> Result<()> {
     std::fs::create_dir_all(out)?;
     let benchmark_trace_scenario = "tests/benchmark.matrix.fozzy.json".to_owned();
     let benchmark_trace_path = ".fozzy-traces/benchmark-matrix.trace.fozzy".to_owned();
-    let profiles = benchmark_profiles();
+    let profiles = benchmark_profiles(&default_host_snapshot());
     let mut entries = Vec::new();
 
     for profile in profiles {
@@ -1024,8 +1024,8 @@ fn collect_measurement_report(
     })
 }
 
-fn benchmark_profiles<'a>() -> Vec<BenchmarkProfile<'a>> {
-    vec![
+fn benchmark_profiles<'a>(host: &PlannerHostSnapshot) -> Vec<BenchmarkProfile<'a>> {
+    let mut profiles = vec![
         BenchmarkProfile {
             label: "prefill_path",
             benchmark_class: "intent_policy",
@@ -1035,17 +1035,6 @@ fn benchmark_profiles<'a>() -> Vec<BenchmarkProfile<'a>> {
             trace_references: &[(
                 "tests/measure.prefill_path.fozzy.json",
                 ".fozzy-traces/measure-prefill-path.trace.fozzy",
-            )],
-        },
-        BenchmarkProfile {
-            label: "distributed_flashinfer_startup",
-            benchmark_class: "intent_policy",
-            description: "sock distributed flashinfer startup policy",
-            selected_backend_only: false,
-            scope: intent_scope(PrepareIntentArg::DistributedFlashinferStartup),
-            trace_references: &[(
-                "tests/prepare.distributed_flashinfer_startup.fozzy.json",
-                ".fozzy-traces/prepare-distributed-flashinfer-startup.trace.fozzy",
             )],
         },
         BenchmarkProfile {
@@ -1059,23 +1048,60 @@ fn benchmark_profiles<'a>() -> Vec<BenchmarkProfile<'a>> {
                 ".fozzy-traces/measure-replay-safe-closure.trace.fozzy",
             )],
         },
-        BenchmarkProfile {
-            label: "selected_backend_flashinfer_prefill",
-            benchmark_class: "selected_backend_policy",
-            description: "selected-backend-only flashinfer prefill materialization policy",
-            selected_backend_only: true,
-            scope: BuildScope {
-                region_names: ["prefill_attention".to_owned()].into_iter().collect(),
-                backend_families: [BackendFamily::FlashInfer].into_iter().collect(),
-                readiness: Some(BuildReadiness::Correctness),
-                ..BuildScope::default()
-            },
-            trace_references: &[(
-                "tests/build.prefill_scope.fozzy.json",
-                ".fozzy-traces/build-prefill-scope.trace.fozzy",
-            )],
-        },
-    ]
+    ];
+
+    match host.accelerator_vendor {
+        AcceleratorVendor::Nvidia => {
+            profiles.push(BenchmarkProfile {
+                label: "distributed_flashinfer_startup",
+                benchmark_class: "intent_policy",
+                description: "sock distributed flashinfer startup policy",
+                selected_backend_only: false,
+                scope: intent_scope(PrepareIntentArg::DistributedFlashinferStartup),
+                trace_references: &[(
+                    "tests/prepare.distributed_flashinfer_startup.fozzy.json",
+                    ".fozzy-traces/prepare-distributed-flashinfer-startup.trace.fozzy",
+                )],
+            });
+            profiles.push(BenchmarkProfile {
+                label: "selected_backend_flashinfer_prefill",
+                benchmark_class: "selected_backend_policy",
+                description: "selected-backend-only flashinfer prefill materialization policy",
+                selected_backend_only: true,
+                scope: BuildScope {
+                    region_names: ["prefill_attention".to_owned()].into_iter().collect(),
+                    backend_families: [BackendFamily::FlashInfer].into_iter().collect(),
+                    readiness: Some(BuildReadiness::Correctness),
+                    ..BuildScope::default()
+                },
+                trace_references: &[(
+                    "tests/build.prefill_scope.fozzy.json",
+                    ".fozzy-traces/build-prefill-scope.trace.fozzy",
+                )],
+            });
+        }
+        AcceleratorVendor::Amd => {
+            profiles.push(BenchmarkProfile {
+                label: "selected_backend_triton_prefill",
+                benchmark_class: "selected_backend_policy",
+                description: "selected-backend-only triton prefill materialization policy",
+                selected_backend_only: true,
+                scope: BuildScope {
+                    region_names: ["prefill_attention".to_owned()].into_iter().collect(),
+                    backend_families: [BackendFamily::Triton].into_iter().collect(),
+                    readiness: Some(BuildReadiness::Correctness),
+                    ..BuildScope::default()
+                },
+                trace_references: &[(
+                    "tests/build.prefill_scope.fozzy.json",
+                    ".fozzy-traces/build-prefill-scope.trace.fozzy",
+                )],
+            });
+        }
+        AcceleratorVendor::Unknown => {}
+    }
+
+    profiles
 }
 
 fn benchmark_case_paths(
