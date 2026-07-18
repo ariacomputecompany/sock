@@ -105,6 +105,35 @@ def extract_summary(stdout: str) -> dict[str, Any] | None:
     return None
 
 
+def extract_log_metrics(log_text: str) -> dict[str, Any]:
+    metrics: dict[str, Any] = {}
+    if match := re.search(
+        r"Checkpoint size: ([0-9.]+) GiB\. Available RAM: ([0-9.]+) GiB",
+        log_text,
+    ):
+        metrics["checkpoint_size_gib"] = float(match.group(1))
+        metrics["available_ram_gib"] = float(match.group(2))
+    if match := re.search(
+        r"Model loading took ([0-9.]+) GiB memory and ([0-9.]+) seconds",
+        log_text,
+    ):
+        metrics["model_weight_memory_gib"] = float(match.group(1))
+        metrics["model_load_s"] = float(match.group(2))
+    if match := re.search(r"Available KV cache memory: ([0-9.]+) GiB", log_text):
+        metrics["kv_cache_memory_gib"] = float(match.group(1))
+    if match := re.search(r"GPU KV cache size: ([0-9,]+) tokens", log_text):
+        metrics["kv_cache_tokens"] = int(match.group(1).replace(",", ""))
+    if match := re.search(
+        r"Maximum concurrency for ([0-9,]+) tokens per request: ([0-9.]+)x",
+        log_text,
+    ):
+        metrics["concurrency_tokens_per_request"] = int(
+            match.group(1).replace(",", "")
+        )
+        metrics["max_concurrency"] = float(match.group(2))
+    return metrics
+
+
 def run_model(args: argparse.Namespace, model: str) -> dict[str, Any]:
     env = os.environ.copy()
     env.setdefault("VLLM_TARGET_DEVICE", "rocm")
@@ -184,6 +213,9 @@ def run_model(args: argparse.Namespace, model: str) -> dict[str, Any]:
         result["summary"] = summary
     else:
         result["error"] = "smoke command did not emit a JSON summary"
+    log_metrics = extract_log_metrics(log_text)
+    if log_metrics:
+        result["log_metrics"] = log_metrics
     if returncode != 0:
         result["log_tail"] = log_text[-4000:]
     return result
