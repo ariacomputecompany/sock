@@ -28,6 +28,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--timeout-s", type=int, default=900)
     parser.add_argument("--out", type=Path, default=Path("tmp/endpoint-inference.json"))
+    parser.add_argument(
+        "--print-response",
+        action="store_true",
+        help="Print the full response payload to stdout instead of a compact summary.",
+    )
     return parser.parse_args()
 
 
@@ -87,7 +92,24 @@ def main() -> int:
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
-    print(json.dumps(result, sort_keys=True))
+
+    stdout_result = result
+    if not args.print_response:
+        stdout_result = {
+            "ok": True,
+            "base_url": args.base_url,
+            "model": args.model,
+            "output_path": str(args.out),
+            "elapsed_s": result["elapsed_s"],
+            "completion_tokens": completion_tokens,
+            "prompt_tokens": prompt_tokens,
+            "total_tokens": total_tokens,
+            "completion_tok_per_s": result["completion_tok_per_s"],
+            "total_tok_per_s": result["total_tok_per_s"],
+            "finish_reason": choice.get("finish_reason"),
+            "response_preview": text[:500],
+        }
+    print(json.dumps(stdout_result, sort_keys=True))
     return 0
 
 
