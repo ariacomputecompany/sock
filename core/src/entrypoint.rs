@@ -23,6 +23,10 @@ pub enum VllmCallStrategy {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VllmEntrypoint {
+    pub schema_version: SchemaVersion,
+    pub plan_identity: CanonicalHash,
+    pub engine_root: String,
+    pub engine_revision: String,
     pub id: String,
     pub surface_id: String,
     pub scope_name: String,

@@ -1142,6 +1142,10 @@ mod tests {
             engine_root: "/tmp/vllm".to_owned(),
             engine_revision: "deadbeef".to_owned(),
             entrypoints: vec![crate::VllmEntrypoint {
+                schema_version: SchemaVersion::current(),
+                plan_identity: plan.structural_identity.plan_identity.clone(),
+                engine_root: "/tmp/vllm".to_owned(),
+                engine_revision: "deadbeef".to_owned(),
                 id: "entrypoint:prefill_attention".to_owned(),
                 surface_id: "compile-region:prefill_attention".to_owned(),
                 scope_name: "prefill_attention".to_owned(),

@@ -26,12 +26,21 @@ pub fn build_vllm_entrypoint_document(
     outcome: &PlanningOutcome,
     integration: &VllmIntegrationDocument,
 ) -> Result<VllmEntrypointDocument, VllmEntrypointError> {
+    let schema_version = SchemaVersion::current();
+    let plan_identity = outcome.plan.structural_identity.plan_identity.clone();
+    let engine_root = integration.engine_root.clone();
+    let engine_revision = integration.engine_revision.clone();
+
     let mut entrypoints = integration
         .surfaces
         .iter()
         .filter(|surface| surface.scope_kind == sock_core::IntegrationScopeKind::CompileRegion)
         .map(|surface| match surface.scope_name.as_str() {
             "transformer_block_body" => Ok(VllmEntrypoint {
+                schema_version,
+                plan_identity: plan_identity.clone(),
+                engine_root: engine_root.clone(),
+                engine_revision: engine_revision.clone(),
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
@@ -51,6 +60,10 @@ pub fn build_vllm_entrypoint_document(
                 wrapper_path: wrapper_path(&surface.scope_name),
             }),
             "prefill_attention" => Ok(VllmEntrypoint {
+                schema_version,
+                plan_identity: plan_identity.clone(),
+                engine_root: engine_root.clone(),
+                engine_revision: engine_revision.clone(),
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
@@ -67,6 +80,10 @@ pub fn build_vllm_entrypoint_document(
                 wrapper_path: wrapper_path(&surface.scope_name),
             }),
             "decode_attention" => Ok(VllmEntrypoint {
+                schema_version,
+                plan_identity: plan_identity.clone(),
+                engine_root: engine_root.clone(),
+                engine_revision: engine_revision.clone(),
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
@@ -83,6 +100,10 @@ pub fn build_vllm_entrypoint_document(
                 wrapper_path: wrapper_path(&surface.scope_name),
             }),
             "kv_cache_update" => Ok(VllmEntrypoint {
+                schema_version,
+                plan_identity: plan_identity.clone(),
+                engine_root: engine_root.clone(),
+                engine_revision: engine_revision.clone(),
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
@@ -102,6 +123,10 @@ pub fn build_vllm_entrypoint_document(
                 wrapper_path: wrapper_path(&surface.scope_name),
             }),
             "moe_specialty_path" => Ok(VllmEntrypoint {
+                schema_version,
+                plan_identity: plan_identity.clone(),
+                engine_root: engine_root.clone(),
+                engine_revision: engine_revision.clone(),
                 id: format!("entrypoint:{}", surface.scope_name),
                 surface_id: surface.id.clone(),
                 scope_name: surface.scope_name.clone(),
@@ -126,10 +151,10 @@ pub fn build_vllm_entrypoint_document(
     entrypoints.sort_by(|left, right| left.id.cmp(&right.id));
 
     Ok(VllmEntrypointDocument {
-        schema_version: SchemaVersion::current(),
-        plan_identity: outcome.plan.structural_identity.plan_identity.clone(),
-        engine_root: integration.engine_root.clone(),
-        engine_revision: integration.engine_revision.clone(),
+        schema_version,
+        plan_identity,
+        engine_root,
+        engine_revision,
         entrypoints,
     })
 }
@@ -214,6 +239,7 @@ fn dispatcher_script() -> &'static str {
 import argparse
 import importlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -233,6 +259,27 @@ def _load_factory(spec: str):
     return _load_symbol(module_name, callable_name)
 
 
+def _maybe_reexec_repo_python(engine_root: str):
+    if os.environ.get("SOCK_VLLM_ENTRYPOINT_PYTHON_BOOTSTRAPPED") == "1":
+        return
+    engine_root_path = Path(engine_root).resolve()
+    venv_root = engine_root_path / ".venv"
+    repo_python = venv_root / "bin" / "python"
+    if not repo_python.exists():
+        return
+    current_python = Path(sys.executable).resolve()
+    current_prefix = Path(getattr(sys, "prefix", sys.executable)).resolve()
+    if current_python == repo_python.resolve() and current_prefix == venv_root.resolve():
+        return
+    env = os.environ.copy()
+    env["SOCK_VLLM_ENTRYPOINT_PYTHON_BOOTSTRAPPED"] = "1"
+    os.execve(
+        str(repo_python),
+        [str(repo_python), *sys.argv],
+        env,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", required=True)
@@ -243,11 +290,12 @@ def main() -> int:
     manifest_path = Path(args.manifest).resolve()
     document = json.loads(manifest_path.read_text())
     engine_root = document["engine_root"]
-    if engine_root not in sys.path:
-        sys.path.insert(0, engine_root)
+    repo_root = str(Path(engine_root).resolve().parent)
+    _maybe_reexec_repo_python(engine_root)
+    for path in (engine_root, repo_root):
+        if path not in sys.path:
+            sys.path.insert(0, path)
 
-    target = _load_symbol(document["callable"]["module"], document["callable"]["callable"])
-    kwargs = document.get("args", {})
     if args.dry_run:
         print(json.dumps({
             "entrypoint": document["id"],
@@ -260,23 +308,33 @@ def main() -> int:
         }, sort_keys=True))
         return 0
 
+    target = _load_symbol(document["callable"]["module"], document["callable"]["callable"])
+    kwargs = document.get("args", {})
     context_kind = document["context_kind"]
     strategy = document["call_strategy"]
     context = None
     if context_kind != "none":
-        if not args.context_factory:
+        context_factory = args.context_factory
+        if not context_factory and context_kind == "worker":
+            context_factory = "scripts.sock_vllm_entrypoints:build_worker_context"
+        if not context_factory:
             raise SystemExit("--context-factory is required for this surface")
-        context = _load_factory(args.context_factory)(document)
+        context = _load_factory(context_factory)(document)
 
-    if strategy == "module_function":
-        target(**kwargs)
-    elif strategy == "module_function_with_context":
-        target(context, **kwargs)
-    elif strategy == "context_method":
-        method = getattr(context, document["callable"]["callable"].split(".")[-1])
-        method(**kwargs)
-    else:
-        raise SystemExit(f"unsupported strategy: {strategy}")
+    try:
+        if strategy == "module_function":
+            target(**kwargs)
+        elif strategy == "module_function_with_context":
+            target(context, **kwargs)
+        elif strategy == "context_method":
+            method = getattr(context, document["callable"]["callable"].split(".")[-1])
+            method(**kwargs)
+        else:
+            raise SystemExit(f"unsupported strategy: {strategy}")
+    finally:
+        cleanup = getattr(context, "_sock_cleanup", None)
+        if cleanup is not None:
+            cleanup()
     return 0
 
 

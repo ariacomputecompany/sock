@@ -782,6 +782,22 @@ fn scoped_prefill_build_emits_minimal_closure() {
         .and_then(|entrypoint| entrypoint["wrapper_path"].as_str())
         .expect("prefill wrapper path");
     assert!(dir.path().join(wrapper_path).exists());
+
+    let manifest_path = build_entrypoints
+        .iter()
+        .find(|entrypoint| entrypoint["scope_name"] == "prefill_attention")
+        .and_then(|entrypoint| entrypoint["manifest_path"].as_str())
+        .expect("prefill manifest path");
+    let manifest: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.path().join(manifest_path)).expect("read prefill manifest"),
+    )
+    .expect("parse prefill manifest");
+    assert_eq!(
+        manifest["engine_root"],
+        entrypoints["engine_root"],
+        "surface manifest should be self-contained for wrapper execution"
+    );
+    assert_eq!(manifest["scope_name"], Value::String("prefill_attention".to_owned()));
 }
 
 #[test]
