@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+import signal
+import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -64,3 +67,41 @@ def tool_subprocess_env(*, rocm_wsl: bool = False) -> dict[str, str]:
     if cargo_bin.exists():
         prepend_env_value(env, "PATH", cargo_bin)
     return env
+
+
+def isolated_process_kwargs() -> dict[str, Any]:
+    if os.name == "posix":
+        return {"start_new_session": True}
+    return {}
+
+
+def terminate_process_group(
+    process: subprocess.Popen[Any],
+    *,
+    terminate_timeout_s: int = 15,
+) -> None:
+    if process.poll() is not None:
+        return
+
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        try:
+            process.wait(timeout=terminate_timeout_s)
+            return
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                return
+            process.wait()
+            return
+
+    process.terminate()
+    try:
+        process.wait(timeout=terminate_timeout_s)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()

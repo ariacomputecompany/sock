@@ -13,7 +13,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.sock_runtime_env import subprocess_env
+from scripts.sock_runtime_env import (
+    isolated_process_kwargs,
+    subprocess_env,
+    terminate_process_group,
+)
 
 
 DEFAULT_MODELS = ["Qwen/Qwen2.5-0.5B-Instruct"]
@@ -151,6 +155,7 @@ def run_model(args: argparse.Namespace, model: str) -> dict[str, Any]:
                 stderr=subprocess.STDOUT,
                 text=True,
                 env=env,
+                **isolated_process_kwargs(),
             )
             next_heartbeat = start + args.heartbeat_s
             while True:
@@ -160,12 +165,7 @@ def run_model(args: argparse.Namespace, model: str) -> dict[str, Any]:
                     break
                 elapsed_s = now - start
                 if elapsed_s >= args.timeout_s:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=15)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
+                    terminate_process_group(process)
                     log_handle.flush()
                     log_text = log_path.read_text(encoding="utf-8", errors="replace")
                     return {
