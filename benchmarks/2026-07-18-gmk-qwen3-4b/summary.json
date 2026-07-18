@@ -1,0 +1,112 @@
+{
+  "run_id": "2026-07-18-gmk-qwen3-4b",
+  "machine": {
+    "name": "GMK EVO-X2",
+    "soc": "AMD Ryzen AI Max+ 395 with Radeon 8060S",
+    "os": "Linux WSL2",
+    "accelerator_vendor": "Amd",
+    "gpu_arches": [
+      "gfx1151"
+    ],
+    "rocm_driver_reported_by_sock_doctor": "7.14.0~pre3-29052710811",
+    "python_abi": "cp312",
+    "libc_abi": "glibc-2.39"
+  },
+  "model": {
+    "id": "Qwen/Qwen3-4B",
+    "max_model_len": 1024,
+    "gpu_memory_utilization": 0.8,
+    "enforce_eager": true
+  },
+  "endpoint_benchmark": {
+    "endpoint": "/v1/completions",
+    "prompt": "Explain how the universe came into being. Give a clear, rigorous, long-form explanation that covers the Big Bang, inflation, early particle formation, nucleosynthesis, recombination, stars, galaxies, and what is still unknown.",
+    "max_tokens": 512,
+    "temperature": 0.2,
+    "warmup_runs": 1,
+    "measured_runs": 5
+  },
+  "sock": {
+    "runtime": {
+      "vllm": "0.25.1",
+      "torch": "2.11.0+gitd0c8b1f",
+      "torch_version_hip": "7.2.53211",
+      "device_count": 1
+    },
+    "startup": {
+      "status": "healthy",
+      "ready_after_s": 48,
+      "checkpoint_size_gib": 7.49,
+      "model_memory_gib": 7.56,
+      "available_kv_cache_memory_gib": 68.21,
+      "gpu_kv_cache_tokens": 496672,
+      "max_concurrency_at_1024_tokens": 485.03,
+      "attention_backend": "TRITON_ATTN"
+    },
+    "fresh_restart_throughput": {
+      "completion_tok_per_s": {
+        "min": 25.0569,
+        "mean": 25.2355,
+        "median": 25.0992,
+        "max": 25.7161,
+        "p90": 25.7161
+      },
+      "total_tok_per_s": {
+        "min": 27.357,
+        "mean": 27.552,
+        "median": 27.4033,
+        "max": 28.0767,
+        "p90": 28.0767
+      },
+      "elapsed_s": {
+        "min": 19.9097,
+        "mean": 20.2908,
+        "median": 20.399,
+        "max": 20.4335,
+        "p90": 20.4335
+      },
+      "completion_tokens": {
+        "min": 512,
+        "mean": 512,
+        "median": 512,
+        "max": 512,
+        "p90": 512
+      },
+      "total_tokens": {
+        "min": 559,
+        "mean": 559,
+        "median": 559,
+        "max": 559,
+        "p90": 559
+      }
+    }
+  },
+  "vanilla_vllm": {
+    "runtime": {
+      "source": "python -m pip install vllm",
+      "vllm": "0.25.1",
+      "torch": "2.11.0",
+      "torch_version_cuda": "13.0",
+      "torch_version_hip": null,
+      "cuda_available": false,
+      "device_count": 0
+    },
+    "naive_serve": {
+      "status": "exited",
+      "elapsed_s": 2,
+      "ready_after_s": null,
+      "error_excerpt": "ImportError: cannot import name 'direct_register_custom_op' from partially initialized module 'vllm.utils.torch_utils'"
+    },
+    "rocm_env_serve": {
+      "status": "exited",
+      "elapsed_s": 2,
+      "ready_after_s": null,
+      "error_excerpt": "ImportError: cannot import name 'direct_register_custom_op' from partially initialized module 'vllm.utils.torch_utils'"
+    }
+  },
+  "claim_status": {
+    "cleaner_dx_to_runnable_inference": "proven_on_this_machine",
+    "shorter_time_to_runnable_endpoint": "proven_against_pypi_vanilla_on_this_machine",
+    "higher_throughput_than_vanilla": "blocked_until_vanilla_rocm_baseline_runs"
+  }
+}
