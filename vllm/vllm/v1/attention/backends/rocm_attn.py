@@ -216,6 +216,31 @@ class RocmAttentionBackend(AttentionBackend):
 
     forward_includes_kv_cache_update: bool = False
 
+    @classmethod
+    def supports_combination(
+        cls,
+        head_size: int,
+        dtype: torch.dtype,
+        kv_cache_dtype: "CacheDType | None",
+        block_size: int | None,
+        use_mla: bool,
+        has_sink: bool,
+        use_sparse: bool,
+        use_mm_prefix: bool,
+        device_capability,
+    ) -> str | None:
+        from vllm.platforms.rocm import on_gfx1x
+
+        if not on_gfx1x():
+            return None
+        if head_size != 128:
+            return f"head_size={head_size} requires Triton on gfx1x"
+        if block_size != 16:
+            return f"block_size={block_size} requires Triton on gfx1x"
+        if kv_cache_dtype != "auto":
+            return f"kv_cache_dtype={kv_cache_dtype!r} requires Triton on gfx1x"
+        return None
+
     @staticmethod
     def get_name() -> str:
         return "ROCM_ATTN"

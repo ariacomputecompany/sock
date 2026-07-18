@@ -229,7 +229,7 @@ fn slug(value: &str) -> String {
 
 fn wrapper_script(manifest_path: &str) -> String {
     format!(
-        "#!/usr/bin/env sh\nset -eu\nDIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\nexec \"${{PYTHON:-python3}}\" \"$DIR/invoke_vllm_surface.py\" --manifest \"$DIR/../{}\" \"$@\"\n",
+        "#!/usr/bin/env sh\nset -eu\nexport PYTHONNOUSERSITE=\"${{PYTHONNOUSERSITE:-1}}\"\nexport PYTHONHASHSEED=\"${{PYTHONHASHSEED:-0}}\"\nexport TOKENIZERS_PARALLELISM=\"${{TOKENIZERS_PARALLELISM:-false}}\"\nexport VLLM_WORKER_MULTIPROC_METHOD=\"${{VLLM_WORKER_MULTIPROC_METHOD:-spawn}}\"\nDIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\nexec \"${{PYTHON:-python3}}\" \"$DIR/invoke_vllm_surface.py\" --manifest \"$DIR/../{}\" \"$@\"\n",
         manifest_path
     )
 }

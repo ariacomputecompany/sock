@@ -10,15 +10,11 @@ import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-VENDORED_VLLM_ROOT = REPO_ROOT / "vllm"
-if str(VENDORED_VLLM_ROOT) not in sys.path:
-    sys.path.insert(0, str(VENDORED_VLLM_ROOT))
-os.environ["PYTHONPATH"] = os.pathsep.join(
-    [
-        str(VENDORED_VLLM_ROOT),
-        *(part for part in os.environ.get("PYTHONPATH", "").split(os.pathsep) if part),
-    ]
-)
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from scripts.sock_runtime_env import apply_rocm_wsl_runtime_defaults
+
+apply_rocm_wsl_runtime_defaults()
 
 from vllm import LLM, SamplingParams
 from vllm.platforms.rocm import rocm_custom_paged_attention_rejection_reasons

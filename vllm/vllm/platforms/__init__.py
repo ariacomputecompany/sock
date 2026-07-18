@@ -13,6 +13,7 @@ from vllm.utils.import_utils import resolve_obj_by_qualname
 from .interface import CpuArchEnum, Platform, PlatformEnum
 
 logger = logging.getLogger(__name__)
+_rocm_torch_fallback_warned = False
 
 
 def vllm_version_matches_substr(substr: str) -> bool:
@@ -108,6 +109,7 @@ def cuda_platform_plugin() -> str | None:
 
 
 def rocm_platform_plugin() -> str | None:
+    global _rocm_torch_fallback_warned
     is_rocm = False
     logger.debug("Checking if ROCm platform is available.")
     try:
@@ -124,6 +126,28 @@ def rocm_platform_plugin() -> str | None:
             amdsmi.amdsmi_shut_down()
     except Exception as e:
         logger.debug("ROCm platform is not available because: %s", str(e))
+        if envs.VLLM_TARGET_DEVICE == "rocm":
+            try:
+                import torch
+
+                has_hip_runtime = getattr(torch.version, "hip", None) is not None
+                has_visible_device = torch.cuda.device_count() > 0
+                if has_hip_runtime and has_visible_device:
+                    is_rocm = True
+                    message = (
+                        "ROCm target was requested explicitly and amdsmi failed; "
+                        "activating ROCm platform via PyTorch HIP fallback."
+                    )
+                    if _rocm_torch_fallback_warned:
+                        logger.debug(message)
+                    else:
+                        logger.warning(message)
+                        _rocm_torch_fallback_warned = True
+            except Exception as fallback_error:
+                logger.debug(
+                    "ROCm PyTorch HIP fallback is not available because: %s",
+                    str(fallback_error),
+                )
 
     return "vllm.platforms.rocm.RocmPlatform" if is_rocm else None
 

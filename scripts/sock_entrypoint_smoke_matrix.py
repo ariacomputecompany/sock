@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -15,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.rocm_wsl_smoke_matrix import extract_log_metrics
+from scripts.sock_runtime_env import subprocess_env, tool_subprocess_env
 
 
 DEFAULT_MODELS = ["Qwen/Qwen2.5-0.5B-Instruct"]
@@ -52,7 +52,13 @@ def slug(value: str) -> str:
 
 
 def run_checked(cmd: list[str], log_path: Path | None = None) -> subprocess.CompletedProcess[str]:
-    completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    completed = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=tool_subprocess_env(),
+    )
     if log_path is not None:
         log_path.write_text(
             completed.stdout + completed.stderr,
@@ -81,7 +87,7 @@ def run_wrapper(
     wrapper_path: Path,
 ) -> dict[str, Any]:
     log_path = bundle_dir / f"{args.scope_name}.log"
-    env = os.environ.copy()
+    env = subprocess_env(rocm_wsl=True)
     env["SOCK_VLLM_MODEL"] = model
     env["SOCK_VLLM_MAX_MODEL_LEN"] = str(args.max_model_len)
     env["SOCK_VLLM_GPU_MEMORY_UTILIZATION"] = str(args.gpu_memory_utilization)

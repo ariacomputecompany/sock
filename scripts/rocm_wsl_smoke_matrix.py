@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -10,10 +9,14 @@ import time
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.sock_runtime_env import subprocess_env
+
 
 DEFAULT_MODELS = ["Qwen/Qwen2.5-0.5B-Instruct"]
-REPO_ROOT = Path(__file__).resolve().parents[1]
-VENDORED_VLLM_ROOT = REPO_ROOT / "vllm"
 
 
 def parse_args() -> argparse.Namespace:
@@ -135,16 +138,7 @@ def extract_log_metrics(log_text: str) -> dict[str, Any]:
 
 
 def run_model(args: argparse.Namespace, model: str) -> dict[str, Any]:
-    env = os.environ.copy()
-    env.setdefault("VLLM_TARGET_DEVICE", "rocm")
-    env.setdefault("VLLM_USE_V2_MODEL_RUNNER", "0")
-    env.setdefault("VLLM_WSL2_ENABLE_PIN_MEMORY", "0")
-    env["PYTHONPATH"] = os.pathsep.join(
-        [
-            str(VENDORED_VLLM_ROOT),
-            *(part for part in env.get("PYTHONPATH", "").split(os.pathsep) if part),
-        ]
-    )
+    env = subprocess_env(rocm_wsl=True)
 
     args.log_dir.mkdir(parents=True, exist_ok=True)
     log_path = args.log_dir / f"{slug(model)}.log"
