@@ -5,7 +5,20 @@ import contextlib
 import json
 import logging
 import os
+import sys
 import time
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+VENDORED_VLLM_ROOT = REPO_ROOT / "vllm"
+if str(VENDORED_VLLM_ROOT) not in sys.path:
+    sys.path.insert(0, str(VENDORED_VLLM_ROOT))
+os.environ["PYTHONPATH"] = os.pathsep.join(
+    [
+        str(VENDORED_VLLM_ROOT),
+        *(part for part in os.environ.get("PYTHONPATH", "").split(os.pathsep) if part),
+    ]
+)
 
 from vllm import LLM, SamplingParams
 from vllm.platforms.rocm import rocm_custom_paged_attention_rejection_reasons

@@ -11,6 +11,8 @@ from typing import Any
 
 
 DEFAULT_MODELS = ["Qwen/Qwen2.5-0.5B-Instruct"]
+REPO_ROOT = Path(__file__).resolve().parents[1]
+VENDORED_VLLM_ROOT = REPO_ROOT / "vllm"
 
 
 def parse_args() -> argparse.Namespace:
@@ -91,6 +93,12 @@ def run_model(args: argparse.Namespace, model: str) -> dict[str, Any]:
     env.setdefault("VLLM_TARGET_DEVICE", "rocm")
     env.setdefault("VLLM_USE_V2_MODEL_RUNNER", "0")
     env.setdefault("VLLM_WSL2_ENABLE_PIN_MEMORY", "0")
+    env["PYTHONPATH"] = os.pathsep.join(
+        [
+            str(VENDORED_VLLM_ROOT),
+            *(part for part in env.get("PYTHONPATH", "").split(os.pathsep) if part),
+        ]
+    )
 
     start = time.perf_counter()
     try:
