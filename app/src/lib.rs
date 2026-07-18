@@ -10,8 +10,8 @@ use sock_core::{
     ShapeRange, TargetEngine, WarmupPolicy,
 };
 use sock_engine::{
-    BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome, build_soc_plan_document,
-    build_vllm_entrypoint_document, build_vllm_integration_document, vllm,
+    build_soc_plan_document, build_vllm_entrypoint_document, build_vllm_integration_document, vllm,
+    BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome,
 };
 
 #[must_use]
@@ -213,7 +213,7 @@ pub fn replay_bundle(
 }
 
 fn detect_host_snapshot() -> PlannerHostSnapshot {
-    if let Some(host) = host_snapshot_from_env() {
+    if let Some(host) = test_host_snapshot_from_env() {
         return host;
     }
 
@@ -228,19 +228,6 @@ fn detect_host_snapshot() -> PlannerHostSnapshot {
         return host;
     }
 
-    if cfg!(target_os = "macos") {
-        return PlannerHostSnapshot {
-            operating_system,
-            accelerator_vendor: AcceleratorVendor::Nvidia,
-            gpu_arches: vec!["sm90".to_owned()],
-            cuda_version: "12.4".to_owned(),
-            driver_version: "550.54".to_owned(),
-            python_abi,
-            libc_abi,
-            flashinfer_prebuilt_available: true,
-        };
-    }
-
     PlannerHostSnapshot {
         operating_system,
         accelerator_vendor: AcceleratorVendor::Unknown,
@@ -253,8 +240,8 @@ fn detect_host_snapshot() -> PlannerHostSnapshot {
     }
 }
 
-fn host_snapshot_from_env() -> Option<PlannerHostSnapshot> {
-    let profile = std::env::var("SOCK_HOST_PROFILE").ok()?;
+fn test_host_snapshot_from_env() -> Option<PlannerHostSnapshot> {
+    let profile = std::env::var("SOCK_TEST_HOST_PROFILE").ok()?;
     match profile.as_str() {
         "nvidia-sm90" => Some(PlannerHostSnapshot {
             operating_system: OperatingSystem::Linux,
@@ -331,9 +318,15 @@ fn detect_nvidia_snapshot(
 ) -> Option<PlannerHostSnapshot> {
     let output = run_command(
         "nvidia-smi",
-        &["--query-gpu=compute_cap,driver_version", "--format=csv,noheader"],
+        &[
+            "--query-gpu=compute_cap,driver_version",
+            "--format=csv,noheader",
+        ],
     )?;
-    let first_line = output.lines().map(str::trim).find(|line| !line.is_empty())?;
+    let first_line = output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
     let mut parts = first_line.split(',').map(str::trim);
     let compute_cap = parts.next()?;
     let driver_version = parts.next().unwrap_or_default().to_owned();

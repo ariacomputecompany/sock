@@ -7,7 +7,7 @@
       "cmd": "sh",
       "args": [
         "-c",
-        "cargo run --quiet --bin sock -- plan"
+        "SOCK_TEST_HOST_PROFILE=nvidia-sm90 cargo run --quiet --bin sock -- plan"
       ],
       "expect_exit": 0,
       "expect_stdout": "plan 7ee2a5daa9de5327b01d056d8bb2a3e94f88318ab184b0461508179f23a23633\nengine vllm\nmodel meta-llama/Llama-3.1-8B-Instruct@main\nbackend FlashInfer\n",

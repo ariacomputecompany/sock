@@ -6,7 +6,7 @@ use tempfile::tempdir;
 
 fn sock_cmd() -> Command {
     let mut cmd = Command::cargo_bin("sock").expect("sock binary");
-    cmd.env("SOCK_HOST_PROFILE", "nvidia-sm90");
+    cmd.env("SOCK_TEST_HOST_PROFILE", "nvidia-sm90");
     cmd
 }
 
@@ -38,7 +38,7 @@ fn serve_delegates_help_to_vendored_vllm_cli_when_runtime_available() {
     }
 
     let mut cmd = Command::cargo_bin("sock").expect("sock binary");
-    cmd.env("SOCK_HOST_PROFILE", "amd-gfx1151")
+    cmd.env("SOCK_TEST_HOST_PROFILE", "amd-gfx1151")
         .args(["serve", "--help"])
         .assert()
         .success()
@@ -53,7 +53,7 @@ fn bench_delegates_help_to_vendored_vllm_cli_when_runtime_available() {
     }
 
     let mut cmd = Command::cargo_bin("sock").expect("sock binary");
-    cmd.env("SOCK_HOST_PROFILE", "amd-gfx1151")
+    cmd.env("SOCK_TEST_HOST_PROFILE", "amd-gfx1151")
         .args(["bench", "--help"])
         .assert()
         .success()
