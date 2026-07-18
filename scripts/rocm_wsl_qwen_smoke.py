@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import logging
 import os
 import time
 
@@ -12,6 +14,17 @@ try:
     from transformers import AutoConfig
 except ImportError:  # pragma: no cover - optional runtime aid
     AutoConfig = None
+
+
+@contextlib.contextmanager
+def quiet_transformers_config_warnings():
+    logger = logging.getLogger("transformers.configuration_utils")
+    previous_level = logger.level
+    logger.setLevel(logging.ERROR)
+    try:
+        yield
+    finally:
+        logger.setLevel(previous_level)
 
 
 def parse_args() -> argparse.Namespace:
@@ -71,7 +84,8 @@ def main() -> None:
     paged_attention_summary: dict[str, object] | None = None
 
     if AutoConfig is not None:
-        cfg = AutoConfig.from_pretrained(args.model)
+        with quiet_transformers_config_warnings():
+            cfg = AutoConfig.from_pretrained(args.model)
         hidden_size = getattr(cfg, "hidden_size", None)
         num_attention_heads = getattr(cfg, "num_attention_heads", None)
         num_key_value_heads = getattr(cfg, "num_key_value_heads", None)
@@ -79,8 +93,11 @@ def main() -> None:
         if hidden_size and num_attention_heads and num_key_value_heads:
             head_size = hidden_size // num_attention_heads
             gqa_ratio = num_attention_heads // num_key_value_heads
+            qtype = getattr(cfg, "dtype", None)
+            if qtype is None and "torch_dtype" in getattr(cfg, "__dict__", {}):
+                qtype = cfg.__dict__["torch_dtype"]
             reasons = rocm_custom_paged_attention_rejection_reasons(
-                qtype=getattr(cfg, "dtype", getattr(cfg, "torch_dtype", None)),
+                qtype=qtype,
                 head_size=head_size,
                 block_size=16,
                 gqa_ratio=gqa_ratio,
