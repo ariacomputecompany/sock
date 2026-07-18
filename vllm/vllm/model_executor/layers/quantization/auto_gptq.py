@@ -47,7 +47,6 @@ from vllm.model_executor.layers.quantization.utils.marlin_utils import (
     get_marlin_input_dtype,
     marlin_make_workspace_new,
     marlin_repeat_scales_on_all_ranks,
-    verify_marlin_supported,
 )
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     QuantKey,
@@ -99,6 +98,7 @@ class AutoGPTQConfig(QuantizationConfig):
 
     # (num_bits, is_sym) -> quant_type
     TYPE_MAP = {
+        (2, True): scalar_types.uint2b2,
         (4, True): scalar_types.uint4b8,
         (8, True): scalar_types.uint8b128,
     }
@@ -155,9 +155,7 @@ class AutoGPTQConfig(QuantizationConfig):
         self.full_config = full_config
 
         if (weight_bits, is_sym) not in self.TYPE_MAP:
-            raise ValueError(
-                f"Unsupported quantization config: bits={weight_bits}, sym={is_sym}"
-            )
+            raise ValueError(self._unsupported_quantization_message(weight_bits, is_sym))
 
         self.quant_type = self.TYPE_MAP[(weight_bits, is_sym)]
 
@@ -173,6 +171,16 @@ class AutoGPTQConfig(QuantizationConfig):
             f"lm_head_quantized={self.lm_head_quantized}, "
             f"dynamic={self.dynamic}, "
             f"modules_in_block_to_quantize={self.modules_in_block_to_quantize})"
+        )
+
+    @staticmethod
+    def _unsupported_quantization_message(weight_bits: int, is_sym: bool) -> str:
+        supported = ", ".join(
+            f"bits={bits}, sym={sym}" for bits, sym in sorted(AutoGPTQConfig.TYPE_MAP)
+        )
+        return (
+            f"Unsupported AutoGPTQ quantization config: bits={weight_bits}, "
+            f"sym={is_sym}. Supported formats are: {supported}."
         )
 
     @classmethod
@@ -317,12 +325,6 @@ class AutoGPTQLinearMethod(LinearMethodBase):
         self.input_dtype = None
         self.quant_type = self.quant_config.quant_type
 
-        # Verify supported on platform.
-        verify_marlin_supported(
-            quant_type=self.quant_config.quant_type,
-            group_size=self.quant_config.group_size,
-        )
-
     def create_weights(
         self,
         layer: torch.nn.Module,
@@ -349,6 +351,7 @@ class AutoGPTQLinearMethod(LinearMethodBase):
             group_size=self.quant_config.group_size,
             zero_points=False,
             has_g_idx=self.quant_config.desc_act,
+            zero_point_offset=1,
         )
 
         kernel_type = choose_mp_linear_kernel(mp_linear_kernel_config)
