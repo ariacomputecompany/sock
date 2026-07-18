@@ -1,27 +1,29 @@
 use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 use std::time::Instant;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use sock_app::{
     default_host_snapshot, default_request_with_optimization, diagnostics_for, replay_bundle,
     rewrite_trace_for,
 };
 use sock_core::{
-    AcceleratorVendor, BackendFamily, BenchmarkCaseArtifactPaths, BenchmarkMatrixEntry,
-    BenchmarkMatrixReport, BenchmarkTraceReference, BuildMeasurementReport, DiagnosticsDocument,
+    canonical_json, render_backend_decision, render_explain, render_plan_summary,
+    render_soc_explain, render_verification_report, AcceleratorVendor, BackendFamily,
+    BenchmarkCaseArtifactPaths, BenchmarkMatrixEntry, BenchmarkMatrixReport,
+    BenchmarkTraceReference, BuildMeasurementReport, DiagnosticsDocument,
     MaterializationExecutionReport, MeasurementCaseReport, MeasurementComparisonReport,
     MeasurementPhaseTimings, OptimizationExplainDocument, OptimizationLevel, ReplayBundle,
-    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
-    render_backend_decision, render_explain, render_plan_summary, render_soc_explain,
-    render_verification_report,
+    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion,
 };
 use sock_engine::{
-    BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, Planner,
-    PlannerHostSnapshot, PlanningOutcome, StorageRoots, build_soc_plan_document,
-    build_vllm_entrypoint_document, build_vllm_integration_document, emit_vllm_entrypoints,
-    validate_scoped_vllm_subset,
+    build_soc_plan_document, build_vllm_entrypoint_document, build_vllm_integration_document,
+    emit_vllm_entrypoints, validate_scoped_vllm_subset, BuildReadiness, BuildScope,
+    BuildTopologyScope, MaterializationExecutor, Planner, PlannerHostSnapshot, PlanningOutcome,
+    StorageRoots,
 };
 
 #[derive(Debug, Parser)]
@@ -94,6 +96,82 @@ enum Command {
     Doctor {
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
         format: OutputMode,
+    },
+    #[command(trailing_var_arg = true, disable_help_flag = true)]
+    Serve {
+        #[arg(
+            value_name = "VLLM_ARG",
+            allow_hyphen_values = true,
+            trailing_var_arg = true
+        )]
+        args: Vec<OsString>,
+    },
+    #[command(trailing_var_arg = true, disable_help_flag = true)]
+    Chat {
+        #[arg(
+            value_name = "VLLM_ARG",
+            allow_hyphen_values = true,
+            trailing_var_arg = true
+        )]
+        args: Vec<OsString>,
+    },
+    #[command(trailing_var_arg = true, disable_help_flag = true)]
+    Complete {
+        #[arg(
+            value_name = "VLLM_ARG",
+            allow_hyphen_values = true,
+            trailing_var_arg = true
+        )]
+        args: Vec<OsString>,
+    },
+    #[command(trailing_var_arg = true, disable_help_flag = true)]
+    Bench {
+        #[arg(
+            value_name = "VLLM_ARG",
+            allow_hyphen_values = true,
+            trailing_var_arg = true
+        )]
+        args: Vec<OsString>,
+    },
+    #[command(
+        name = "collect-env",
+        trailing_var_arg = true,
+        disable_help_flag = true
+    )]
+    CollectEnv {
+        #[arg(
+            value_name = "VLLM_ARG",
+            allow_hyphen_values = true,
+            trailing_var_arg = true
+        )]
+        args: Vec<OsString>,
+    },
+    #[command(name = "run-batch", trailing_var_arg = true, disable_help_flag = true)]
+    RunBatch {
+        #[arg(
+            value_name = "VLLM_ARG",
+            allow_hyphen_values = true,
+            trailing_var_arg = true
+        )]
+        args: Vec<OsString>,
+    },
+    #[command(trailing_var_arg = true, disable_help_flag = true)]
+    Launch {
+        #[arg(
+            value_name = "VLLM_ARG",
+            allow_hyphen_values = true,
+            trailing_var_arg = true
+        )]
+        args: Vec<OsString>,
+    },
+    #[command(trailing_var_arg = true, disable_help_flag = true)]
+    Render {
+        #[arg(
+            value_name = "VLLM_ARG",
+            allow_hyphen_values = true,
+            trailing_var_arg = true
+        )]
+        args: Vec<OsString>,
     },
 }
 
@@ -287,6 +365,14 @@ fn main() -> Result<()> {
             emit_replay(&ReplayBundle::load_from(&bundle)?, format)?;
         }
         Command::Doctor { format } => emit_doctor(&default_host_snapshot(), format)?,
+        Command::Serve { args } => run_vendored_vllm_subcommand("serve", args)?,
+        Command::Chat { args } => run_vendored_vllm_subcommand("chat", args)?,
+        Command::Complete { args } => run_vendored_vllm_subcommand("complete", args)?,
+        Command::Bench { args } => run_vendored_vllm_subcommand("bench", args)?,
+        Command::CollectEnv { args } => run_vendored_vllm_subcommand("collect-env", args)?,
+        Command::RunBatch { args } => run_vendored_vllm_subcommand("run-batch", args)?,
+        Command::Launch { args } => run_vendored_vllm_subcommand("launch", args)?,
+        Command::Render { args } => run_vendored_vllm_subcommand("render", args)?,
     }
 
     Ok(())
@@ -704,6 +790,102 @@ fn emit_doctor(host: &PlannerHostSnapshot, format: OutputMode) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn run_vendored_vllm_cli(args: Vec<OsString>) -> Result<()> {
+    let repo_root = repo_root()?;
+    let python = vendored_python(&repo_root);
+    let script = repo_root.join("scripts").join("sock_vllm_cli.py");
+    let host = default_host_snapshot();
+
+    let mut command = ProcessCommand::new(&python);
+    command.arg(script).args(args).current_dir(&repo_root);
+    configure_vllm_cli_env(&mut command, &repo_root, &host);
+
+    exec_or_exit(command)
+}
+
+fn run_vendored_vllm_subcommand(name: &str, args: Vec<OsString>) -> Result<()> {
+    let mut vllm_args = vec![OsString::from(name)];
+    vllm_args.extend(args);
+    run_vendored_vllm_cli(vllm_args)
+}
+
+fn repo_root() -> Result<PathBuf> {
+    if let Some(root) = std::env::var_os("SOCK_REPO_ROOT") {
+        return Ok(PathBuf::from(root));
+    }
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(Path::to_path_buf)
+        .context("CARGO_MANIFEST_DIR should have a workspace parent")
+}
+
+fn vendored_python(repo_root: &Path) -> PathBuf {
+    let vendored = repo_root
+        .join("vllm")
+        .join(".venv")
+        .join("bin")
+        .join("python");
+    if vendored.exists() {
+        return vendored;
+    }
+    std::env::var_os("PYTHON")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("python3"))
+}
+
+fn configure_vllm_cli_env(
+    command: &mut ProcessCommand,
+    repo_root: &Path,
+    host: &PlannerHostSnapshot,
+) {
+    command.env("PYTHONNOUSERSITE", "1");
+    command.env("PYTHONHASHSEED", "0");
+    command.env("TOKENIZERS_PARALLELISM", "false");
+    command.env(
+        "PYTHONPATH",
+        prepend_path_env(repo_root.join("vllm"), "PYTHONPATH"),
+    );
+
+    match host.accelerator_vendor {
+        AcceleratorVendor::Amd => {
+            command.env("SOCK_VLLM_RUNTIME_PROFILE", "rocm-wsl");
+            command.env("VLLM_TARGET_DEVICE", "rocm");
+            command.env("VLLM_USE_V2_MODEL_RUNNER", "0");
+            command.env("VLLM_WSL2_ENABLE_PIN_MEMORY", "0");
+            command.env("VLLM_WORKER_MULTIPROC_METHOD", "spawn");
+        }
+        AcceleratorVendor::Nvidia => {
+            command.env("SOCK_VLLM_RUNTIME_PROFILE", "cuda");
+            command.env("VLLM_TARGET_DEVICE", "cuda");
+        }
+        AcceleratorVendor::Unknown => {
+            command.env("SOCK_VLLM_RUNTIME_PROFILE", "python");
+        }
+    }
+}
+
+fn prepend_path_env(path: PathBuf, name: &str) -> OsString {
+    let mut paths = vec![path];
+    if let Some(existing) = std::env::var_os(name) {
+        paths.extend(std::env::split_paths(&existing));
+    }
+    std::env::join_paths(paths).expect("valid path env")
+}
+
+#[cfg(unix)]
+fn exec_or_exit(mut command: ProcessCommand) -> Result<()> {
+    use std::os::unix::process::CommandExt;
+
+    let error = command.exec();
+    Err(error).context("exec vendored vLLM CLI")
+}
+
+#[cfg(not(unix))]
+fn exec_or_exit(mut command: ProcessCommand) -> Result<()> {
+    let status = command.status().context("run vendored vLLM CLI")?;
+    std::process::exit(status.code().unwrap_or(1));
 }
 
 fn request_label_for_scope(scope: &BuildScope) -> Option<&'static str> {

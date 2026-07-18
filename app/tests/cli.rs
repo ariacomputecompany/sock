@@ -1,12 +1,21 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use serde_json::Value;
+use std::path::Path;
 use tempfile::tempdir;
 
 fn sock_cmd() -> Command {
     let mut cmd = Command::cargo_bin("sock").expect("sock binary");
     cmd.env("SOCK_HOST_PROFILE", "nvidia-sm90");
     cmd
+}
+
+fn vendored_vllm_runtime_available() -> bool {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root")
+        .join("vllm/.venv/bin/python")
+        .exists()
 }
 
 #[test]
@@ -20,6 +29,35 @@ fn plan_summary_is_stable() {
             "model meta-llama/Llama-3.1-8B-Instruct@main",
         ))
         .stdout(predicate::str::contains("backend FlashInfer"));
+}
+
+#[test]
+fn serve_delegates_help_to_vendored_vllm_cli_when_runtime_available() {
+    if !vendored_vllm_runtime_available() {
+        return;
+    }
+
+    let mut cmd = Command::cargo_bin("sock").expect("sock binary");
+    cmd.env("SOCK_HOST_PROFILE", "amd-gfx1151")
+        .args(["serve", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("vllm serve"))
+        .stdout(predicate::str::contains("OpenAI-compatible API server"));
+}
+
+#[test]
+fn bench_delegates_help_to_vendored_vllm_cli_when_runtime_available() {
+    if !vendored_vllm_runtime_available() {
+        return;
+    }
+
+    let mut cmd = Command::cargo_bin("sock").expect("sock binary");
+    cmd.env("SOCK_HOST_PROFILE", "amd-gfx1151")
+        .args(["bench", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("vllm bench"));
 }
 
 #[test]
@@ -65,13 +103,11 @@ fn o0_explain_reduces_cuda_graph_and_performance_scope() {
         explain["optimization_explain"]["graph_actions"][0]["effect"],
         Value::String("cuda_graphs=disabled".to_owned())
     );
-    assert!(
-        explain["plan"]["shape_envelope"]["nodes"]
-            .as_array()
-            .expect("shape envelope nodes")
-            .iter()
-            .all(|node| node["plane"] != "CudaGraph" && node["plane"] != "Performance")
-    );
+    assert!(explain["plan"]["shape_envelope"]["nodes"]
+        .as_array()
+        .expect("shape envelope nodes")
+        .iter()
+        .all(|node| node["plane"] != "CudaGraph" && node["plane"] != "Performance"));
 }
 
 #[test]
@@ -154,12 +190,11 @@ fn build_verify_and_replay_bundle_round_trip() {
     ] {
         assert!(dir.path().join(file).exists(), "missing {file}");
     }
-    assert!(
-        dir.path()
-            .join("vllm-entrypoints")
-            .join("invoke_vllm_surface.py")
-            .exists()
-    );
+    assert!(dir
+        .path()
+        .join("vllm-entrypoints")
+        .join("invoke_vllm_surface.py")
+        .exists());
 
     let materialization: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("materialization_report.json"))
@@ -180,64 +215,52 @@ fn build_verify_and_replay_bundle_round_trip() {
         materialization["verify_replay_compile_free"],
         Value::Bool(true)
     );
-    assert!(
-        materialization["waves"]
-            .as_array()
-            .expect("waves array")
-            .iter()
-            .all(|wave| wave.get("discipline").is_some())
-    );
-    assert!(
-        materialization["waves"]
-            .as_array()
-            .expect("waves array")
-            .iter()
-            .all(|wave| wave.get("scheduling_mode").is_some())
-    );
+    assert!(materialization["waves"]
+        .as_array()
+        .expect("waves array")
+        .iter()
+        .all(|wave| wave.get("discipline").is_some()));
+    assert!(materialization["waves"]
+        .as_array()
+        .expect("waves array")
+        .iter()
+        .all(|wave| wave.get("scheduling_mode").is_some()));
     assert_eq!(
         materialization["readiness"]["achieved_readiness"],
         Value::String("performance".to_owned())
     );
-    assert!(
-        materialization["runtime_jit_observations"]
-            .as_array()
-            .expect("runtime jit observations")
-            .iter()
-            .all(|observation| observation.get("status").is_some())
-    );
+    assert!(materialization["runtime_jit_observations"]
+        .as_array()
+        .expect("runtime jit observations")
+        .iter()
+        .all(|observation| observation.get("status").is_some()));
 
     let integration: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("vllm_integration.json"))
             .expect("read vllm integration"),
     )
     .expect("parse vllm integration");
-    assert!(
-        integration["surfaces"]
-            .as_array()
-            .expect("integration surfaces")
-            .iter()
-            .any(|surface| surface["id"] == "compile-region:prefill_attention")
-    );
-    assert!(
-        integration["replay_roots"]
-            .as_array()
-            .expect("integration replay roots")
-            .iter()
-            .any(|root| root["surface_id"] == "compile-region:prefill_attention")
-    );
+    assert!(integration["surfaces"]
+        .as_array()
+        .expect("integration surfaces")
+        .iter()
+        .any(|surface| surface["id"] == "compile-region:prefill_attention"));
+    assert!(integration["replay_roots"]
+        .as_array()
+        .expect("integration replay roots")
+        .iter()
+        .any(|root| root["surface_id"] == "compile-region:prefill_attention"));
 
     let entrypoints: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("vllm_entrypoints.json"))
             .expect("read vllm entrypoints"),
     )
     .expect("parse vllm entrypoints");
-    assert!(
-        entrypoints["entrypoints"]
-            .as_array()
-            .expect("entrypoints array")
-            .iter()
-            .any(|entrypoint| entrypoint["scope_name"] == "prefill_attention")
-    );
+    assert!(entrypoints["entrypoints"]
+        .as_array()
+        .expect("entrypoints array")
+        .iter()
+        .any(|entrypoint| entrypoint["scope_name"] == "prefill_attention"));
 
     let replay_proof: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("replay_proof.json")).expect("read replay proof"),
@@ -266,22 +289,16 @@ fn build_verify_and_replay_bundle_round_trip() {
             .expect("read backend decision"),
     )
     .expect("parse backend decision");
-    assert!(
-        backend_decision["entries"]
-            .as_array()
-            .expect("backend decision entries")
-            .iter()
-            .any(
-                |entry| entry["family"] == "FlashInfer" && entry["selected_for_deployment"] == true
-            )
-    );
-    assert!(
-        backend_decision["extension_manifests"]
-            .as_array()
-            .expect("extension manifests")
-            .iter()
-            .any(|manifest| manifest["binary_name"] == "flashinfer_extension.so")
-    );
+    assert!(backend_decision["entries"]
+        .as_array()
+        .expect("backend decision entries")
+        .iter()
+        .any(|entry| entry["family"] == "FlashInfer" && entry["selected_for_deployment"] == true));
+    assert!(backend_decision["extension_manifests"]
+        .as_array()
+        .expect("extension manifests")
+        .iter()
+        .any(|manifest| manifest["binary_name"] == "flashinfer_extension.so"));
 
     sock_cmd()
         .args(["verify", "--bundle"])
@@ -462,12 +479,10 @@ fn build_reports_split_cache_ownership_surfaces() {
     assert!(cache_namespaces.contains("compile-cache"));
     assert!(cache_namespaces.contains("flashinfer-autotune-cache"));
     assert!(cache_namespaces.contains("cuda-graph-cache"));
-    assert!(
-        materialization["cache_root"]
-            .as_str()
-            .expect("cache root")
-            .ends_with("/.sock-cache")
-    );
+    assert!(materialization["cache_root"]
+        .as_str()
+        .expect("cache root")
+        .ends_with("/.sock-cache"));
 }
 
 #[test]
@@ -661,25 +676,19 @@ fn scoped_prefill_build_emits_minimal_closure() {
     let artifacts = artifact_manifest["artifacts"]
         .as_array()
         .expect("artifacts array");
-    assert!(
-        artifacts
-            .iter()
-            .all(|artifact| artifact["scope"] == "prefill_attention")
-    );
+    assert!(artifacts
+        .iter()
+        .all(|artifact| artifact["scope"] == "prefill_attention"));
 
     let warmup_obligations = plan["warmup_obligations"]
         .as_array()
         .expect("warmup obligations array");
-    assert!(
-        warmup_obligations
-            .iter()
-            .all(|obligation| obligation["region_name"] == "prefill_attention")
-    );
-    assert!(
-        warmup_obligations
-            .iter()
-            .all(|obligation| obligation["blocking"] == true)
-    );
+    assert!(warmup_obligations
+        .iter()
+        .all(|obligation| obligation["region_name"] == "prefill_attention"));
+    assert!(warmup_obligations
+        .iter()
+        .all(|obligation| obligation["blocking"] == true));
 
     let materialization: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("materialization_report.json"))
@@ -689,11 +698,9 @@ fn scoped_prefill_build_emits_minimal_closure() {
     let materialized_artifacts = materialization["artifacts"]
         .as_array()
         .expect("materialized artifacts array");
-    assert!(
-        materialized_artifacts
-            .iter()
-            .all(|artifact| artifact["scope"] == "prefill_attention")
-    );
+    assert!(materialized_artifacts
+        .iter()
+        .all(|artifact| artifact["scope"] == "prefill_attention"));
     assert!(materialized_artifacts.iter().all(|artifact| {
         artifact["cache_sharing"] == "content_addressed"
             && artifact["region_stable_identity"].is_string()
@@ -723,13 +730,11 @@ fn scoped_prefill_build_emits_minimal_closure() {
         materialization["readiness"]["achieved_readiness"],
         Value::String("correctness".to_owned())
     );
-    assert!(
-        materialization["waves"]
-            .as_array()
-            .expect("waves array")
-            .iter()
-            .any(|wave| wave["scheduling_mode"] == "parallel")
-    );
+    assert!(materialization["waves"]
+        .as_array()
+        .expect("waves array")
+        .iter()
+        .any(|wave| wave["scheduling_mode"] == "parallel"));
 
     let integration: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("vllm_integration.json"))
@@ -739,11 +744,9 @@ fn scoped_prefill_build_emits_minimal_closure() {
     let surfaces = integration["surfaces"]
         .as_array()
         .expect("integration surfaces");
-    assert!(
-        surfaces
-            .iter()
-            .any(|surface| surface["id"] == "compile-region:prefill_attention")
-    );
+    assert!(surfaces
+        .iter()
+        .any(|surface| surface["id"] == "compile-region:prefill_attention"));
     let prefill_surface = surfaces
         .iter()
         .find(|surface| surface["id"] == "compile-region:prefill_attention")
@@ -752,11 +755,9 @@ fn scoped_prefill_build_emits_minimal_closure() {
         prefill_surface["isolation"]["subset_build_valid"],
         Value::Bool(true)
     );
-    assert!(
-        !surfaces
-            .iter()
-            .any(|surface| surface["id"] == "compile-region:decode_attention")
-    );
+    assert!(!surfaces
+        .iter()
+        .any(|surface| surface["id"] == "compile-region:decode_attention"));
 
     let entrypoints: Value = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join("vllm_entrypoints.json"))
@@ -766,16 +767,12 @@ fn scoped_prefill_build_emits_minimal_closure() {
     let build_entrypoints = entrypoints["entrypoints"]
         .as_array()
         .expect("entrypoints array");
-    assert!(
-        build_entrypoints
-            .iter()
-            .any(|entrypoint| entrypoint["scope_name"] == "prefill_attention")
-    );
-    assert!(
-        !build_entrypoints
-            .iter()
-            .any(|entrypoint| entrypoint["scope_name"] == "decode_attention")
-    );
+    assert!(build_entrypoints
+        .iter()
+        .any(|entrypoint| entrypoint["scope_name"] == "prefill_attention"));
+    assert!(!build_entrypoints
+        .iter()
+        .any(|entrypoint| entrypoint["scope_name"] == "decode_attention"));
     let wrapper_path = build_entrypoints
         .iter()
         .find(|entrypoint| entrypoint["scope_name"] == "prefill_attention")
@@ -793,11 +790,13 @@ fn scoped_prefill_build_emits_minimal_closure() {
     )
     .expect("parse prefill manifest");
     assert_eq!(
-        manifest["engine_root"],
-        entrypoints["engine_root"],
+        manifest["engine_root"], entrypoints["engine_root"],
         "surface manifest should be self-contained for wrapper execution"
     );
-    assert_eq!(manifest["scope_name"], Value::String("prefill_attention".to_owned()));
+    assert_eq!(
+        manifest["scope_name"],
+        Value::String("prefill_attention".to_owned())
+    );
 }
 
 #[test]
@@ -851,13 +850,11 @@ fn early_serve_build_skips_warmup_and_records_runtime_jit_contradictions() {
         materialization["readiness"]["deferred_warmups_complete"],
         Value::Bool(true)
     );
-    assert!(
-        materialization["runtime_jit_observations"]
-            .as_array()
-            .expect("runtime jit observations")
-            .iter()
-            .any(|observation| observation["status"] == "contradicted")
-    );
+    assert!(materialization["runtime_jit_observations"]
+        .as_array()
+        .expect("runtime jit observations")
+        .iter()
+        .any(|observation| observation["status"] == "contradicted"));
 }
 
 #[test]
@@ -967,11 +964,9 @@ fn measure_reports_phase_and_duplication_telemetry() {
         assert!(case["phase_timings"].get("compile_ms").is_some());
         assert!(case["phase_timings"].get("link_assemble_ms").is_some());
         assert!(case["phase_timings"].get("packaging_ms").is_some());
-        assert!(
-            case["phase_timings"]
-                .get("warmup_materialization_ms")
-                .is_some()
-        );
+        assert!(case["phase_timings"]
+            .get("warmup_materialization_ms")
+            .is_some());
         assert!(case["phase_timings"].get("verification_ms").is_some());
         assert!(case.get("unique_artifact_count").is_some());
         assert!(case.get("duplicate_artifact_count").is_some());
@@ -980,16 +975,12 @@ fn measure_reports_phase_and_duplication_telemetry() {
         assert!(case.get("duplicate_rank_local_load_count").is_some());
         assert!(case.get("closure_outcome").is_some());
     }
-    assert!(
-        report["scoped_vs_broad"]
-            .get("baseline_plan_identity")
-            .is_some()
-    );
-    assert!(
-        report["scoped_vs_broad"]
-            .get("candidate_plan_identity")
-            .is_some()
-    );
+    assert!(report["scoped_vs_broad"]
+        .get("baseline_plan_identity")
+        .is_some());
+    assert!(report["scoped_vs_broad"]
+        .get("candidate_plan_identity")
+        .is_some());
     assert!(report["scoped_vs_broad"].get("changed_phases").is_some());
 }
 
@@ -1028,28 +1019,22 @@ fn benchmark_matrix_is_versioned_and_tied_to_manifests() {
         report["entries"].as_array().expect("entries array").len(),
         4
     );
-    assert!(
-        report["entries"]
-            .as_array()
-            .expect("entries array")
-            .iter()
-            .any(
-                |entry| entry["label"] == "selected_backend_flashinfer_prefill"
-                    && entry["selected_backend_only"] == Value::Bool(true)
-            )
-    );
-    assert!(
-        report["entries"]
-            .as_array()
-            .expect("entries array")
-            .iter()
-            .all(|entry| entry.get("artifact_paths").is_some())
-    );
-    assert!(
-        report["entries"]
-            .as_array()
-            .expect("entries array")
-            .iter()
-            .all(|entry| entry.get("trace_references").is_some())
-    );
+    assert!(report["entries"]
+        .as_array()
+        .expect("entries array")
+        .iter()
+        .any(
+            |entry| entry["label"] == "selected_backend_flashinfer_prefill"
+                && entry["selected_backend_only"] == Value::Bool(true)
+        ));
+    assert!(report["entries"]
+        .as_array()
+        .expect("entries array")
+        .iter()
+        .all(|entry| entry.get("artifact_paths").is_some()));
+    assert!(report["entries"]
+        .as_array()
+        .expect("entries array")
+        .iter()
+        .all(|entry| entry.get("trace_references").is_some()));
 }
