@@ -816,8 +816,10 @@ class VllmConfig:
             "compilation.max_cudagraph_capture_size": (
                 compilation_config.max_cudagraph_capture_size
             ),
-            "compilation.cudagraph_capture_sizes": list(
-                compilation_config.cudagraph_capture_sizes
+            "compilation.cudagraph_capture_sizes": (
+                None
+                if compilation_config.cudagraph_capture_sizes is None
+                else list(compilation_config.cudagraph_capture_sizes)
             ),
             "compilation.cudagraph_num_of_warmups": (
                 compilation_config.cudagraph_num_of_warmups

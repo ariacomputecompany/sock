@@ -1452,6 +1452,15 @@ def test_resolved_compilation_policy_manifest_records_default_custom_op_policy(
     )
 
 
+def test_tracked_compilation_policy_fields_allow_null_cudagraph_sizes() -> None:
+    cfg = VllmConfig(compilation_config=CompilationConfig(mode=CompilationMode.NONE))
+    cfg.compilation_config.cudagraph_capture_sizes = None
+
+    tracked = cfg._tracked_compilation_policy_fields()
+
+    assert tracked["compilation.cudagraph_capture_sizes"] is None
+
+
 def test_scheduler_config_init():
     with pytest.raises(ValidationError):
         # Positional InitVars missing

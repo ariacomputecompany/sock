@@ -343,6 +343,61 @@ if (
 
 
 @cache
+def rocm_custom_paged_attention_rejection_reasons(
+    qtype: torch.dtype,
+    head_size: int,
+    block_size: int,
+    gqa_ratio: int,
+    max_seq_len: int,
+    sliding_window: int,
+    kv_cache_dtype: str,
+    alibi_slopes: torch.Tensor | None = None,
+    sinks: torch.Tensor | None = None,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+
+    if _ON_GFX9:
+        if sliding_window not in (0, (-1, -1)):
+            reasons.append("sliding_window must be disabled")
+        if qtype not in (torch.half, torch.bfloat16):
+            reasons.append(f"qtype {qtype} is unsupported")
+        if head_size not in (64, 128):
+            reasons.append(f"head_size={head_size} is unsupported on gfx9")
+        if block_size not in (16, 32):
+            reasons.append(f"block_size={block_size} is unsupported on gfx9")
+        if not 1 <= gqa_ratio <= 16:
+            reasons.append(f"gqa_ratio={gqa_ratio} is unsupported on gfx9")
+        if max_seq_len > 128 * 1024:
+            reasons.append(f"max_seq_len={max_seq_len} exceeds 131072")
+        if sinks is not None:
+            reasons.append("attention sinks are unsupported")
+        return tuple(reasons)
+
+    if not _ON_GFX1X:
+        return ("requires gfx9 or gfx11+/gfx12+ ROCm backend",)
+
+    if sliding_window not in (0, (-1, -1)):
+        reasons.append("sliding_window must be disabled")
+    if qtype not in (torch.half, torch.bfloat16):
+        reasons.append(f"qtype {qtype} is unsupported")
+    if head_size != 128:
+        reasons.append(f"head_size={head_size} requires Triton on gfx1x")
+    if block_size != 16:
+        reasons.append(f"block_size={block_size} requires Triton on gfx1x")
+    if not 3 <= gqa_ratio <= 16:
+        reasons.append(f"gqa_ratio={gqa_ratio} is unsupported on gfx1x")
+    if max_seq_len > 128 * 1024:
+        reasons.append(f"max_seq_len={max_seq_len} exceeds 131072")
+    if alibi_slopes is not None:
+        reasons.append("alibi slopes are unsupported on gfx1x")
+    if kv_cache_dtype != "auto":
+        reasons.append(f"kv_cache_dtype={kv_cache_dtype!r} requires Triton on gfx1x")
+    if sinks is not None:
+        reasons.append("attention sinks are unsupported")
+    return tuple(reasons)
+
+
+@cache
 def use_rocm_custom_paged_attention(
     qtype: torch.dtype,
     head_size: int,
@@ -356,30 +411,17 @@ def use_rocm_custom_paged_attention(
 ) -> bool:
     # custom paged attn always supported on V0. On V1, requires sliding window
     # disabled due to observed numerical discrepancy.
-    if _ON_GFX9:
-        return (
-            (sliding_window == 0 or sliding_window == (-1, -1))
-            and (qtype == torch.half or qtype == torch.bfloat16)
-            and (head_size == 64 or head_size == 128)
-            and (block_size == 16 or block_size == 32)
-            and (gqa_ratio >= 1 and gqa_ratio <= 16)
-            and max_seq_len <= 128 * 1024
-            and sinks is None
-        )
-
-    else:
-        return (
-            _ON_GFX1X
-            and (sliding_window == 0 or sliding_window == (-1, -1))
-            and (qtype == torch.half or qtype == torch.bfloat16)
-            and head_size == 128
-            and block_size == 16
-            and (gqa_ratio >= 3 and gqa_ratio <= 16)
-            and max_seq_len <= 128 * 1024
-            and alibi_slopes is None
-            and kv_cache_dtype == "auto"
-            and sinks is None
-        )
+    return not rocm_custom_paged_attention_rejection_reasons(
+        qtype=qtype,
+        head_size=head_size,
+        block_size=block_size,
+        gqa_ratio=gqa_ratio,
+        max_seq_len=max_seq_len,
+        sliding_window=sliding_window,
+        kv_cache_dtype=kv_cache_dtype,
+        alibi_slopes=alibi_slopes,
+        sinks=sinks,
+    )
 
 
 @cache

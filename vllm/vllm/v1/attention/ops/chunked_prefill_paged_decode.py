@@ -354,7 +354,10 @@ def chunked_prefill_paged_decode(
 
     num_queries_per_kv_padded = max(triton.next_power_of_2(num_queries_per_kv), 16)
 
-    from vllm.platforms.rocm import use_rocm_custom_paged_attention
+    from vllm.platforms.rocm import (
+        rocm_custom_paged_attention_rejection_reasons,
+        use_rocm_custom_paged_attention,
+    )
 
     use_custom = use_rocm_custom_paged_attention(
         query.dtype,
@@ -368,10 +371,27 @@ def chunked_prefill_paged_decode(
         sinks,
     )
     has_native_layout = has_native_kv_cache_layout(key_cache, value_cache)
+    rejection_reasons = list(
+        rocm_custom_paged_attention_rejection_reasons(
+            query.dtype,
+            head_size,
+            block_size,
+            num_queries_per_kv,
+            max_seq_len,
+            sliding_window,
+            kv_cache_dtype,
+            alibi_slopes,
+            sinks,
+        )
+    )
     # Force Triton for non-standard blocks like Qwen3's 544 and for
     # stride-padded hybrid layouts. The latter use reshape_and_cache_flash
     # during cache update, so keep decode on the matching stride-aware path.
     is_pow2 = block_size > 0 and (block_size & (block_size - 1) == 0)
+    if not is_pow2:
+        rejection_reasons.append(f"block_size={block_size} is not a power of two")
+    if not has_native_layout:
+        rejection_reasons.append("KV cache layout is not native-packed")
     if not is_pow2 or not has_native_layout:
         use_custom = False
 
@@ -416,9 +436,12 @@ def chunked_prefill_paged_decode(
             fp8_out_scale=output_scale,
         )
     else:
+        reason_suffix = ""
+        if rejection_reasons:
+            reason_suffix = f" Reasons: {', '.join(rejection_reasons)}."
         logger.warning_once(
             "Cannot use ROCm custom paged attention kernel,"
-            " falling back to Triton implementation."
+            f" falling back to Triton implementation.{reason_suffix}"
         )
         real_block_size = value_cache.shape[3]
         # The standard model directly uses the original block_size.

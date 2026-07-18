@@ -2828,3 +2828,59 @@ def test_example_input_tensor_specs_roundtrip_helpers() -> None:
             delattr(caching.torch, "empty")
         else:
             caching.torch.empty = original_empty
+
+
+def test_aot_compile_hash_factors_exposes_cache_identity_inputs() -> None:
+    original_modules = {
+        name: sys.modules.get(name)
+        for name in tuple(sys.modules)
+        if name == "vllm_caching_light"
+        or name == "vllm"
+        or name.startswith("vllm.")
+        or name == "torch"
+        or name.startswith("torch.")
+    }
+
+    try:
+        caching, _ = _load_caching_module()
+
+        class _FakeConfig:
+            def compute_hash(self) -> str:
+                return "cfg-hash"
+
+        factors = caching.aot_compile_hash_factors(_FakeConfig())
+
+        assert factors == {
+            "env_identity": {
+                "schema_version": 1,
+                "declared_compile_factors": {},
+                "ambient_compile_factors": {},
+                "declared_factor_count": 0,
+                "ambient_factor_count": 0,
+                "declared_factor_digest": "declared-digest",
+                "ambient_factor_digest": "ambient-digest",
+                "combined_factor_digest": "combined-digest",
+            },
+            "env_factors": [],
+            "env_policy_hash": "factors",
+            "vllm_config_hash": "cfg-hash",
+            "inductor_factors": [],
+            "mega_aot_enabled": False,
+        }
+    finally:
+        for name in tuple(sys.modules):
+            if (
+                name == "vllm_caching_light"
+                or name == "vllm"
+                or name.startswith("vllm.")
+                or name == "torch"
+                or name.startswith("torch.")
+            ):
+                if name not in original_modules:
+                    sys.modules.pop(name, None)
+
+        for name, module in original_modules.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module

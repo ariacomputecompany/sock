@@ -861,7 +861,8 @@ class Platform:
             # that can verify support (e.g. CudaPlatformBase) override this.
             logger.warning_once(
                 "Using 'pin_memory=False' as WSL is detected. "
-                "This may slow down performance."
+                "This may slow down performance.",
+                scope="process",
             )
             return False
         return True

@@ -1604,6 +1604,23 @@ def reconstruct_serializable_fn_from_mega_artifact(
     return fn
 
 
+def aot_compile_hash_factors(vllm_config: VllmConfig) -> dict[str, object]:
+    """Return the canonical factors used to key AOT compile-adjacent caches."""
+
+    env_identity = envs.compile_factor_identity_manifest()
+    env_factors = envs.compile_factors()
+    return {
+        "env_identity": env_identity,
+        "env_factors": env_factors,
+        "env_policy_hash": hash_factors(env_factors),
+        "vllm_config_hash": vllm_config.compute_hash(),
+        "inductor_factors": (
+            list(get_inductor_factors()) if envs.VLLM_USE_MEGA_AOT_ARTIFACT else []
+        ),
+        "mega_aot_enabled": envs.VLLM_USE_MEGA_AOT_ARTIFACT,
+    }
+
+
 def build_aot_compile_plan(
     *,
     vllm_config: VllmConfig,
