@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -47,11 +48,27 @@ def parse_args() -> argparse.Namespace:
         help="JSONL results path.",
     )
     parser.add_argument(
+        "--log-dir",
+        type=Path,
+        default=Path("tmp/rocm-wsl-smoke-logs"),
+        help="Directory for per-model smoke logs.",
+    )
+    parser.add_argument(
+        "--heartbeat-s",
+        type=int,
+        default=30,
+        help="Seconds between in-progress status lines.",
+    )
+    parser.add_argument(
         "--continue-on-error",
         action="store_true",
         help="Run all requested models even if one fails.",
     )
     return parser.parse_args()
+
+
+def slug(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_") or "model"
 
 
 def smoke_command(args: argparse.Namespace, model: str) -> list[str]:
@@ -100,17 +117,49 @@ def run_model(args: argparse.Namespace, model: str) -> dict[str, Any]:
         ]
     )
 
+    args.log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = args.log_dir / f"{slug(model)}.log"
     start = time.perf_counter()
     try:
-        completed = subprocess.run(
-            smoke_command(args, model),
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=args.timeout_s,
-            env=env,
-        )
-        elapsed_s = time.perf_counter() - start
+        with log_path.open("w", encoding="utf-8") as log_handle:
+            process = subprocess.Popen(
+                smoke_command(args, model),
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env=env,
+            )
+            next_heartbeat = start + args.heartbeat_s
+            while True:
+                returncode = process.poll()
+                now = time.perf_counter()
+                if returncode is not None:
+                    break
+                elapsed_s = now - start
+                if elapsed_s >= args.timeout_s:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    log_handle.flush()
+                    log_text = log_path.read_text(encoding="utf-8", errors="replace")
+                    return {
+                        "model": model,
+                        "ok": False,
+                        "elapsed_s": round(elapsed_s, 4),
+                        "error": f"timed out after {args.timeout_s}s",
+                        "log_path": str(log_path),
+                        "log_tail": log_text[-4000:],
+                    }
+                if now >= next_heartbeat:
+                    print(
+                        f"matrix_model_heartbeat model={model} elapsed_s={elapsed_s:.1f} log={log_path}",
+                        flush=True,
+                    )
+                    next_heartbeat = now + args.heartbeat_s
+                time.sleep(1)
     except subprocess.TimeoutExpired as exc:
         return {
             "model": model,
@@ -121,20 +170,22 @@ def run_model(args: argparse.Namespace, model: str) -> dict[str, Any]:
             "stderr_tail": (exc.stderr or "")[-4000:],
         }
 
-    summary = extract_summary(completed.stdout)
+    elapsed_s = time.perf_counter() - start
+    log_text = log_path.read_text(encoding="utf-8", errors="replace")
+    summary = extract_summary(log_text)
     result: dict[str, Any] = {
         "model": model,
-        "ok": completed.returncode == 0 and summary is not None,
-        "returncode": completed.returncode,
+        "ok": returncode == 0 and summary is not None,
+        "returncode": returncode,
         "elapsed_s": round(elapsed_s, 4),
+        "log_path": str(log_path),
     }
     if summary is not None:
         result["summary"] = summary
     else:
         result["error"] = "smoke command did not emit a JSON summary"
-    if completed.returncode != 0:
-        result["stdout_tail"] = completed.stdout[-4000:]
-        result["stderr_tail"] = completed.stderr[-4000:]
+    if returncode != 0:
+        result["log_tail"] = log_text[-4000:]
     return result
 
 
@@ -142,6 +193,7 @@ def main() -> int:
     args = parse_args()
     models = args.models or DEFAULT_MODELS
     args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.log_dir.mkdir(parents=True, exist_ok=True)
 
     failed = False
     with args.out.open("w", encoding="utf-8") as handle:
