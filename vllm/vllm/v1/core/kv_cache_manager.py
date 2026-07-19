@@ -10,7 +10,11 @@ from vllm.distributed.kv_events import BlockStored, KVCacheEvent
 from vllm.logger import init_logger
 from vllm.v1.core.kv_cache_coordinator import get_kv_cache_coordinator
 from vllm.v1.core.kv_cache_metrics import KVCacheMetricsCollector
-from vllm.v1.core.tmh_policy import TMHKVRuntimePolicy, should_log_allocations
+from vllm.v1.core.tmh_policy import (
+    TMHKVRuntimePolicy,
+    TMHPhysicalEvent,
+    should_log_allocations,
+)
 from vllm.v1.core.kv_cache_utils import KVCacheBlock
 from vllm.v1.kv_cache_interface import (
     KVCacheConfig,
@@ -651,6 +655,12 @@ class KVCacheManager:
         for mgr in self.coordinator.single_type_managers:
             ids.extend(mgr.take_new_block_ids())
         return ids
+
+    def take_tmh_physical_events(self) -> list[TMHPhysicalEvent]:
+        """Drain physical TMH descriptor updates for the worker."""
+        if self.tmh_policy is None:
+            return []
+        return self.tmh_policy.take_physical_events()
 
     def new_step_starts(self) -> None:
         """Called when a new step is started."""

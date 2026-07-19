@@ -191,10 +191,8 @@ class CacheConfig:
     """First-class KV storage layout.
 
     - "standard": regular vLLM block-major paged KV cache.
-    - "tmh": Transformer Memory Hierarchy fidelity-paged KV layout. Today this
-      enables allocator-path accounting and metrics. Physical TMH storage is
-      fail-closed until mixed-fidelity tensors and layout-aware kernels are
-      implemented.
+    - "tmh": Transformer Memory Hierarchy physical fidelity-paged KV layout
+      with descriptor-aware raw/warm storage and layout-aware attention kernels.
     """
 
     tmh_kv_policy: TMHKVPolicy = "off"
@@ -235,12 +233,15 @@ class CacheConfig:
             "kv_cache_max_concurrency",
             # WIP feature toggle not impacting compiled graph shape
             "kv_sharing_fast_prefill",
-            # Runtime policy/metrics only in accounting mode. Physical TMH is
-            # fail-closed above until kernels/tensor storage are implemented.
+            # Runtime policy/metrics only in accounting mode.
             "kv_layout",
             "tmh_kv_policy",
             "tmh_hot_budget_pct",
         }
+        if self.tmh_kv_policy == "physical":
+            ignored_factors.discard("kv_layout")
+            ignored_factors.discard("tmh_kv_policy")
+            ignored_factors.discard("tmh_hot_budget_pct")
 
         from vllm.config.utils import get_hash_factors, hash_factors
 
@@ -311,18 +312,16 @@ class CacheConfig:
 
     @model_validator(mode="after")
     def _resolve_and_validate_kv_layout(self) -> "CacheConfig":
-        if self.tmh_kv_policy == "physical":
-            raise ValueError(
-                "kv_layout=tmh physical mode is not available until the "
-                "mixed-fidelity TMH attention kernels and warm-page tensors "
-                "are wired. Use kv_layout='tmh' for allocator-path validation "
-                "or kv_layout='standard' for regular vLLM."
-            )
         if self.kv_layout == "standard":
             if self.tmh_kv_policy != "off":
                 raise ValueError("standard kv_layout cannot enable TMH allocator policy")
             self.tmh_kv_policy = "off"
-        elif self.kv_layout == "tmh" and self.tmh_kv_policy == "off":
-            self.tmh_kv_policy = "accounting"
+        elif self.kv_layout == "tmh":
+            if self.tmh_kv_policy == "off":
+                self.tmh_kv_policy = "physical"
+        elif self.tmh_kv_policy != "off":
+            raise ValueError(
+                f"{self.kv_layout!r} kv_layout cannot enable TMH allocator policy"
+            )
 
         return self

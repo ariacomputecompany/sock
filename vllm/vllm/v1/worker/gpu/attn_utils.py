@@ -24,8 +24,10 @@ from vllm.v1.kv_cache_interface import (
     KVCacheConfig,
     KVCacheSpec,
     MambaSpec,
+    TMHFullAttentionSpec,
     UniformTypeKVCacheSpecs,
 )
+from vllm.v1.tmh_physical import reshape_tmh_physical_kv_cache
 from vllm.v1.worker.gpu.model_states.interface import ModelSpecificAttnMetadata
 from vllm.v1.worker.utils import (
     AttentionGroup,
@@ -284,14 +286,29 @@ def _reshape_kv_cache(
 
             kv_raw_tensor = kv_cache_raw_tensors[layer_name]
             packing = layer_packing.get(layer_name)
-            if packing is not None:
+            planned_num_blocks = None
+            if kv_cache_config is not None:
+                for kv_tensor in kv_cache_config.kv_cache_tensors:
+                    if layer_name in kv_tensor.shared_by:
+                        planned_num_blocks = kv_tensor.logical_num_blocks
+                        break
+            if planned_num_blocks is not None:
+                num_blocks = planned_num_blocks
+            elif packing is not None:
                 _, blk_stride = packing
                 num_blocks = kv_raw_tensor.numel() // blk_stride
             else:
                 assert kv_raw_tensor.numel() % kv_cache_spec.page_size_bytes == 0
                 num_blocks = kv_raw_tensor.numel() // kv_cache_spec.page_size_bytes
 
-            if isinstance(kv_cache_spec, AttentionSpec):
+            if isinstance(kv_cache_spec, TMHFullAttentionSpec):
+                has_attn = True
+                kv_caches[layer_name] = reshape_tmh_physical_kv_cache(
+                    kv_raw_tensor,
+                    kv_cache_spec,
+                    num_blocks,
+                )
+            elif isinstance(kv_cache_spec, AttentionSpec):
                 has_attn = True
                 # Use storage_block_size: it equals block_size for uncompressed
                 # specs but is smaller for compressed ones (DeepSeek V4), which

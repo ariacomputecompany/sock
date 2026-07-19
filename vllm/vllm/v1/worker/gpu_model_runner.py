@@ -152,9 +152,12 @@ from vllm.v1.kv_cache_interface import (
     KVCacheSpec,
     MambaSpec,
     SlidingWindowSpec,
+    TMHFullAttentionSpec,
     UniformTypeKVCacheSpecs,
 )
 from vllm.v1.kv_cache_spec_registry import KVCacheSpecRegistry
+from vllm.v1.tmh_physical import build_tmh_physical_runtime
+from vllm.v1.tmh_physical import reshape_tmh_physical_kv_cache
 from vllm.v1.outputs import (
     EMPTY_MODEL_RUNNER_OUTPUT,
     AsyncModelRunnerOutput,
@@ -1171,7 +1174,6 @@ class GPUModelRunner(
         # stale NaN/data from corrupting attention or SSM computation.
         if scheduler_output.new_block_ids_to_zero:
             self._zero_block_ids(scheduler_output.new_block_ids_to_zero)
-
         # Free the cached encoder outputs.
         for mm_hash in scheduler_output.free_encoder_mm_hashes:
             self.encoder_cache.pop(mm_hash, None)
@@ -1464,6 +1466,17 @@ class GPUModelRunner(
         self._may_reorder_batch(scheduler_output)
         # Refresh batch metadata with any pending updates.
         self.input_batch.refresh_metadata()
+
+        if scheduler_output.tmh_physical_events:
+            if getattr(self, "tmh_physical_runtime", None) is None:
+                raise RuntimeError(
+                    "Scheduler emitted TMH physical events, but the worker has "
+                    "no TMH physical runtime registered."
+                )
+            self.tmh_physical_runtime.apply_events(
+                scheduler_output.tmh_physical_events,
+                self.input_batch.req_id_to_index,
+            )
 
         # Incrementally update ngram_gpu tensors after batch is stable
         if is_ngram_gpu:
@@ -4330,6 +4343,12 @@ class GPUModelRunner(
                 batch_descriptor=batch_desc,
                 ubatch_slices=ubatch_slices_padded,
                 slot_mapping=slot_mappings,
+                additional_kwargs={
+                    "tmh_physical_runtime": self.tmh_physical_runtime,
+                    "tmh_seq_to_request_row": None,
+                }
+                if getattr(self, "tmh_physical_runtime", None) is not None
+                else None,
                 skip_compiled=has_encoder_input,
             ),
             record_function_or_nullcontext("gpu_model_runner: forward"),
@@ -5966,6 +5985,12 @@ class GPUModelRunner(
                     batch_descriptor=batch_desc,
                     ubatch_slices=ubatch_slices_padded,
                     slot_mapping=slot_mappings,
+                    additional_kwargs={
+                        "tmh_physical_runtime": self.tmh_physical_runtime,
+                        "tmh_seq_to_request_row": None,
+                    }
+                    if getattr(self, "tmh_physical_runtime", None) is not None
+                    else None,
                 ),
             ):
                 outputs = self.model(
@@ -7112,7 +7137,11 @@ class GPUModelRunner(
         # Map layer names to (offset, block_stride) within the packed
         # backing tensor so we can create strided views per layer.
         layer_packing: dict[str, tuple[int, int]] = {}
+        layer_logical_num_blocks: dict[str, int] = {}
         for kv_tensor in self.kv_cache_config.kv_cache_tensors:
+            if kv_tensor.logical_num_blocks is not None:
+                for ln in kv_tensor.shared_by:
+                    layer_logical_num_blocks[ln] = kv_tensor.logical_num_blocks
             if kv_tensor.block_stride > 0:
                 for ln in kv_tensor.shared_by:
                     layer_packing[ln] = (kv_tensor.offset, kv_tensor.block_stride)
@@ -7128,13 +7157,23 @@ class GPUModelRunner(
                     continue
                 raw_tensor = kv_cache_raw_tensors[layer_name]
                 packing = layer_packing.get(layer_name)
-                if packing is not None:
+                planned_num_blocks = layer_logical_num_blocks.get(layer_name)
+                if planned_num_blocks is not None:
+                    num_blocks = planned_num_blocks
+                elif packing is not None:
                     _, blk_stride = packing
                     num_blocks = raw_tensor.numel() // blk_stride
                 else:
                     assert raw_tensor.numel() % kv_cache_spec.page_size_bytes == 0
                     num_blocks = raw_tensor.numel() // kv_cache_spec.page_size_bytes
-                if isinstance(kv_cache_spec, AttentionSpec):
+                if isinstance(kv_cache_spec, TMHFullAttentionSpec):
+                    has_attn = True
+                    kv_caches[layer_name] = reshape_tmh_physical_kv_cache(
+                        raw_tensor,
+                        kv_cache_spec,
+                        num_blocks,
+                    )
+                elif isinstance(kv_cache_spec, AttentionSpec):
                     has_attn = True
                     num_blocks_per_kv_block = (
                         kv_cache_spec.block_size // kernel_block_size
@@ -7288,6 +7327,7 @@ class GPUModelRunner(
             self.kv_caches,
             num_attn_module,
         )
+        self.tmh_physical_runtime = build_tmh_physical_runtime(kv_caches)
         return kv_caches
 
     def maybe_add_kv_sharing_layers_to_kv_cache_groups(

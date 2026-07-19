@@ -50,6 +50,7 @@ from vllm.utils.mem_utils import DeviceMemoryProfiler, format_gib
 from vllm.utils.torch_utils import PIN_MEMORY, STR_DTYPE_TO_TORCH_DTYPE
 from vllm.v1.core.sched.output import GrammarOutput, SchedulerOutput
 from vllm.v1.kv_cache_interface import KVCacheConfig, MambaSpec
+from vllm.v1.tmh_physical import build_tmh_physical_runtime
 from vllm.v1.outputs import DraftTokenIds, ModelRunnerOutput
 from vllm.v1.worker.cp_utils import check_attention_cp_compatibility
 from vllm.v1.worker.gpu.async_utils import AsyncOutput, AsyncPoolingOutput
@@ -486,6 +487,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             self.kernel_block_sizes,
             self.vllm_config,
         )
+        self.tmh_physical_runtime = build_tmh_physical_runtime(kv_caches_dict)
         self.kv_connector = get_kv_connector(self.vllm_config, kv_caches_dict)
 
     def _init_kv_zero_meta(self) -> None:
@@ -835,6 +837,16 @@ class GPUModelRunner(LoRAModelRunnerMixin):
         if scheduler_output.new_block_ids_to_zero:
             assert self.kv_block_zeroer is not None
             self.kv_block_zeroer.zero_block_ids(scheduler_output.new_block_ids_to_zero)
+        if scheduler_output.tmh_physical_events:
+            if self.tmh_physical_runtime is None:
+                raise RuntimeError(
+                    "Scheduler emitted TMH physical events, but the worker has "
+                    "no TMH physical runtime registered."
+                )
+            self.tmh_physical_runtime.apply_events(
+                scheduler_output.tmh_physical_events,
+                self.req_states.req_id_to_index,
+            )
 
     def prepare_inputs(
         self, scheduler_output: SchedulerOutput, batch_desc: BatchExecutionDescriptor
@@ -1306,6 +1318,12 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 num_tokens_across_dp=num_tokens_across_dp,
                 batch_descriptor=batch_descriptor,
                 slot_mapping=slot_mappings_by_layer,
+                additional_kwargs={
+                    "tmh_physical_runtime": self.tmh_physical_runtime,
+                    "tmh_seq_to_request_row": input_batch.idx_mapping,
+                }
+                if self.tmh_physical_runtime is not None
+                else None,
                 skip_compiled=skip_compiled,
                 is_padding=input_batch.is_padding,
             ):

@@ -1,17 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-import pytest
 import torch
 
-from pydantic import ValidationError
 from vllm.config.cache import CacheConfig
 from vllm.sampling_params import SamplingParams
 from vllm.utils.hashing import sha256
 from vllm.v1.core.kv_cache_manager import KVCacheManager
 from vllm.v1.core.kv_cache_utils import KVCacheBlock, get_request_block_hasher
 from vllm.v1.core.kv_cache_utils import init_none_hash
-from vllm.v1.core.tmh_policy import TMHKVRuntimePolicy
+from vllm.v1.core.tmh_policy import TMHKVRuntimePolicy, TMHStorageKind
 from vllm.v1.kv_cache_interface import (
     FullAttentionSpec,
     KVCacheConfig,
@@ -79,14 +77,60 @@ def test_tmh_policy_is_disabled_by_default() -> None:
     ) is None
 
 
-def test_tmh_physical_mode_fails_closed() -> None:
-    with pytest.raises(RuntimeError, match="mixed-fidelity warm-page tensors"):
-        TMHKVRuntimePolicy.from_kv_cache_config(make_config("physical"), 16)
+def test_cache_config_tmh_layout_selects_physical_policy() -> None:
+    config = CacheConfig(kv_layout="tmh")
+
+    assert config.tmh_kv_policy == "physical"
 
 
-def test_cache_config_physical_mode_fails_closed() -> None:
-    with pytest.raises(ValidationError, match="mixed-fidelity TMH attention kernels"):
-        CacheConfig(tmh_kv_policy="physical")
+def test_tmh_physical_descriptors_are_prefix_cache_aware() -> None:
+    policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config("physical"), 16)
+    blocks = [KVCacheBlock(i) for i in range(1, 5)]
+    blocks[2].ref_cnt = 2
+    blocks[3].ref_cnt = 2
+
+    pressure = policy.record_allocation(
+        request_id="req-physical",
+        total_tokens=64,
+        prompt_tokens=16,
+        blocks_by_group=(blocks,),
+    )
+
+    assert pressure is not None
+    assert pressure.physical is True
+    events = policy.take_physical_events()
+    assert len(events) == 1
+    descriptors = {
+        (descriptor.layer_name, descriptor.page_index): descriptor
+        for descriptor in events[0].descriptors
+    }
+    layer = "model.layers.0.self_attn"
+    assert descriptors[(layer, 0)].storage == TMHStorageKind.CANONICAL
+    assert descriptors[(layer, 0)].prefix_cached is False
+    assert descriptors[(layer, 2)].storage == TMHStorageKind.CANONICAL
+    assert descriptors[(layer, 2)].prefix_cached is True
+    assert descriptors[(layer, 3)].storage == TMHStorageKind.REQUEST_OVERLAY
+    assert descriptors[(layer, 3)].prefix_cached is True
+
+
+def test_tmh_physical_forget_request_releases_request_overlays() -> None:
+    policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config("physical"), 16)
+    blocks = [KVCacheBlock(i) for i in range(1, 5)]
+    blocks[3].ref_cnt = 2
+
+    policy.record_allocation(
+        request_id="req-release",
+        total_tokens=64,
+        prompt_tokens=16,
+        blocks_by_group=(blocks,),
+    )
+    policy.take_physical_events()
+
+    policy.forget_request("req-release")
+
+    events = policy.take_physical_events()
+    assert len(events) == 1
+    assert events[0].released_request_ids == ("req-release",)
 
 
 def test_kv_cache_manager_records_tmh_pressure_from_allocate_slots() -> None:

@@ -1083,6 +1083,9 @@ class Scheduler(SchedulerInterface):
             if self.needs_kv_cache_zeroing
             else None
         )
+        tmh_physical_events = (
+            self.kv_cache_manager.take_tmh_physical_events() or None
+        )
 
         # Dynamic speculative decoding: compute optimal K
         num_spec_tokens_to_schedule = self.num_spec_tokens
@@ -1107,6 +1110,7 @@ class Scheduler(SchedulerInterface):
             finished_req_ids=self.finished_req_ids,
             free_encoder_mm_hashes=self.encoder_cache_manager.get_freed_mm_hashes(),
             new_block_ids_to_zero=new_block_ids_to_zero,
+            tmh_physical_events=tmh_physical_events,
             num_spec_tokens_to_schedule=num_spec_tokens_to_schedule,
         )
 

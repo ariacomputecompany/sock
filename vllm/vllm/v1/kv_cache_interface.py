@@ -8,6 +8,7 @@ from collections import Counter
 from dataclasses import dataclass, fields, replace
 from enum import Enum, IntEnum
 from math import prod
+import math
 from typing import TYPE_CHECKING
 
 import torch
@@ -85,6 +86,7 @@ def kv_cache_uses_per_token_head_scales(kv_cache_dtype: str) -> bool:
 
 class KVCacheSpecKind(str, Enum):
     FULL_ATTENTION = "full_attention"
+    TMH_FULL_ATTENTION = "tmh_full_attention"
     MLA_ATTENTION = "mla_attention"
     SLIDING_WINDOW = "sliding_window"
     SLIDING_WINDOW_MLA = "sliding_window_mla"
@@ -357,6 +359,96 @@ class TQFullAttentionSpec(FullAttentionSpec):
             "All TQ layers in the same KV cache group must use the same tq_slot_size."
         )
         return replace(merged, tq_slot_size=specs[0].tq_slot_size)
+
+
+@dataclass(frozen=True, kw_only=True)
+class TMHFullAttentionSpec(FullAttentionSpec):
+    """FullAttentionSpec for physical TMH fidelity-paged KV storage.
+
+    The logical scheduler still owns standard block IDs, but this spec budgets
+    actual backing storage as two physical pools: raw pinned/hot pages and warm
+    compressed pages. Page descriptors map logical block IDs to one pool slot.
+    """
+
+    tmh_hot_budget_pct: float = 25.0
+    tmh_late_layer: bool = False
+    tmh_max_num_seqs: int = 1
+    tmh_max_model_pages: int = 1
+
+    @property
+    def raw_page_size_bytes(self) -> int:
+        return super().real_page_size_bytes
+
+    @property
+    def warm_page_size_bytes(self) -> int:
+        k_bytes = self.block_size * self.num_kv_heads * self.head_size
+        if self.tmh_late_layer:
+            v_storage_head = self.head_size_v
+        else:
+            v_storage_head = cdiv(self.head_size_v, 2)
+        v_bytes = self.block_size * self.num_kv_heads * v_storage_head
+        scale_bytes = (
+            2
+            * self.block_size
+            * self.num_kv_heads
+            * get_dtype_size(torch.float32)
+        )
+        return k_bytes + v_bytes + scale_bytes
+
+    @property
+    def raw_reserve_ratio(self) -> float:
+        hot_ratio = self.tmh_hot_budget_pct / 100.0
+        anchor_ratio = 1.0 / max(1, self.tmh_max_model_pages)
+        return min(1.0, max(0.0, anchor_ratio + (1.0 - anchor_ratio) * hot_ratio))
+
+    @property
+    def real_page_size_bytes(self) -> int:
+        raw = self.raw_page_size_bytes
+        warm = self.warm_page_size_bytes
+        weighted = self.raw_reserve_ratio * raw + (1.0 - self.raw_reserve_ratio) * warm
+        # Descriptor accounting: role + physical slot for logical block IDs.
+        descriptor_bytes = 8
+        return max(1, math.ceil(weighted + descriptor_bytes))
+
+    def physical_pool_page_counts(self, num_logical_blocks: int) -> tuple[int, int]:
+        if num_logical_blocks <= 0:
+            return 0, 0
+        hot_ratio = max(0.0, min(1.0, self.tmh_hot_budget_pct / 100.0))
+        anchor_pages = min(num_logical_blocks, self.tmh_max_num_seqs)
+        non_anchor_pages = max(0, num_logical_blocks - anchor_pages)
+        raw_pages = min(
+            num_logical_blocks,
+            anchor_pages + math.ceil(non_anchor_pages * hot_ratio),
+        )
+        warm_pages = max(0, num_logical_blocks - raw_pages)
+        return raw_pages, warm_pages
+
+    def physical_allocation_bytes(self, num_logical_blocks: int) -> int:
+        raw_pages, warm_pages = self.physical_pool_page_counts(num_logical_blocks)
+        descriptors = num_logical_blocks * 8
+        return (
+            raw_pages * self.raw_page_size_bytes
+            + warm_pages * self.warm_page_size_bytes
+            + descriptors
+        )
+
+    @classmethod
+    def merge(cls, specs: list[Self]) -> Self:
+        merged = super().merge(specs)
+        late_flags = {spec.tmh_late_layer for spec in specs}
+        if len(late_flags) != 1:
+            raise ValueError(
+                "TMH early and late layers use different warm V fidelity and "
+                "must be placed in separate KV cache groups."
+            )
+        first = specs[0]
+        return replace(
+            merged,
+            tmh_hot_budget_pct=first.tmh_hot_budget_pct,
+            tmh_late_layer=first.tmh_late_layer,
+            tmh_max_num_seqs=first.tmh_max_num_seqs,
+            tmh_max_model_pages=first.tmh_max_model_pages,
+        )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -862,6 +954,8 @@ def get_kv_cache_spec_kind(kv_cache_spec: KVCacheSpec) -> KVCacheSpecKind:
         return KVCacheSpecKind.MLA_ATTENTION
     if isinstance(kv_cache_spec, SinkFullAttentionSpec):
         return KVCacheSpecKind.SINK_FULL_ATTENTION
+    if isinstance(kv_cache_spec, TMHFullAttentionSpec):
+        return KVCacheSpecKind.TMH_FULL_ATTENTION
     if isinstance(kv_cache_spec, FullAttentionSpec):
         return KVCacheSpecKind.FULL_ATTENTION
     if isinstance(kv_cache_spec, ChunkedLocalAttentionSpec):
@@ -899,6 +993,8 @@ class KVCacheTensor:
     shared_by: list[str]  # layer names that share the same KV cache tensor
     offset: int = 0  # byte offset of this layer within a contiguous block
     block_stride: int = 0  # total bytes per block in a packed layout (0 = not packed)
+    logical_num_blocks: int | None = None
+    """Logical KV block count represented by non-page-linear physical layouts."""
 
 
 @dataclass
@@ -950,4 +1046,4 @@ class KVCacheConfig:
 
     @property
     def needs_kv_cache_zeroing(self) -> bool:
-        return self.has_mamba_layers
+        return self.has_mamba_layers or self.tmh_kv_policy == "physical"

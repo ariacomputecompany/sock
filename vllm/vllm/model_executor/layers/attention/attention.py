@@ -43,6 +43,7 @@ from vllm.v1.kv_cache_interface import (
     FullAttentionSpec,
     KVCacheSpec,
     SlidingWindowSpec,
+    TMHFullAttentionSpec,
     get_kv_quant_mode,
 )
 
@@ -50,6 +51,13 @@ if TYPE_CHECKING:
     from vllm.model_executor.layers.attention import MLAAttention
 
 logger = init_logger(__name__)
+
+
+def _tmh_layer_index(layer_name: str) -> int:
+    for part in reversed(layer_name.split(".")):
+        if part.isdigit():
+            return int(part)
+    return 0
 
 
 def validate_kv_sharing_target(
@@ -317,16 +325,22 @@ class Attention(nn.Module, AttentionLayerBase):
         # weight and activation dtype.
         dtype = torch.get_default_dtype()
         if attn_backend is None:
-            self.attn_backend = get_attn_backend(
-                head_size,
-                dtype,
-                kv_cache_dtype,
-                use_mla=False,
-                has_sink=self.has_sink,
-                use_mm_prefix=self.use_mm_prefix,
-                use_per_head_quant_scales=use_per_head_quant_scales,
-                attn_type=attn_type,
-            )
+            if (
+                vllm_config.cache_config.kv_layout == "tmh"
+                and vllm_config.cache_config.tmh_kv_policy == "physical"
+            ):
+                self.attn_backend = AttentionBackendEnum.TMH_TRITON_ATTN.get_class()
+            else:
+                self.attn_backend = get_attn_backend(
+                    head_size,
+                    dtype,
+                    kv_cache_dtype,
+                    use_mla=False,
+                    has_sink=self.has_sink,
+                    use_mm_prefix=self.use_mm_prefix,
+                    use_per_head_quant_scales=use_per_head_quant_scales,
+                    attn_type=attn_type,
+                )
         else:
             self.attn_backend = attn_backend
         backend_supports_alibi_sqrt = self.attn_backend.supports_alibi_sqrt()
@@ -597,6 +611,16 @@ class Attention(nn.Module, AttentionLayerBase):
         # Should not be called for enc-dec attention.
         assert self.attn_type == AttentionType.DECODER
         quant_mode = get_kv_quant_mode(self.kv_cache_dtype)
+        tmh_physical = (
+            vllm_config.cache_config.kv_layout == "tmh"
+            and vllm_config.cache_config.tmh_kv_policy == "physical"
+        )
+        if tmh_physical and self.sliding_window is not None:
+            raise NotImplementedError(
+                "kv_layout=tmh physical mode currently supports full attention "
+                "layers only; sliding-window TMH requires a separate page "
+                "lifecycle contract."
+            )
         if self.sliding_window is not None:
             assert not vllm_config.model_config.use_mla, (
                 "MLA is not supported for slidingwindow"
@@ -626,6 +650,26 @@ class Attention(nn.Module, AttentionLayerBase):
                 head_size_v=self.head_size,
                 dtype=self.kv_cache_torch_dtype,
                 tq_slot_size=tq_config.slot_size_aligned,
+            )
+        elif tmh_physical:
+            num_hidden_layers = vllm_config.model_config.get_num_layers(
+                vllm_config.parallel_config
+            )
+            late_layer_start = (num_hidden_layers * 2) // 3
+            max_model_pages = (
+                vllm_config.model_config.max_model_len + block_size - 1
+            ) // block_size
+            return TMHFullAttentionSpec(
+                block_size=block_size,
+                num_kv_heads=self.num_kv_heads,
+                head_size=self.head_size,
+                head_size_v=self.head_size_v,
+                dtype=self.kv_cache_torch_dtype,
+                kv_quant_mode=quant_mode,
+                tmh_hot_budget_pct=vllm_config.cache_config.tmh_hot_budget_pct,
+                tmh_late_layer=_tmh_layer_index(self.layer_name) >= late_layer_start,
+                tmh_max_num_seqs=vllm_config.scheduler_config.max_num_seqs,
+                tmh_max_model_pages=max(1, max_model_pages),
             )
         else:
             return FullAttentionSpec(
@@ -726,18 +770,32 @@ def unified_kv_cache_update(
     the data dependency between them to ensure torch.compile preserves ordering.
     """
     layer_name = _resolve_layer_name(layer_name)
-    _, attn_layer, kv_cache, layer_slot_mapping = get_attention_context(layer_name)
+    attn_metadata, attn_layer, kv_cache, layer_slot_mapping = get_attention_context(
+        layer_name
+    )
     if layer_slot_mapping is not None:
         assert hasattr(attn_layer.impl, "do_kv_cache_update"), (
             f"{attn_layer.impl.__class__.__name__} does not support kv cache update"
         )
-        attn_layer.impl.do_kv_cache_update(  # type: ignore[attr-defined]
-            attn_layer,
-            key,
-            value,
-            kv_cache,
-            layer_slot_mapping,
-        )
+        from vllm.v1.tmh_physical import TMHPhysicalKVCache
+
+        if isinstance(kv_cache, TMHPhysicalKVCache):
+            attn_layer.impl.do_kv_cache_update(  # type: ignore[attr-defined]
+                attn_layer,
+                key,
+                value,
+                kv_cache,
+                layer_slot_mapping,
+                attn_metadata,
+            )
+        else:
+            attn_layer.impl.do_kv_cache_update(  # type: ignore[attr-defined]
+                attn_layer,
+                key,
+                value,
+                kv_cache,
+                layer_slot_mapping,
+            )
 
     return torch.empty(0, device=kv_cache.device, dtype=kv_cache.dtype)
 

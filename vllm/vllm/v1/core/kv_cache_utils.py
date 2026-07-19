@@ -32,6 +32,7 @@ from vllm.v1.kv_cache_interface import (
     MLAAttentionSpec,
     SlidingWindowMLASpec,
     SlidingWindowSpec,
+    TMHFullAttentionSpec,
     UniformTypeKVCacheSpecs,
 )
 from vllm.v1.kv_cache_spec_registry import KVCacheSpecRegistry
@@ -911,7 +912,7 @@ def is_kv_cache_spec_uniform(kv_cache_spec: dict[str, KVCacheSpec]) -> bool:
     try:
         kv_cache_spec_values = list(kv_cache_spec.values())
         _ = kv_cache_spec_values[0].merge(kv_cache_spec_values)
-    except AssertionError:
+    except (AssertionError, ValueError):
         return False
     return True
 
@@ -959,7 +960,13 @@ def _pool_bytes_per_block(
     if len(kv_cache_groups) == 1 and isinstance(
         kv_cache_groups[0].kv_cache_spec, UniformTypeKVCacheSpecs
     ):
+        tmh_specs = _tmh_physical_specs_by_layer(kv_cache_groups)
+        if tmh_specs is not None:
+            return max(1, _tmh_physical_allocation_bytes(tmh_specs, 1))
         return kv_cache_groups[0].kv_cache_spec.page_size_bytes
+    tmh_specs = _tmh_physical_specs_by_layer(kv_cache_groups)
+    if tmh_specs is not None:
+        return max(1, _tmh_physical_allocation_bytes(tmh_specs, 1))
     if _use_packed_kv_cache_config(vllm_config, kv_cache_groups):
         # buckets = {page_size: [[layer_names], [layer_names], ...]}
         buckets = _bucket_layers_by_page_size(kv_cache_groups)
@@ -967,6 +974,80 @@ def _pool_bytes_per_block(
     group_size = max(len(g.layer_names) for g in kv_cache_groups)
     page_size = get_uniform_page_size([g.kv_cache_spec for g in kv_cache_groups])
     return page_size * group_size
+
+
+def _tmh_physical_specs_by_layer(
+    kv_cache_groups: list[KVCacheGroupSpec],
+) -> dict[str, TMHFullAttentionSpec] | None:
+    specs: dict[str, TMHFullAttentionSpec] = {}
+    for group in kv_cache_groups:
+        group_spec = group.kv_cache_spec
+        if isinstance(group_spec, UniformTypeKVCacheSpecs):
+            for layer_name in group.layer_names:
+                layer_spec = group_spec.kv_cache_specs.get(layer_name)
+                if not isinstance(layer_spec, TMHFullAttentionSpec):
+                    return None
+                specs[layer_name] = layer_spec
+        elif isinstance(group_spec, TMHFullAttentionSpec):
+            for layer_name in group.layer_names:
+                specs[layer_name] = group_spec
+        else:
+            return None
+    return specs or None
+
+
+def _tmh_physical_allocation_bytes(
+    specs_by_layer: dict[str, TMHFullAttentionSpec],
+    num_blocks: int,
+) -> int:
+    return sum(
+        spec.physical_allocation_bytes(num_blocks)
+        for spec in specs_by_layer.values()
+    )
+
+
+def _tmh_physical_num_blocks_for_memory(
+    specs_by_layer: dict[str, TMHFullAttentionSpec],
+    available_memory: int,
+) -> int:
+    if available_memory <= 0:
+        return 0
+    lo = 0
+    hi = 1
+    while _tmh_physical_allocation_bytes(specs_by_layer, hi) <= available_memory:
+        hi *= 2
+    while lo + 1 < hi:
+        mid = (lo + hi) // 2
+        if _tmh_physical_allocation_bytes(specs_by_layer, mid) <= available_memory:
+            lo = mid
+        else:
+            hi = mid
+    return lo
+
+
+def _get_tmh_physical_kv_cache_config(
+    vllm_config: VllmConfig,
+    kv_cache_groups: list[KVCacheGroupSpec],
+    available_memory: int,
+) -> tuple[int, list[KVCacheTensor]] | None:
+    specs_by_layer = _tmh_physical_specs_by_layer(kv_cache_groups)
+    if specs_by_layer is None:
+        return None
+
+    num_blocks = _tmh_physical_num_blocks_for_memory(
+        specs_by_layer,
+        available_memory,
+    )
+    num_blocks = may_override_num_blocks(vllm_config, num_blocks)
+    kv_cache_tensors = [
+        KVCacheTensor(
+            size=spec.physical_allocation_bytes(num_blocks),
+            shared_by=[layer_name],
+            logical_num_blocks=num_blocks,
+        )
+        for layer_name, spec in specs_by_layer.items()
+    ]
+    return num_blocks, kv_cache_tensors
 
 
 def get_num_blocks(
@@ -1344,7 +1425,14 @@ def get_kv_cache_config_from_groups(
         )
 
     # Determine how model runners should initialize the KV cache tensors.
-    if len(kv_cache_groups) == 1 and isinstance(
+    tmh_physical_config = _get_tmh_physical_kv_cache_config(
+        vllm_config,
+        kv_cache_groups,
+        available_memory,
+    )
+    if tmh_physical_config is not None:
+        num_blocks, kv_cache_tensors = tmh_physical_config
+    elif len(kv_cache_groups) == 1 and isinstance(
         kv_cache_groups[0].kv_cache_spec, UniformTypeKVCacheSpecs
     ):
         # Special case: all layers have the same type of KV cache but with
@@ -2086,6 +2174,21 @@ def get_kv_cache_configs(
             if not groups:
                 adjusted_memory.append(avail_mem)
                 continue
+            tmh_specs = _tmh_physical_specs_by_layer(groups)
+            if tmh_specs is not None:
+                current_blocks = _tmh_physical_num_blocks_for_memory(
+                    tmh_specs,
+                    avail_mem,
+                )
+                logger.info(
+                    "Overriding num_gpu_blocks=%d with num_gpu_blocks_override=%d",
+                    current_blocks,
+                    override,
+                )
+                adjusted_memory.append(
+                    _tmh_physical_allocation_bytes(tmh_specs, override)
+                )
+                continue
             bytes_per_block = _pool_bytes_per_block(vllm_config, groups)
             logger.info(
                 "Overriding num_gpu_blocks=%d with num_gpu_blocks_override=%d",
@@ -2133,9 +2236,22 @@ def get_kv_cache_configs(
     for kv_cache_config in kv_cache_configs:
         num_blocks_old = kv_cache_config.num_blocks
         kv_cache_config.num_blocks = min_num_blocks
+        tmh_specs = _tmh_physical_specs_by_layer(kv_cache_config.kv_cache_groups)
 
         # Shrink tensor size proportionally
         for tensor in kv_cache_config.kv_cache_tensors:
+            if tensor.logical_num_blocks is not None:
+                if tmh_specs is None:
+                    raise AssertionError(
+                        "logical_num_blocks is only valid for TMH physical KV tensors."
+                    )
+                layer_specs = [tmh_specs[layer_name] for layer_name in tensor.shared_by]
+                tensor.size = sum(
+                    spec.physical_allocation_bytes(min_num_blocks)
+                    for spec in layer_specs
+                )
+                tensor.logical_num_blocks = min_num_blocks
+                continue
             assert tensor.size % num_blocks_old == 0
             tensor.size = tensor.size // num_blocks_old * min_num_blocks
 
