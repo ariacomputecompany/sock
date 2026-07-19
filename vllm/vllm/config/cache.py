@@ -311,11 +311,6 @@ class CacheConfig:
 
     @model_validator(mode="after")
     def _resolve_and_validate_kv_layout(self) -> "CacheConfig":
-        if self.kv_layout == "standard":
-            self.tmh_kv_policy = "off"
-        elif self.kv_layout == "tmh" and self.tmh_kv_policy == "off":
-            self.tmh_kv_policy = "accounting"
-
         if self.tmh_kv_policy == "physical":
             raise ValueError(
                 "kv_layout=tmh physical mode is not available until the "
@@ -323,6 +318,11 @@ class CacheConfig:
                 "are wired. Use kv_layout='tmh' for allocator-path validation "
                 "or kv_layout='standard' for regular vLLM."
             )
-        if self.kv_layout == "standard" and self.tmh_kv_policy != "off":
-            raise ValueError("standard kv_layout cannot enable TMH allocator policy")
+        if self.kv_layout == "standard":
+            if self.tmh_kv_policy != "off":
+                raise ValueError("standard kv_layout cannot enable TMH allocator policy")
+            self.tmh_kv_policy = "off"
+        elif self.kv_layout == "tmh" and self.tmh_kv_policy == "off":
+            self.tmh_kv_policy = "accounting"
+
         return self

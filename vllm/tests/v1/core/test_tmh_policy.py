@@ -115,3 +115,8 @@ def test_kv_cache_manager_records_tmh_pressure_from_allocate_slots() -> None:
     assert pressure.regular_live_bytes == 12288
     assert pressure.tmh_effective_bytes == 8704
     assert round(pressure.warm_reduction_vs_uniform_int8_pct, 3) == 16.667
+
+    manager.free(request)
+
+    assert "req-manager" not in manager.tmh_policy.latest_by_request
+    assert "req-manager" not in manager.tmh_policy._regular_live_bytes_cache

@@ -501,6 +501,7 @@ class KVCacheManager:
         Args:
             request: The request to free the blocks.
         """
+        self.tmh_policy.forget_request(request.request_id)
         self.coordinator.free(request.request_id)
 
     def remove_skipped_blocks(

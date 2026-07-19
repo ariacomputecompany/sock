@@ -86,6 +86,16 @@ class TMHKVRuntimePolicy:
     layers: list[TMHLayerShape]
     regular_page_bytes_by_group: list[int]
     latest_by_request: dict[str, TMHRequestPressure] = field(default_factory=dict)
+    _regular_live_bytes_cache: dict[str, tuple[tuple[int, ...], int]] = field(
+        default_factory=dict
+    )
+    _early_layers: list[TMHLayerShape] = field(init=False, repr=False)
+    _late_layers: list[TMHLayerShape] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        late_layer_start = (len(self.layers) * 2) // 3
+        self._early_layers = self.layers[:late_layer_start]
+        self._late_layers = self.layers[late_layer_start:]
 
     @property
     def enabled(self) -> bool:
@@ -138,33 +148,116 @@ class TMHKVRuntimePolicy:
             else min(total_pages, math.ceil(total_pages * self.hot_budget_pct / 100.0))
         )
         recent_start_page = total_pages if hot_pages <= 0 else max(0, total_pages - hot_pages)
-        late_layer_start = (len(self.layers) * 2) // 3
-        regular_live_bytes = self._regular_live_bytes(blocks_by_group)
+        regular_live_bytes = self._regular_live_bytes(request_id, blocks_by_group)
 
         hot_bytes = 0
         warm_bytes = 0
         raw_equivalent_bytes = 0
         uniform_old_int8_bytes = 0
-        old_tokens = _token_sum(1, recent_start_page - 1, total_tokens, self.page_tokens)
-        for layer_pos, layer in enumerate(self.layers):
-            for page_id in range(total_pages):
-                tokens = _page_token_count(page_id, total_tokens, self.page_tokens)
-                raw_equivalent_bytes += _bytes_for(layer, tokens, "raw", "k")
-                raw_equivalent_bytes += _bytes_for(layer, tokens, "raw", "v")
-                k_precision, v_precision, tier = _resolve_tmh_page(
-                    page_id=page_id,
-                    layer_pos=layer_pos,
-                    recent_start_page=recent_start_page,
-                    late_layer_start=late_layer_start,
+        old_tokens = _token_count_for_page_span(
+            start_page=1,
+            end_page=recent_start_page,
+            total_tokens=total_tokens,
+            page_tokens=self.page_tokens,
+        )
+        for layer in self.layers:
+            raw_equivalent_bytes += _bytes_for_page_span(
+                layer=layer,
+                start_page=0,
+                end_page=total_pages,
+                total_tokens=total_tokens,
+                page_tokens=self.page_tokens,
+                precision="raw",
+                component="k",
+            )
+            raw_equivalent_bytes += _bytes_for_page_span(
+                layer=layer,
+                start_page=0,
+                end_page=total_pages,
+                total_tokens=total_tokens,
+                page_tokens=self.page_tokens,
+                precision="raw",
+                component="v",
+            )
+            for start_page, end_page in ((0, 1), (recent_start_page, total_pages)):
+                hot_bytes += _bytes_for_page_span(
+                    layer=layer,
+                    start_page=start_page,
+                    end_page=end_page,
+                    total_tokens=total_tokens,
+                    page_tokens=self.page_tokens,
+                    precision="raw",
+                    component="k",
                 )
-                page_bytes = _bytes_for(layer, tokens, k_precision, "k")
-                page_bytes += _bytes_for(layer, tokens, v_precision, "v")
-                if tier in {"pinned", "hot"}:
-                    hot_bytes += page_bytes
-                else:
-                    warm_bytes += page_bytes
-                    uniform_old_int8_bytes += _bytes_for(layer, tokens, "int8", "k")
-                    uniform_old_int8_bytes += _bytes_for(layer, tokens, "int8", "v")
+                hot_bytes += _bytes_for_page_span(
+                    layer=layer,
+                    start_page=start_page,
+                    end_page=end_page,
+                    total_tokens=total_tokens,
+                    page_tokens=self.page_tokens,
+                    precision="raw",
+                    component="v",
+                )
+
+        for layer in self._early_layers:
+            warm_bytes += _bytes_for_page_span(
+                layer=layer,
+                start_page=1,
+                end_page=recent_start_page,
+                total_tokens=total_tokens,
+                page_tokens=self.page_tokens,
+                precision="int8",
+                component="k",
+            )
+            warm_bytes += _bytes_for_page_span(
+                layer=layer,
+                start_page=1,
+                end_page=recent_start_page,
+                total_tokens=total_tokens,
+                page_tokens=self.page_tokens,
+                precision="int4",
+                component="v",
+            )
+
+        for layer in self._late_layers:
+            warm_bytes += _bytes_for_page_span(
+                layer=layer,
+                start_page=1,
+                end_page=recent_start_page,
+                total_tokens=total_tokens,
+                page_tokens=self.page_tokens,
+                precision="int8",
+                component="k",
+            )
+            warm_bytes += _bytes_for_page_span(
+                layer=layer,
+                start_page=1,
+                end_page=recent_start_page,
+                total_tokens=total_tokens,
+                page_tokens=self.page_tokens,
+                precision="int8",
+                component="v",
+            )
+
+        for layer in self.layers:
+            uniform_old_int8_bytes += _bytes_for_page_span(
+                layer=layer,
+                start_page=1,
+                end_page=recent_start_page,
+                total_tokens=total_tokens,
+                page_tokens=self.page_tokens,
+                precision="int8",
+                component="k",
+            )
+            uniform_old_int8_bytes += _bytes_for_page_span(
+                layer=layer,
+                start_page=1,
+                end_page=recent_start_page,
+                total_tokens=total_tokens,
+                page_tokens=self.page_tokens,
+                precision="int8",
+                component="v",
+            )
 
         tmh_effective_bytes = hot_bytes + warm_bytes
         same_hot_uniform_int8_bytes = hot_bytes + uniform_old_int8_bytes
@@ -190,7 +283,7 @@ class TMHKVRuntimePolicy:
             hot_pages=hot_pages,
             recent_start_page=recent_start_page,
             layer_count=len(self.layers),
-            late_layer_start=late_layer_start,
+            late_layer_start=len(self._early_layers),
             regular_live_bytes=regular_live_bytes,
             tmh_effective_bytes=tmh_effective_bytes,
             hot_bytes=hot_bytes,
@@ -206,15 +299,28 @@ class TMHKVRuntimePolicy:
         return pressure
 
     def _regular_live_bytes(
-        self, blocks_by_group: tuple[list[KVCacheBlock], ...]
+        self,
+        request_id: str,
+        blocks_by_group: tuple[list[KVCacheBlock], ...],
     ) -> int:
+        signature = tuple(
+            sum(1 for block in blocks if not block.is_null)
+            for blocks in blocks_by_group
+        )
+        cached = self._regular_live_bytes_cache.get(request_id)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
         total = 0
-        for group_index, blocks in enumerate(blocks_by_group):
+        for group_index, live_blocks in enumerate(signature):
             if group_index >= len(self.regular_page_bytes_by_group):
                 continue
-            live_blocks = sum(1 for block in blocks if not block.is_null)
             total += live_blocks * self.regular_page_bytes_by_group[group_index]
+        self._regular_live_bytes_cache[request_id] = (signature, total)
         return total
+
+    def forget_request(self, request_id: str) -> None:
+        self.latest_by_request.pop(request_id, None)
+        self._regular_live_bytes_cache.pop(request_id, None)
 
 
 def should_log_allocations() -> bool:
@@ -264,22 +370,6 @@ def _layer_index(layer_name: str) -> int:
     return int(matches[-1]) if matches else 0
 
 
-def _resolve_tmh_page(
-    *,
-    page_id: int,
-    layer_pos: int,
-    recent_start_page: int,
-    late_layer_start: int,
-) -> tuple[str, str, str]:
-    if page_id == 0:
-        return "raw", "raw", "pinned"
-    if page_id >= recent_start_page:
-        return "raw", "raw", "hot"
-    if layer_pos < late_layer_start:
-        return "int8", "int4", "warm"
-    return "int8", "int8", "warm"
-
-
 def _bytes_for(
     layer: TMHLayerShape,
     tokens: int,
@@ -298,21 +388,38 @@ def _bytes_for(
     return int(math.ceil(tokens * layer.num_kv_heads * head_size * bytes_per_scalar))
 
 
-def _page_token_count(page_id: int, total_tokens: int, page_tokens: int) -> int:
-    start = page_id * page_tokens
-    end = min(total_tokens, start + page_tokens)
-    return max(0, end - start)
+def _bytes_for_page_span(
+    *,
+    layer: TMHLayerShape,
+    start_page: int,
+    end_page: int,
+    total_tokens: int,
+    page_tokens: int,
+    precision: str,
+    component: str,
+) -> int:
+    token_count = _token_count_for_page_span(
+        start_page=start_page,
+        end_page=end_page,
+        total_tokens=total_tokens,
+        page_tokens=page_tokens,
+    )
+    full_pages, partial_tokens = divmod(token_count, page_tokens)
+    total = full_pages * _bytes_for(layer, page_tokens, precision, component)
+    if partial_tokens:
+        total += _bytes_for(layer, partial_tokens, precision, component)
+    return total
 
 
-def _token_sum(
+def _token_count_for_page_span(
+    *,
     start_page: int,
     end_page: int,
     total_tokens: int,
     page_tokens: int,
 ) -> int:
-    if end_page < start_page:
+    if end_page <= start_page:
         return 0
-    return sum(
-        _page_token_count(page_id, total_tokens, page_tokens)
-        for page_id in range(start_page, end_page + 1)
-    )
+    start = start_page * page_tokens
+    end = min(total_tokens, end_page * page_tokens)
+    return max(0, end - start)
