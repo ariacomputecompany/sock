@@ -411,3 +411,61 @@ Artifacts:
 | `benchmarks/2026-07-18-gmk-qwen3-32b-4bit-gptq/suite-summary.json` | Tracked compact full-suite summary |
 | `tmp/bench-suite-sock-qwen3-32b-4bit-gptq-full.json` | Full raw SOC endpoint responses and per-batch stats |
 | `tmp/bench-large-qwen3-32b-4bit-serve.log` | SOC serve log for startup, backend, and request status |
+
+## Qwen3-30B-A3B GPTQ Int4 MoE ROCm Endpoint Suite
+
+This run validates SOC serving a real Qwen3 MoE checkpoint on the GMK
+Strix Halo ROCm/WSL machine: `Qwen/Qwen3-30B-A3B-GPTQ-Int4`. It also
+exercises the production ROCm platform fix for WSL machines where amdsmi
+reports `AMDSMI_STATUS_DRIVER_NOT_LOADED`: MoE config lookup now uses the
+canonical ROCm platform API and falls back without crashing.
+
+The measured endpoint profile is intentionally constrained to a 512-token
+serve shape so the benchmark cases are valid for this model length:
+`--max-model-len 512 --max-num-seqs 8 --max-num-batched-tokens 512
+--gpu-memory-utilization 0.35 --enforce-eager`.
+
+Startup and capacity:
+
+| Metric | Value |
+| --- | ---: |
+| Checkpoint size | 15.77 GiB |
+| Weight load time | 17.38 s |
+| Model load time | 19.81 s |
+| Model memory | 15.56 GiB |
+| Engine init / warmup | 7.02 s |
+| Available KV cache memory | 17.62 GiB |
+| GPU KV cache size | 192,480 tokens |
+| Max concurrency at 512 tokens | 375.94x |
+| Attention backend selected | `ROCM_ATTN` |
+| MoE backend | WNA16 fallback, default untuned Strix Halo config |
+
+Mean completion tok/s by case and concurrency:
+
+| Case | Concurrency | Mean completion tok/s | Mean total tok/s | Mean wall s |
+| --- | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 29.7099 | 34.8163 | 2.1610 |
+| `tiny_fact_64` | 2 | 32.3263 | 37.8823 | 3.9647 |
+| `tiny_fact_64` | 4 | 51.6278 | 60.5014 | 4.9604 |
+| `short_codegen_128` | 1 | 29.9636 | 34.8795 | 4.2728 |
+| `short_codegen_128` | 2 | 34.4483 | 40.0999 | 7.4339 |
+| `short_codegen_128` | 4 | 57.1306 | 66.5036 | 9.0653 |
+| `medium_architecture_256` | 1 | 30.1593 | 33.3402 | 8.4895 |
+| `medium_architecture_256` | 2 | 33.8998 | 37.4751 | 15.1079 |
+| `medium_architecture_256` | 4 | 53.8751 | 59.5573 | 19.0207 |
+
+Quality and correctness notes:
+
+- Direct live chat produced coherent cosmology output: 220 completion tokens in 8.86 s, or 24.84 completion tok/s.
+- The measured endpoint suite completed 66/66 requests successfully across concurrency levels 1, 2, and 4.
+- A larger probe (`--max-model-len 1024 --gpu-memory-utilization 0.8`) loaded the 15.77 GiB checkpoint and reached KV sizing: 58.53 GiB KV memory, 639,296 KV tokens, and 624.31x theoretical concurrency at 1024 tokens. It was still active but had not bound the API within the observation window, so it was stopped to run the constrained benchmark profile.
+- The model uses AutoGPTQ dense projections plus MoE WNA16 experts on ROCm. A tuned Strix Halo MoE config is not yet present, so the runtime correctly falls back to the default MoE config rather than failing.
+
+Artifacts:
+
+| Artifact | Purpose |
+| --- | --- |
+| `benchmarks/2026-07-18-gmk-qwen3-30b-a3b-gptq-int4/suite-summary.json` | Tracked compact MoE endpoint summary |
+| `tmp/bench-suite-sock-qwen3-30b-a3b-gptq-int4-small.json` | Full raw SOC endpoint responses and per-batch stats |
+| `tmp/qwen3-30b-a3b-gptq-small.log` | SOC serve log for startup, backend, KV sizing, and request status |
+| `tmp/qwen3-30b-a3b-gptq.log` | Larger 1024-token profile probe log |

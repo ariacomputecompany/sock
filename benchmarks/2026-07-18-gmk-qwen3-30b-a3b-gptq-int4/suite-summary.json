@@ -1,0 +1,406 @@
+{
+  "benchmark": {
+    "cases": {
+      "medium_architecture_256": {
+        "1": {
+          "aggregate_completion_tok_per_s": {
+            "max": 30.6088,
+            "mean": 30.1593,
+            "median": 30.1656,
+            "min": 29.7035,
+            "p90": 30.6088
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 33.8371,
+            "mean": 33.3402,
+            "median": 33.3471,
+            "min": 32.8363,
+            "p90": 33.8371
+          },
+          "completion_tokens": {
+            "max": 256,
+            "mean": 256.0,
+            "median": 256,
+            "min": 256,
+            "p90": 256
+          },
+          "total_tokens": {
+            "max": 283,
+            "mean": 283.0,
+            "median": 283,
+            "min": 283,
+            "p90": 283
+          },
+          "wall_s": {
+            "max": 8.6185,
+            "mean": 8.4895,
+            "median": 8.4865,
+            "min": 8.3636,
+            "p90": 8.6185
+          }
+        },
+        "2": {
+          "aggregate_completion_tok_per_s": {
+            "max": 34.6879,
+            "mean": 33.8998,
+            "median": 33.753,
+            "min": 33.2584,
+            "p90": 34.6879
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 38.3464,
+            "mean": 37.4751,
+            "median": 37.3129,
+            "min": 36.7661,
+            "p90": 38.3464
+          },
+          "completion_tokens": {
+            "max": 512,
+            "mean": 512.0,
+            "median": 512,
+            "min": 512,
+            "p90": 512
+          },
+          "total_tokens": {
+            "max": 566,
+            "mean": 566.0,
+            "median": 566,
+            "min": 566,
+            "p90": 566
+          },
+          "wall_s": {
+            "max": 15.3946,
+            "mean": 15.1079,
+            "median": 15.169,
+            "min": 14.7602,
+            "p90": 15.3946
+          }
+        },
+        "4": {
+          "aggregate_completion_tok_per_s": {
+            "max": 55.7752,
+            "mean": 53.8751,
+            "median": 53.6168,
+            "min": 52.2334,
+            "p90": 55.7752
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 61.6578,
+            "mean": 59.5573,
+            "median": 59.2717,
+            "min": 57.7424,
+            "p90": 61.6578
+          },
+          "completion_tokens": {
+            "max": 1024,
+            "mean": 1024.0,
+            "median": 1024,
+            "min": 1024,
+            "p90": 1024
+          },
+          "total_tokens": {
+            "max": 1132,
+            "mean": 1132.0,
+            "median": 1132,
+            "min": 1132,
+            "p90": 1132
+          },
+          "wall_s": {
+            "max": 19.6043,
+            "mean": 19.0207,
+            "median": 19.0985,
+            "min": 18.3594,
+            "p90": 19.6043
+          }
+        }
+      },
+      "short_codegen_128": {
+        "1": {
+          "aggregate_completion_tok_per_s": {
+            "max": 30.5774,
+            "mean": 29.9636,
+            "median": 29.7584,
+            "min": 29.5551,
+            "p90": 30.5774
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 35.594,
+            "mean": 34.8795,
+            "median": 34.6407,
+            "min": 34.4039,
+            "p90": 35.594
+          },
+          "completion_tokens": {
+            "max": 128,
+            "mean": 128.0,
+            "median": 128,
+            "min": 128,
+            "p90": 128
+          },
+          "total_tokens": {
+            "max": 149,
+            "mean": 149.0,
+            "median": 149,
+            "min": 149,
+            "p90": 149
+          },
+          "wall_s": {
+            "max": 4.3309,
+            "mean": 4.2728,
+            "median": 4.3013,
+            "min": 4.1861,
+            "p90": 4.3309
+          }
+        },
+        "2": {
+          "aggregate_completion_tok_per_s": {
+            "max": 35.3289,
+            "mean": 34.4483,
+            "median": 34.1306,
+            "min": 33.8853,
+            "p90": 35.3289
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 41.125,
+            "mean": 40.0999,
+            "median": 39.7302,
+            "min": 39.4446,
+            "p90": 41.125
+          },
+          "completion_tokens": {
+            "max": 256,
+            "mean": 256.0,
+            "median": 256,
+            "min": 256,
+            "p90": 256
+          },
+          "total_tokens": {
+            "max": 298,
+            "mean": 298.0,
+            "median": 298,
+            "min": 298,
+            "p90": 298
+          },
+          "wall_s": {
+            "max": 7.5549,
+            "mean": 7.4339,
+            "median": 7.5006,
+            "min": 7.2462,
+            "p90": 7.5549
+          }
+        },
+        "4": {
+          "aggregate_completion_tok_per_s": {
+            "max": 66.0833,
+            "mean": 57.1306,
+            "median": 52.944,
+            "min": 52.3646,
+            "p90": 66.0833
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 76.9251,
+            "mean": 66.5036,
+            "median": 61.6301,
+            "min": 60.9557,
+            "p90": 76.9251
+          },
+          "completion_tokens": {
+            "max": 512,
+            "mean": 512.0,
+            "median": 512,
+            "min": 512,
+            "p90": 512
+          },
+          "total_tokens": {
+            "max": 596,
+            "mean": 596.0,
+            "median": 596,
+            "min": 596,
+            "p90": 596
+          },
+          "wall_s": {
+            "max": 9.7776,
+            "mean": 9.0653,
+            "median": 9.6706,
+            "min": 7.7478,
+            "p90": 9.7776
+          }
+        }
+      },
+      "tiny_fact_64": {
+        "1": {
+          "aggregate_completion_tok_per_s": {
+            "max": 31.96,
+            "mean": 29.7099,
+            "median": 29.2853,
+            "min": 27.8843,
+            "p90": 31.96
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 37.4532,
+            "mean": 34.8163,
+            "median": 34.3187,
+            "min": 32.6769,
+            "p90": 37.4532
+          },
+          "completion_tokens": {
+            "max": 64,
+            "mean": 64.0,
+            "median": 64,
+            "min": 64,
+            "p90": 64
+          },
+          "total_tokens": {
+            "max": 75,
+            "mean": 75.0,
+            "median": 75,
+            "min": 75,
+            "p90": 75
+          },
+          "wall_s": {
+            "max": 2.2952,
+            "mean": 2.161,
+            "median": 2.1854,
+            "min": 2.0025,
+            "p90": 2.2952
+          }
+        },
+        "2": {
+          "aggregate_completion_tok_per_s": {
+            "max": 33.6453,
+            "mean": 32.3263,
+            "median": 32.4857,
+            "min": 30.8478,
+            "p90": 33.6453
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 39.428,
+            "mean": 37.8823,
+            "median": 38.0691,
+            "min": 36.1498,
+            "p90": 39.428
+          },
+          "completion_tokens": {
+            "max": 128,
+            "mean": 128.0,
+            "median": 128,
+            "min": 128,
+            "p90": 128
+          },
+          "total_tokens": {
+            "max": 150,
+            "mean": 150.0,
+            "median": 150,
+            "min": 150,
+            "p90": 150
+          },
+          "wall_s": {
+            "max": 4.1494,
+            "mean": 3.9647,
+            "median": 3.9402,
+            "min": 3.8044,
+            "p90": 4.1494
+          }
+        },
+        "4": {
+          "aggregate_completion_tok_per_s": {
+            "max": 52.5689,
+            "mean": 51.6278,
+            "median": 52.0653,
+            "min": 50.2493,
+            "p90": 52.5689
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 61.6042,
+            "mean": 60.5014,
+            "median": 61.0141,
+            "min": 58.8859,
+            "p90": 61.6042
+          },
+          "completion_tokens": {
+            "max": 256,
+            "mean": 256.0,
+            "median": 256,
+            "min": 256,
+            "p90": 256
+          },
+          "total_tokens": {
+            "max": 300,
+            "mean": 300.0,
+            "median": 300,
+            "min": 300,
+            "p90": 300
+          },
+          "wall_s": {
+            "max": 5.0946,
+            "mean": 4.9604,
+            "median": 4.9169,
+            "min": 4.8698,
+            "p90": 5.0946
+          }
+        }
+      }
+    },
+    "concurrency_levels": [
+      1,
+      2,
+      4
+    ],
+    "elapsed_s": 238.2586,
+    "measured_request_count": 63,
+    "raw_artifact": "tmp/bench-suite-sock-qwen3-30b-a3b-gptq-int4-small.json",
+    "runs": 3,
+    "script": "scripts/sock_endpoint_bench_suite.py",
+    "warmup_runs": 1
+  },
+  "date": "2026-07-18",
+  "direct_chat": {
+    "completion_tok_per_s": 24.837253512518974,
+    "completion_tokens": 220,
+    "elapsed_s": 8.857662135997089,
+    "prompt": "Explain how the universe came into being, clearly and with scientific nuance.",
+    "prompt_tokens": 39,
+    "quality": "coherent chain-of-thought style response; no token soup observed"
+  },
+  "host": "GMK Strix Halo WSL ROCm",
+  "label": "sock-qwen3-30b-a3b-gptq-int4-small",
+  "larger_profile_probe": {
+    "available_kv_cache_gib": 58.53,
+    "checkpoint_size_gib": 15.77,
+    "gpu_kv_cache_tokens": 639296,
+    "gpu_memory_utilization": 0.8,
+    "max_concurrency_1024_tokens": 624.31,
+    "max_model_len": 1024,
+    "model_load_s": 20.016,
+    "model_memory_gib": 15.64,
+    "result": "Reached KV sizing and remained active, but was stopped before API bind after the observation window to run the reduced benchmark profile.",
+    "weight_load_s": 17.56
+  },
+  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+  "notes": [
+    "This MoE run validates the ROCm device-name fallback fix: amdsmi driver failures no longer crash MoE config lookup on WSL.",
+    "The model uses AutoGPTQ dense projections plus MoE WNA16 experts on ROCm; tuned Strix Halo MoE config is not present, so default MoE config is used.",
+    "The benchmark profile is intentionally constrained to fit the 512-token serve shape; long 512/768 completion cases require a larger served max_model_len profile."
+  ],
+  "ok": true,
+  "runtime": "SOC vendored vLLM",
+  "serve_profile": {
+    "attention_backend": "ROCM_ATTN",
+    "enforce_eager": true,
+    "gpu_memory_utilization": 0.35,
+    "max_model_len": 512,
+    "max_num_batched_tokens": 512,
+    "max_num_seqs": 8,
+    "moe_backend": "Moe WNA16 fallback"
+  },
+  "startup": {
+    "available_kv_cache_gib": 17.62,
+    "checkpoint_size_gib": 15.77,
+    "engine_init_s": 7.02,
+    "gpu_kv_cache_tokens": 192480,
+    "max_concurrency_512_tokens": 375.94,
+    "model_load_s": 19.811182,
+    "model_memory_gib": 15.56,
+    "weight_load_s": 17.38
+  }
+}

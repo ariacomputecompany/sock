@@ -185,6 +185,42 @@ def _query_total_memory_from_amdsmi(physical_device_id: int) -> int:
     return amdsmi_get_gpu_memory_total(handle, AmdSmiMemoryType.VRAM)
 
 
+@lru_cache(maxsize=8)
+@with_amdsmi_context
+def _query_device_name_from_amdsmi(physical_device_id: int) -> str:
+    handle = amdsmi_get_processor_handles()[physical_device_id]
+    asic_info = amdsmi_get_gpu_asic_info(handle)
+    asic_info_device_id: str = asic_info["device_id"]
+    if asic_info_device_id in _ROCM_DEVICE_ID_NAME_MAP:
+        return _ROCM_DEVICE_ID_NAME_MAP[asic_info_device_id]
+    return asic_info["market_name"]
+
+
+def _canonicalize_rocm_device_name(device_name: str) -> str:
+    lower_name = device_name.lower()
+    if "8060s" in lower_name:
+        return _ROCM_DEVICE_ID_NAME_MAP["0x1586"]
+    if "890m" in lower_name:
+        return _ROCM_DEVICE_ID_NAME_MAP["0x150e"]
+    if "9070" in lower_name:
+        return _ROCM_DEVICE_ID_NAME_MAP["0x7550"]
+    return device_name
+
+
+def _query_device_name_from_torch(device_id: int) -> str:
+    try:
+        device_name = torch.cuda.get_device_name(device_id)
+    except Exception as e:
+        logger.debug("Failed to get device name via torch.cuda: %s", e)
+    else:
+        if device_name:
+            return _canonicalize_rocm_device_name(device_name)
+
+    if _GCN_ARCH:
+        return f"AMD_GPU_{_GCN_ARCH}"
+    return "AMD_GPU"
+
+
 def _get_gcn_arch() -> str:
     """
     Get GCN arch via amdsmi (no CUDA init), fallback to torch.cuda.
@@ -758,16 +794,18 @@ class RocmPlatform(Platform):
         return True
 
     @classmethod
-    @with_amdsmi_context
     @lru_cache(maxsize=8)
     def get_device_name(cls, device_id: int = 0) -> str:
         physical_device_id = cls.device_id_to_physical_device_id(device_id)
-        handle = amdsmi_get_processor_handles()[physical_device_id]
-        asic_info = amdsmi_get_gpu_asic_info(handle)
-        asic_info_device_id: str = asic_info["device_id"]
-        if asic_info_device_id in _ROCM_DEVICE_ID_NAME_MAP:
-            return _ROCM_DEVICE_ID_NAME_MAP[asic_info_device_id]
-        return asic_info["market_name"]
+        try:
+            return _query_device_name_from_amdsmi(physical_device_id)
+        except Exception as e:
+            logger.debug("Failed to get device name via amdsmi: %s", e)
+            logger.warning_once(
+                "Failed to get device name via amdsmi, falling back to "
+                "torch.cuda. This will initialize CUDA."
+            )
+        return _query_device_name_from_torch(device_id)
 
     @classmethod
     @with_amdsmi_context
