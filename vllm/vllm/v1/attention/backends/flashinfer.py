@@ -1625,6 +1625,27 @@ class FlashInferImpl(AttentionImpl):
             # Profiling run.
             return output.fill_(0)
 
+        from vllm.v1.tmh_physical import TMHPhysicalKVCache
+
+        if isinstance(kv_cache, TMHPhysicalKVCache):
+            from vllm.v1.attention.ops.tmh_triton_ops import (
+                tmh_backend_paged_attention,
+            )
+
+            return tmh_backend_paged_attention(
+                query=query,
+                cache=kv_cache,
+                attn_metadata=attn_metadata,
+                output=output,
+                softmax_scale=self.scale,
+                causal=attn_metadata.causal,
+                window_size=self.sliding_window,
+                softcap=self.logits_soft_cap or 0.0,
+                alibi_slopes=self.alibi_slopes,
+                output_scale=output_scale,
+                sinks=self.sinks,
+            )
+
         if self.bmm1_scale is None:
             self.bmm1_scale = self.scale
             if is_quantized_kv_cache(self.kv_cache_dtype):
@@ -2119,6 +2140,22 @@ class FlashInferImpl(AttentionImpl):
             # and value[:num_actual_tokens] because the reshape_and_cache_flash
             # op uses the slot_mapping's shape to determine the number of
             # actual tokens.
+            from vllm.v1.tmh_physical import TMHPhysicalKVCache
+
+            if isinstance(kv_cache, TMHPhysicalKVCache):
+                from vllm.v1.attention.ops.tmh_triton_ops import (
+                    tmh_backend_kv_cache_update,
+                )
+
+                tmh_backend_kv_cache_update(
+                    layer=layer,
+                    key=key,
+                    value=value,
+                    cache=kv_cache,
+                    slot_mapping=slot_mapping,
+                )
+                return
+
             k_cache = kv_cache[:, 0]
             v_cache = kv_cache[:, 1]
             torch.ops._C_cache_ops.reshape_and_cache_flash(
