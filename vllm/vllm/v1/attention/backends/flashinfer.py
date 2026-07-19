@@ -563,6 +563,12 @@ class FlashInferMetadata:
     slot_mapping: torch.Tensor
     """Tensor for writing K/V to the cache. Shape: [num_actual_tokens]"""
 
+    query_start_loc: torch.Tensor
+    """Cumulative query-token offsets. Shape: [num_reqs + 1]"""
+
+    seq_lens: torch.Tensor
+    """Current KV sequence lengths. Shape: [num_reqs]"""
+
     # The data types of the query for prefill and decode.
     # On SM90, these two data types may be different.
     q_data_type_prefill: torch.dtype
@@ -1154,6 +1160,8 @@ class FlashInferMetadataBuilder(AttentionMetadataBuilder[FlashInferMetadata]):
         attn_metadata = FlashInferMetadata(
             num_actual_tokens=num_actual_tokens,
             slot_mapping=common_attn_metadata.slot_mapping,
+            query_start_loc=qo_indptr,
+            seq_lens=seq_lens,
             q_data_type_prefill=self.q_data_type_prefill,
             q_data_type_decode=self.q_data_type_decode,
             num_decodes=num_decodes,
