@@ -337,10 +337,67 @@ cannot be silently downgraded to standard.
 Production readout: the RTX 4090 regression was not a CUDA attention-kernel
 failure and not a real TMH memory-layout effect. It was CPU-side Python
 accounting placed inside the scheduler allocation path. After the fix, the same
-4090 suite returns to parity with standard while GB10 remains stable. Physical
-TMH remains fail-closed until mixed-fidelity tensors and layout-aware kernels are
-wired; accounting mode is now production-safe for observability and benchmarking
-without imposing a throughput tax.
+4090 suite returns to parity with standard while GB10 remains stable. At this
+commit, physical TMH was still intentionally fail-closed; accounting mode became
+production-safe for observability and benchmarking without imposing a throughput
+tax.
+
+### CUDA Physical TMH FlashInfer Validation: RTX 4090 Qwen3-8B
+
+Commit `3b8661c` validates the first physical TMH path on CUDA through the
+standard FlashInfer attention backend. The run includes the production fixes
+needed for live serving: CUDA runner TMH runtime initialization, decoder-only
+FlashInfer warmup metadata, FlashInfer TMH cache update/attention routing,
+canonical FlashInfer metadata exposure, and canonical/overlay physical-slot
+reclamation across request lifetimes.
+
+| Field | Value |
+| --- | --- |
+| Model | `Qwen/Qwen3-8B` |
+| Endpoint | `/v1/completions` |
+| Runtime | RTX 4090, CUDA 13.0, `sock serve` |
+| Attention backend | `FLASHINFER` with physical TMH branch |
+| `max_model_len` | `1024` |
+| `gpu_memory_utilization` | `0.80` |
+| `max_num_batched_tokens` | `1024` |
+| `max_num_seqs` | `4` |
+| `enforce_eager` | `true` |
+| Standard suite wall clock | 368.40 s |
+| Physical TMH suite wall clock | 627.94 s |
+| Suite wall delta | +70.45% |
+| Mean completion throughput | 123.95 tok/s standard, 77.82 tok/s physical TMH |
+| Mean completion throughput delta | -37.21% |
+| Raw summaries | `benchmarks/2026-07-19-rtx4090-qwen3-8b-standard-backend-tmh/` |
+
+| Case | Concurrency | Standard completion tok/s | Physical TMH completion tok/s | TMH delta | Standard wall s | TMH wall s | Wall delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 55.63 | 53.63 | -3.6% | 1.15 | 1.19 | +3.7% |
+| `tiny_fact_64` | 2 | 105.27 | 98.17 | -6.7% | 1.22 | 1.30 | +7.2% |
+| `tiny_fact_64` | 4 | 208.49 | 172.38 | -17.3% | 1.23 | 1.49 | +21.0% |
+| `short_codegen_128` | 1 | 55.72 | 50.50 | -9.4% | 2.30 | 2.53 | +10.3% |
+| `short_codegen_128` | 2 | 106.99 | 94.27 | -11.9% | 2.39 | 2.72 | +13.5% |
+| `short_codegen_128` | 4 | 211.16 | 146.70 | -30.5% | 2.42 | 3.30 | +35.9% |
+| `medium_architecture_256` | 1 | 55.64 | 51.56 | -7.3% | 4.60 | 4.96 | +7.9% |
+| `medium_architecture_256` | 2 | 106.60 | 86.86 | -18.5% | 4.80 | 5.89 | +22.7% |
+| `medium_architecture_256` | 4 | 211.32 | 127.07 | -39.9% | 4.85 | 8.06 | +66.3% |
+| `long_cosmology_512` | 1 | 55.50 | 47.28 | -14.8% | 9.22 | 10.83 | +17.4% |
+| `long_cosmology_512` | 2 | 106.45 | 73.17 | -31.3% | 9.62 | 13.99 | +45.5% |
+| `long_cosmology_512` | 4 | 210.85 | 90.45 | -57.1% | 9.71 | 19.46 | +100.4% |
+| `long_context_summary_256` | 1 | 55.15 | 35.18 | -36.2% | 4.64 | 7.28 | +56.8% |
+| `long_context_summary_256` | 2 | 105.50 | 46.19 | -56.2% | 4.85 | 11.08 | +128.4% |
+| `long_context_summary_256` | 4 | 209.17 | 50.75 | -75.7% | 4.90 | 20.18 | +312.1% |
+| `extended_generation_768` | 1 | 55.45 | 43.10 | -22.3% | 13.85 | 17.82 | +28.7% |
+| `extended_generation_768` | 2 | 106.17 | 57.79 | -45.6% | 14.47 | 21.80 | +50.7% |
+| `extended_generation_768` | 4 | 209.96 | 75.73 | -63.9% | 14.63 | 40.57 | +177.3% |
+
+Production readout: physical TMH on CUDA is now functionally real, not a
+placeholder or accounting-only path. It starts, survives the full six-case
+concurrency matrix, reclaims physical slots across request lifetimes, and serves
+OpenAI-compatible completions through FlashInfer. It is not production-ready as
+a CUDA performance feature yet. The current physical kernel path regresses
+throughput sharply on RTX 4090, especially at concurrency 4 and prompt-heavy or
+long-context cases. The next CUDA TMH optimization target is kernel efficiency
+and warmup shape coverage, not allocator correctness or endpoint bring-up.
 
 ## Supported sock vs Upstream vLLM Comparison: Qwen3-4B
 
