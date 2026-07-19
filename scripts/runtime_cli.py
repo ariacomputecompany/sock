@@ -22,8 +22,21 @@ def apply_sock_runtime_profile() -> None:
         apply_python_runtime_contract()
 
 
+def apply_sock_tmh_cli_defaults() -> None:
+    policy = os.environ.get("SOCK_TMH_KV_POLICY")
+    if policy and "--tmh-kv-policy" not in sys.argv:
+        sys.argv.extend(["--tmh-kv-policy", policy])
+    hot_budget = os.environ.get("SOCK_TMH_HOT_BUDGET_PCT")
+    if hot_budget and "--tmh-hot-budget-pct" not in sys.argv:
+        sys.argv.extend(["--tmh-hot-budget-pct", hot_budget])
+    log_allocations = os.environ.get("SOCK_TMH_LOG_ALLOCATIONS")
+    if log_allocations and "VLLM_TMH_LOG_ALLOCATIONS" not in os.environ:
+        os.environ["VLLM_TMH_LOG_ALLOCATIONS"] = log_allocations
+
+
 def main() -> None:
     apply_sock_runtime_profile()
+    apply_sock_tmh_cli_defaults()
     sys.argv = ["vllm", *sys.argv[1:]]
 
     from vllm.entrypoints.cli.main import main as vllm_main

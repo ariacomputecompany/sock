@@ -12,7 +12,7 @@ AMD/ROCm machine. Raw endpoint responses and bulky serve logs may live in
 | Total throughput | Captured as total tokens per second where endpoint usage reports prompt + completion tokens. |
 | Wall clock latency | Captured as request elapsed seconds and suite elapsed seconds. |
 | Startup latency | Captured as time to `/health` or server-ready bind where available. |
-| Time to first token | Not captured in these non-streaming runs. Future benchmark passes should add a streaming harness that records first response chunk latency (`ttft_s`). |
+| Time to first token | Captured in streaming endpoint probes where the benchmark report includes `ttft_s`; older non-streaming runs omit it. |
 
 ## Testbed
 
@@ -201,6 +201,51 @@ Direct chat quality check: 384 completion tokens in 75.15 s (5.11 completion tok
 
 Direct chat quality check: 220 completion tokens in 8.86 s (24.84 completion tok/s), coherent output.
 
+## TMH Runtime Integration: Qwen3-30B-A3B MoE GPTQ Int4
+
+This run compares regular `sock serve` against the TMH allocator-path runtime
+policy on the same endpoint suite. The important boundary is explicit:
+`--tmh-kv-policy accounting` is wired into live vendored-vLLM `KVCacheManager`
+allocation and records TMH pressure during real traffic, while
+`--tmh-kv-policy physical` currently fails closed until mixed-fidelity warm-page
+tensors and attention kernels are implemented.
+
+| Field | Value |
+| --- | --- |
+| Model | `Qwen/Qwen3-30B-A3B-GPTQ-Int4` |
+| Serve path | `sock serve` OpenAI-compatible endpoint |
+| Serve profile | `max_model_len=2048`, `max_num_seqs=4`, `max_num_batched_tokens=1024`, `gpu_memory_utilization=0.35`, `enforce_eager=true` |
+| Suite shape | 10 smoke pressure cases, concurrency 1/2/4, 1 warmup batch, 1 measured batch, 10 streaming TTFT probes |
+| TMH policy | `--tmh-kv-policy accounting --tmh-hot-budget-pct 25` |
+
+| Runtime mode | Wall clock | Mean TTFT | Target retention mean | C1 mean tok/s | C2 mean tok/s | C4 mean tok/s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Regular KV | 349.93 s | 0.1179 s | 81.667% | 28.5550 | 35.4938 | 64.9079 |
+| TMH accounting, allocation logging on | 359.56 s | 0.1202 s | 80.833% | 27.9153 | 33.7384 | 61.6312 |
+| TMH accounting, allocation logging off | 354.52 s | 0.1224 s | 80.833% | 28.0377 | 34.7627 | 63.8627 |
+
+| TMH mode | Wall delta vs regular | C1 tok/s delta | C2 tok/s delta | C4 tok/s delta |
+| --- | ---: | ---: | ---: | ---: |
+| Accounting + allocation logging | +2.751% | -2.240% | -4.946% | -5.048% |
+| Accounting without allocation logging | +1.312% | -1.812% | -2.060% | -1.610% |
+
+Allocator-path pressure recorded from the live vLLM core:
+
+| Metric | Value |
+| --- | ---: |
+| TMH allocation pressure log lines | 14,016 |
+| Old-KV pressure rows | 14,016 |
+| Old/warm reduction floor vs same-hot uniform-int8 old KV | 16.667% |
+| Old/warm reduction mean vs same-hot uniform-int8 old KV | 16.667% |
+| Total effective reduction floor vs same-hot uniform-int8 total KV | 7.407% |
+| Total effective reduction mean vs same-hot uniform-int8 total KV | 9.102% |
+
+Readout: TMH is now present in the live allocator path and survives real
+endpoint traffic without server instability. This proves runtime integration for
+policy/accounting, not physical mixed-fidelity KV execution. The physical runtime
+claim remains deliberately blocked until the warm-page tensor layout and
+attention kernels are implemented and benchmarked against this same suite.
+
 ## Artifacts
 
 | Artifact | Purpose |
@@ -210,6 +255,9 @@ Direct chat quality check: 220 completion tokens in 8.86 s (24.84 completion tok
 | `benchmarks/2026-07-18-gmk-qwen3-32b-2bit-gptq/suite-summary.json` | Qwen3-32B 2-bit compact suite summary |
 | `benchmarks/2026-07-18-gmk-qwen3-32b-4bit-gptq/suite-summary.json` | Qwen3-32B 4-bit compact suite summary |
 | `benchmarks/2026-07-18-gmk-qwen3-30b-a3b-gptq-int4/suite-summary.json` | Qwen3-30B-A3B MoE compact suite summary |
+| `artifacts/tmh_runtime_integration/REPORT.md` | Matched regular vs TMH allocator-path endpoint comparison |
+| `artifacts/tmh_runtime_integration/summary.json` | Machine-readable TMH runtime integration summary |
+| `artifacts/tmh_runtime_integration/logs/tmh_accounting_server.log` | TMH allocation-pressure log with 14,016 live allocator records |
 | `tmp/bench-suite-sock-fixed-qwen3-4b.json` | Raw sock Qwen3-4B endpoint suite |
 | `tmp/bench-suite-upstream-rocm-wheel-qwen3-4b.json` | Raw upstream vLLM ROCm Qwen3-4B endpoint suite |
 | `tmp/bench-suite-sock-qwen3-32b-2bit-gptq-full.json` | Raw sock Qwen3-32B 2-bit suite |

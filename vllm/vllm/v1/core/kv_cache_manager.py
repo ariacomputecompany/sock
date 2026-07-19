@@ -10,6 +10,7 @@ from vllm.distributed.kv_events import BlockStored, KVCacheEvent
 from vllm.logger import init_logger
 from vllm.v1.core.kv_cache_coordinator import get_kv_cache_coordinator
 from vllm.v1.core.kv_cache_metrics import KVCacheMetricsCollector
+from vllm.v1.core.tmh_policy import TMHKVRuntimePolicy, should_log_allocations
 from vllm.v1.core.kv_cache_utils import KVCacheBlock
 from vllm.v1.kv_cache_interface import (
     KVCacheConfig,
@@ -156,6 +157,19 @@ class KVCacheManager:
         self.num_kv_cache_groups = len(kv_cache_config.kv_cache_groups)
         self.block_pool = self.coordinator.block_pool
         self.kv_cache_config = kv_cache_config
+        self.tmh_policy = TMHKVRuntimePolicy.from_kv_cache_config(
+            kv_cache_config, scheduler_block_size
+        )
+        if self.tmh_policy.enabled:
+            logger.info(
+                "TMH KV policy enabled: policy=%s layout=%s hot_budget_pct=%.3f "
+                "page_tokens=%d physical=%s",
+                self.tmh_policy.policy,
+                "tmh_fidelity_paged_kv",
+                self.tmh_policy.hot_budget_pct,
+                self.tmh_policy.page_tokens,
+                self.tmh_policy.physical,
+            )
 
         # Watermark: minimum number of KV cache blocks to keep free when
         # admitting waiting/preempted requests, to avoid frequent preemptions.
@@ -444,6 +458,10 @@ class KVCacheManager:
         # P/D: delay caching blocks if we have to recv from
         # remote. Update state for locally cached blocks.
         if not self.enable_caching or delay_cache_blocks:
+            self._record_tmh_pressure(
+                request=request,
+                total_tokens=num_tokens_main_model,
+            )
             return self.create_kv_cache_blocks(new_blocks)
 
         # NOTE(woosuk): We want to commit (cache) up to num_local_computed_tokens
@@ -457,7 +475,23 @@ class KVCacheManager:
         )
         self.coordinator.cache_blocks(request, num_tokens_to_cache)
 
+        self._record_tmh_pressure(
+            request=request,
+            total_tokens=num_tokens_main_model,
+        )
         return self.create_kv_cache_blocks(new_blocks)
+
+    def _record_tmh_pressure(self, request: Request, total_tokens: int) -> None:
+        if not self.tmh_policy.enabled:
+            return
+        pressure = self.tmh_policy.record_allocation(
+            request_id=request.request_id,
+            total_tokens=total_tokens,
+            prompt_tokens=request.num_prompt_tokens,
+            blocks_by_group=self.coordinator.get_blocks(request.request_id),
+        )
+        if pressure is not None and should_log_allocations():
+            logger.info("TMH KV allocation pressure: %s", pressure.as_log_fields())
 
     def free(self, request: Request) -> None:
         """Free the blocks allocated for the request.

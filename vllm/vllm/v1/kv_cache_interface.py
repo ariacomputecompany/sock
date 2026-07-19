@@ -935,6 +935,12 @@ class KVCacheConfig:
     see `_get_kv_cache_config_uniform_page_size` for more details.
     """
 
+    tmh_kv_policy: str = "off"
+    """TMH runtime policy propagated from CacheConfig into the core allocator."""
+
+    tmh_hot_budget_pct: float = 25.0
+    """Percentage of non-anchor pages retained as hot raw KV for TMH accounting."""
+
     @property
     def has_mamba_layers(self) -> bool:
         return any(isinstance(g.kv_cache_spec, MambaSpec) for g in self.kv_cache_groups)

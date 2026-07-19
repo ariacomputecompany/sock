@@ -38,6 +38,7 @@ MambaDType = Literal["auto", "float32", "float16", "bfloat16"]
 MambaCacheMode = Literal["all", "align", "none"]
 PrefixCachingHashAlgo = Literal["sha256", "sha256_cbor", "xxhash", "xxhash_cbor"]
 KVOffloadingBackend = Literal["native", "lmcache"]
+TMHKVPolicy = Literal["off", "accounting", "physical"]
 
 
 @config
@@ -185,6 +186,19 @@ class CacheConfig:
     'native' (vLLM native CPU offloading), 'lmcache'.
     KV offloading is only activated when kv_offloading_size is set."""
 
+    tmh_kv_policy: TMHKVPolicy = "off"
+    """Transformer Memory Hierarchy policy for KV runtime integration.
+
+    - "off": standard vLLM KV cache behavior.
+    - "accounting": compile and record TMH page-pressure metrics in the live
+      allocator path without changing physical KV storage.
+    - "physical": reserved for the mixed-fidelity page runtime. It currently
+      fails closed rather than silently behaving like standard KV.
+    """
+
+    tmh_hot_budget_pct: float = Field(default=25.0, ge=0.0, le=100.0)
+    """Percentage of non-anchor pages retained as hot raw KV in TMH policy."""
+
     def compute_hash(self) -> str:
         """
         WARNING: Whenever a new field is added to this config,
@@ -217,6 +231,10 @@ class CacheConfig:
             "kv_cache_max_concurrency",
             # WIP feature toggle not impacting compiled graph shape
             "kv_sharing_fast_prefill",
+            # Runtime policy/metrics only in accounting mode. Physical TMH is
+            # fail-closed above until kernels/tensor storage are implemented.
+            "tmh_kv_policy",
+            "tmh_hot_budget_pct",
         }
 
         from vllm.config.utils import get_hash_factors, hash_factors
@@ -285,3 +303,14 @@ class CacheConfig:
                 str(cache_dtype),
             )
         return cache_dtype
+
+    @model_validator(mode="after")
+    def _validate_tmh_policy(self) -> "CacheConfig":
+        if self.tmh_kv_policy == "physical":
+            raise ValueError(
+                "--tmh-kv-policy=physical is not available until the "
+                "mixed-fidelity TMH attention kernels and warm-page tensors "
+                "are wired. Use 'accounting' for allocator-path validation "
+                "or 'off' for regular vLLM."
+            )
+        return self

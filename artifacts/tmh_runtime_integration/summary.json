@@ -1,0 +1,159 @@
+{
+  "regular": {
+    "artifact": "artifacts/tmh_runtime_integration/regular_endpoint_pressure/20260719-075702/result.json",
+    "by_concurrency": {
+      "1": {
+        "count": 10,
+        "max": 29.1971,
+        "mean": 28.555,
+        "median": 28.6816,
+        "min": 27.8467
+      },
+      "2": {
+        "count": 10,
+        "max": 43.245,
+        "mean": 35.4938,
+        "median": 34.6925,
+        "min": 31.1784
+      },
+      "4": {
+        "count": 10,
+        "max": 70.1075,
+        "mean": 64.9079,
+        "median": 65.0603,
+        "min": 60.4636
+      }
+    },
+    "case_count": 10,
+    "contains_target_rate_mean_pct": 81.667,
+    "elapsed_s": 349.9299,
+    "label": "regular-runtime-kv",
+    "report": "artifacts/tmh_runtime_integration/regular_endpoint_pressure/20260719-075702/REPORT.md",
+    "ttft": {
+      "count": 10,
+      "max": 0.151,
+      "mean": 0.1179,
+      "median": 0.1259,
+      "min": 0.0563
+    }
+  },
+  "tmh_accounting_log": {
+    "artifact": "artifacts/tmh_runtime_integration/tmh_accounting_endpoint_pressure/20260719-080407/result.json",
+    "by_concurrency": {
+      "1": {
+        "count": 10,
+        "max": 28.595,
+        "mean": 27.9153,
+        "median": 28.0671,
+        "min": 26.8089
+      },
+      "2": {
+        "count": 10,
+        "max": 38.2188,
+        "mean": 33.7384,
+        "median": 33.0881,
+        "min": 30.145
+      },
+      "4": {
+        "count": 10,
+        "max": 66.8861,
+        "mean": 61.6312,
+        "median": 61.0947,
+        "min": 57.6116
+      }
+    },
+    "case_count": 10,
+    "contains_target_rate_mean_pct": 80.833,
+    "delta_vs_regular": {
+      "elapsed_pct": 2.751,
+      "tok_s_mean_pct_by_concurrency": {
+        "1": -2.24,
+        "2": -4.946,
+        "4": -5.048
+      },
+      "ttft_mean_pct": 1.951
+    },
+    "elapsed_s": 359.5556,
+    "label": "tmh-accounting-runtime-kv",
+    "report": "artifacts/tmh_runtime_integration/tmh_accounting_endpoint_pressure/20260719-080407/REPORT.md",
+    "ttft": {
+      "count": 10,
+      "max": 0.1554,
+      "mean": 0.1202,
+      "median": 0.1283,
+      "min": 0.057
+    }
+  },
+  "tmh_accounting_nolog": {
+    "artifact": "artifacts/tmh_runtime_integration/tmh_accounting_nolog_endpoint_pressure/20260719-081406/result.json",
+    "by_concurrency": {
+      "1": {
+        "count": 10,
+        "max": 29.1545,
+        "mean": 28.0377,
+        "median": 28.1101,
+        "min": 26.091
+      },
+      "2": {
+        "count": 10,
+        "max": 42.7872,
+        "mean": 34.7627,
+        "median": 33.7316,
+        "min": 30.91
+      },
+      "4": {
+        "count": 10,
+        "max": 69.6081,
+        "mean": 63.8627,
+        "median": 64.0534,
+        "min": 58.3296
+      }
+    },
+    "case_count": 10,
+    "contains_target_rate_mean_pct": 80.833,
+    "delta_vs_regular": {
+      "elapsed_pct": 1.312,
+      "tok_s_mean_pct_by_concurrency": {
+        "1": -1.812,
+        "2": -2.06,
+        "4": -1.61
+      },
+      "ttft_mean_pct": 3.817
+    },
+    "elapsed_s": 354.5221,
+    "label": "tmh-accounting-runtime-kv-nolog",
+    "report": "artifacts/tmh_runtime_integration/tmh_accounting_nolog_endpoint_pressure/20260719-081406/REPORT.md",
+    "ttft": {
+      "count": 10,
+      "max": 0.1597,
+      "mean": 0.1224,
+      "median": 0.1332,
+      "min": 0.0705
+    }
+  },
+  "tmh_allocator_pressure_logged": {
+    "log": "artifacts/tmh_runtime_integration/logs/tmh_accounting_server.log",
+    "old_pressure_count": 14016,
+    "pressure_count": 14016,
+    "sample_pressure": {
+      "hot_pages": 5,
+      "kv_layout": "tmh_fidelity_paged_kv",
+      "old_tokens": 208,
+      "page_tokens": 16,
+      "physical": false,
+      "policy": "accounting",
+      "prompt_tokens": 169,
+      "regular_live_bytes": 29884416,
+      "request_id": "cmpl-9d79e1bcbe9f3e1c-0-a48fa72d",
+      "tmh_effective_bytes": 17170432,
+      "total_pages": 19,
+      "total_reduction_vs_same_hot_uniform_int8_pct": 9.028,
+      "total_tokens": 296,
+      "warm_reduction_vs_uniform_int8_pct": 16.667
+    },
+    "total_reduction_mean_pct": 9.102,
+    "total_reduction_min_pct": 7.407,
+    "warm_reduction_mean_pct": 16.667,
+    "warm_reduction_min_pct": 16.667
+  }
+}
