@@ -11,7 +11,7 @@ from sock_cuda_shim.cuda_graphs import CudaGraphPlan
 from sock_cuda_shim.device import CudaDevice
 from sock_cuda_shim.distributed import DistributedPlan
 from sock_cuda_shim.environment import CudaEnvironment
-from sock_cuda_shim.kv_cache import KVPageSpec, PagedKVRequest
+from sock_cuda_shim.kv_cache import KVLayout, KVPageSpec, PagedKVRequest, TMHPhysicalPolicy
 from sock_cuda_shim.quantization import QuantizationPlan
 
 
@@ -21,6 +21,7 @@ class CudaReadinessReport:
     checks: tuple[str, ...]
     failures: tuple[str, ...]
     selected_attention_backend: str | None = None
+    kv_memory_pressure: dict[str, float | int | str] | None = None
 
 
 def evaluate_readiness(
@@ -34,10 +35,14 @@ def evaluate_readiness(
     graph_plan: CudaGraphPlan | None = None,
     distributed_plan: DistributedPlan | None = None,
     quantization_plan: QuantizationPlan | None = None,
+    tmh_policy: TMHPhysicalPolicy | None = None,
+    gpu_memory_utilization: float = 0.90,
+    gpu_memory_reserve_bytes: int = 0,
 ) -> CudaReadinessReport:
     checks: list[str] = []
     failures: list[str] = []
     backend: str | None = None
+    kv_memory_pressure: dict[str, float | int | str] | None = None
 
     def run(name: str, fn) -> None:
         try:
@@ -54,6 +59,18 @@ def evaluate_readiness(
     run("environment", env.validate)
     run("build", lambda: build.validate_for(device, env))
     run("kv_request", lambda: request.validate(kv_spec))
+    try:
+        kv_memory_pressure = _kv_memory_pressure(
+            device=device,
+            kv_spec=kv_spec,
+            request=request,
+            tmh_policy=tmh_policy,
+            gpu_memory_utilization=gpu_memory_utilization,
+            gpu_memory_reserve_bytes=gpu_memory_reserve_bytes,
+        )
+        checks.append("kv_memory_budget")
+    except (CudaShimError, MemoryError, ValueError) as exc:
+        failures.append(f"kv_memory_budget: {exc}")
     run("attention", lambda: None)
     try:
         backend = select_attention_backend(device, env, attention_shape).value
@@ -70,4 +87,47 @@ def evaluate_readiness(
         checks=tuple(checks),
         failures=tuple(failures),
         selected_attention_backend=backend,
+        kv_memory_pressure=kv_memory_pressure,
     )
+
+
+def _kv_memory_pressure(
+    *,
+    device: CudaDevice,
+    kv_spec: KVPageSpec,
+    request: PagedKVRequest,
+    tmh_policy: TMHPhysicalPolicy | None,
+    gpu_memory_utilization: float,
+    gpu_memory_reserve_bytes: int,
+) -> dict[str, float | int | str]:
+    request.validate(kv_spec)
+    total_pages = kv_spec.pages_for_tokens(request.total_tokens)
+    regular_bytes = kv_spec.page_bytes * total_pages
+    tmh_pressure = (
+        tmh_policy.pressure(kv_spec, request.total_tokens)
+        if tmh_policy is not None and kv_spec.layout is KVLayout.TMH_FIDELITY_PAGED
+        else None
+    )
+    required_bytes = (
+        int(tmh_pressure["tmh_effective_bytes"])
+        if tmh_pressure is not None
+        else regular_bytes
+    )
+    budget_bytes = device.memory_budget(gpu_memory_utilization, gpu_memory_reserve_bytes)
+    if required_bytes > budget_bytes:
+        raise MemoryError(
+            "KV cache requires "
+            f"{required_bytes} bytes, exceeding CUDA memory budget {budget_bytes} bytes"
+        )
+    pressure: dict[str, float | int | str] = {
+        "layout": kv_spec.layout.value,
+        "total_pages": total_pages,
+        "regular_bytes": regular_bytes,
+        "required_bytes": required_bytes,
+        "budget_bytes": budget_bytes,
+        "budget_utilization_pct": 100.0 * required_bytes / budget_bytes,
+    }
+    if tmh_pressure is not None:
+        pressure["tmh_effective_bytes"] = int(tmh_pressure["tmh_effective_bytes"])
+        pressure["tmh_reduction_pct"] = float(tmh_pressure["reduction_pct"])
+    return pressure

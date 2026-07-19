@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from sock_cuda_shim.attention import AttentionRequestShape
 from sock_cuda_shim.build import CudaBuildContract
@@ -11,7 +11,7 @@ from sock_cuda_shim.cuda_graphs import CudaGraphPlan
 from sock_cuda_shim.device import CudaDevice, DeviceClass
 from sock_cuda_shim.distributed import DistributedPlan
 from sock_cuda_shim.environment import CudaEnvironment
-from sock_cuda_shim.kv_cache import KVLayout, KVPageSpec, PagedKVRequest, Precision
+from sock_cuda_shim.kv_cache import KVLayout, KVPageSpec, PagedKVRequest, Precision, TMHPhysicalPolicy
 from sock_cuda_shim.quantization import QuantBackend, QuantizationPlan
 
 
@@ -29,6 +29,9 @@ class CudaScenario:
     quantization: QuantizationPlan | None
     should_pass: bool
     why: str
+    gpu_memory_utilization: float = 0.90
+    gpu_memory_reserve_bytes: int = 0
+    tmh_policy: TMHPhysicalPolicy | None = None
 
 
 def _request(tokens: int, block_tokens: int) -> PagedKVRequest:
@@ -44,6 +47,8 @@ def _request(tokens: int, block_tokens: int) -> PagedKVRequest:
 
 RTX4090 = CudaDevice.rtx_4090()
 H100 = CudaDevice.h100()
+H100_TP0 = replace(CudaDevice.h100(ordinal=0), nvlink_peers=(1,))
+H100_TP1 = replace(CudaDevice.h100(ordinal=1), nvlink_peers=(0,))
 B200 = CudaDevice.b200()
 MIG_H100_10GB = CudaDevice(
     name="NVIDIA H100 MIG 1g.10gb",
@@ -109,6 +114,39 @@ CANONICAL_SCENARIOS: tuple[CudaScenario, ...] = (
         why="Hopper should allow FP8 and TMA-backed MLA routing.",
     ),
     CudaScenario(
+        name="h100_2gpu_tp2_flashinfer_success",
+        devices=(H100_TP0, H100_TP1),
+        env=CudaEnvironment.from_mapping({"CUDA_DEVICE_ORDER": "PCI_BUS_ID"}),
+        build=DEFAULT_BUILD,
+        kv_spec=DEFAULT_KV,
+        request=_request(8192, DEFAULT_KV.block_tokens),
+        attention=AttentionRequestShape(128, 8, 128, 8192, KVLayout.FLASHINFER_PAGED, Precision.FP8),
+        graph=CudaGraphPlan(batch_size=8, max_tokens=4096),
+        distributed=DistributedPlan(tensor_parallel_size=2, requires_p2p=True),
+        quantization=QuantizationPlan(QuantBackend.FP8, Precision.FP8),
+        should_pass=True,
+        why="Two-Hopper tensor parallelism should pass when peer access is explicitly witnessed.",
+    ),
+    CudaScenario(
+        name="h100_2gpu_tp2_p2p_disabled_fails",
+        devices=(H100_TP0, H100_TP1),
+        env=CudaEnvironment.from_mapping(
+            {
+                "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+                "NCCL_P2P_DISABLE": "1",
+            }
+        ),
+        build=DEFAULT_BUILD,
+        kv_spec=DEFAULT_KV,
+        request=_request(8192, DEFAULT_KV.block_tokens),
+        attention=AttentionRequestShape(128, 8, 128, 8192, KVLayout.FLASHINFER_PAGED, Precision.FP8),
+        graph=CudaGraphPlan(batch_size=8, max_tokens=4096),
+        distributed=DistributedPlan(tensor_parallel_size=2, requires_p2p=True),
+        quantization=QuantizationPlan(QuantBackend.FP8, Precision.FP8),
+        should_pass=False,
+        why="Tensor-parallel inference must fail closed when the env disables required P2P.",
+    ),
+    CudaScenario(
         name="blackwell_nvfp4",
         devices=(B200,),
         env=CudaEnvironment.from_mapping({"CUDA_DEVICE_ORDER": "PCI_BUS_ID"}),
@@ -121,20 +159,21 @@ CANONICAL_SCENARIOS: tuple[CudaScenario, ...] = (
         quantization=QuantizationPlan(QuantBackend.NVFP4, Precision.NVFP4, per_token_scale=True),
         should_pass=True,
         why="Blackwell should unlock NVFP4/FP4 gates.",
+        tmh_policy=TMHPhysicalPolicy(),
     ),
     CudaScenario(
-        name="mig_too_small_for_large_kv",
+        name="mig_large_kv_exceeds_budget",
         devices=(MIG_H100_10GB,),
         env=CudaEnvironment.from_mapping({"CUDA_DEVICE_ORDER": "PCI_BUS_ID"}),
         build=DEFAULT_BUILD,
         kv_spec=DEFAULT_KV,
-        request=_request(8192, DEFAULT_KV.block_tokens),
-        attention=AttentionRequestShape(64, 8, 128, 8192, KVLayout.FLASHINFER_PAGED, Precision.FP8),
-        graph=CudaGraphPlan(batch_size=8, max_tokens=8192),
+        request=_request(65536, DEFAULT_KV.block_tokens),
+        attention=AttentionRequestShape(64, 8, 128, 65536, KVLayout.FLASHINFER_PAGED, Precision.FP8),
+        graph=CudaGraphPlan(batch_size=8, max_tokens=65536),
         distributed=None,
         quantization=QuantizationPlan(QuantBackend.FP8, Precision.FP8),
-        should_pass=True,
-        why="MIG is valid CUDA but should be evaluated with tight memory budgets.",
+        should_pass=False,
+        why="MIG is valid CUDA, but large-context KV pressure must fail against tight memory budgets.",
     ),
     CudaScenario(
         name="invalid_launch_blocking_with_graphs",

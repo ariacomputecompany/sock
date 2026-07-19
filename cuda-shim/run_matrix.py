@@ -13,7 +13,6 @@ sys.path.insert(0, str(ROOT))
 
 from sock_cuda_shim.diagnostics import evaluate_readiness
 from sock_cuda_shim.inference import run_inference_contract
-from sock_cuda_shim.kv_cache import TMHPhysicalPolicy
 from sock_cuda_shim.scenarios import CANONICAL_SCENARIOS
 
 
@@ -40,11 +39,15 @@ def main() -> int:
             graph_plan=scenario.graph,
             distributed_plan=scenario.distributed,
             quantization_plan=scenario.quantization,
+            tmh_policy=scenario.tmh_policy,
+            gpu_memory_utilization=scenario.gpu_memory_utilization,
+            gpu_memory_reserve_bytes=scenario.gpu_memory_reserve_bytes,
         )
         matched = report.ok is scenario.should_pass
         failures += 0 if matched else 1
         rows.append(
             {
+                "scenario": scenario.name,
                 "name": scenario.name,
                 "expected_ok": scenario.should_pass,
                 "actual_ok": report.ok,
@@ -62,7 +65,17 @@ def main() -> int:
         )
 
     if args.json:
-        print(json.dumps({"ok": failures == 0, "scenarios": rows}, indent=2, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "ok": failures == 0,
+                    "scenario_count": len(rows),
+                    "results": rows,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
     else:
         for row in rows:
             status = "PASS" if row["matched"] else "FAIL"
@@ -75,15 +88,18 @@ def main() -> int:
 def _inference_contract_row(scenario):
     report = run_inference_contract(
         scenario,
-        tmh_policy=TMHPhysicalPolicy() if "blackwell" in scenario.name else None,
+        tmh_policy=scenario.tmh_policy,
     )
     return {
+        "ok": report.ready,
         "ready": report.ready,
         "backend": report.selected_attention_backend,
+        "failure_reasons": list(report.readiness.failures),
         "kv_layout": report.kv_layout,
         "total_tokens": report.total_tokens,
         "graph_capture_required": report.graph_capture_required,
         "tmh_pressure": report.tmh_pressure,
+        "kv_memory_pressure": report.kv_memory_pressure,
     }
 
 

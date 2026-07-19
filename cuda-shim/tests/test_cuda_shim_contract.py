@@ -92,6 +92,29 @@ def test_tmh_physical_policy_reduces_kv_pressure() -> None:
     assert pressure["reduction_pct"] > 0
 
 
+def test_readiness_enforces_kv_memory_budget() -> None:
+    spec = KVPageSpec(16, 64, 8, 128, 128, Precision.FP16, KVLayout.FLASHINFER_PAGED)
+    request = PagedKVRequest(
+        request_id="too-large",
+        prompt_tokens=131072,
+        generated_tokens=0,
+        slot_mapping=tuple(range(131072)),
+        block_table=tuple(range(spec.pages_for_tokens(131072))),
+    )
+
+    report = evaluate_readiness(
+        devices=(CudaDevice.rtx_4090(),),
+        env=CudaEnvironment.from_mapping({"CUDA_DEVICE_ORDER": "PCI_BUS_ID"}),
+        build=DEFAULT_BUILD,
+        kv_spec=spec,
+        request=request,
+        attention_shape=CANONICAL_SCENARIOS[0].attention,
+    )
+
+    assert report.ok is False
+    assert any("KV cache requires" in failure for failure in report.failures)
+
+
 def test_cuda_graph_rejects_capture_time_malloc() -> None:
     plan = CudaGraphPlan(batch_size=4, max_tokens=2048, forbidden_ops_seen=("cudaMalloc",))
 
@@ -149,10 +172,20 @@ def test_default_build_covers_first_rented_4090_path() -> None:
 
 def test_inference_contract_reports_blackwell_tmh_pressure() -> None:
     scenario = next(item for item in CANONICAL_SCENARIOS if item.name == "blackwell_nvfp4")
-    report = run_inference_contract(scenario, tmh_policy=TMHPhysicalPolicy())
+    report = run_inference_contract(scenario, tmh_policy=scenario.tmh_policy)
 
     assert report.ready is True
     assert report.selected_attention_backend == "FLASHINFER"
     assert report.kv_layout == "tmh_fidelity_paged_kv"
     assert report.tmh_pressure is not None
+    assert report.kv_memory_pressure is not None
     assert report.tmh_pressure["tmh_effective_bytes"] < report.tmh_pressure["regular_bytes"]
+    assert report.kv_memory_pressure["required_bytes"] == report.tmh_pressure["tmh_effective_bytes"]
+
+
+def test_inference_contract_reports_mig_memory_pressure_failure() -> None:
+    scenario = next(item for item in CANONICAL_SCENARIOS if item.name == "mig_large_kv_exceeds_budget")
+    report = run_inference_contract(scenario)
+
+    assert report.ready is False
+    assert any("KV cache requires" in failure for failure in report.readiness.failures)

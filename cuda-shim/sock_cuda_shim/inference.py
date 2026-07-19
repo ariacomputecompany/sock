@@ -24,6 +24,7 @@ class CudaInferenceContractReport:
     total_tokens: int
     graph_capture_required: bool
     tmh_pressure: dict[str, float | int | str] | None
+    kv_memory_pressure: dict[str, float | int | str] | None
     readiness: CudaReadinessReport
 
 
@@ -42,6 +43,9 @@ def run_inference_contract(
         graph_plan=scenario.graph,
         distributed_plan=scenario.distributed,
         quantization_plan=scenario.quantization,
+        tmh_policy=tmh_policy,
+        gpu_memory_utilization=scenario.gpu_memory_utilization,
+        gpu_memory_reserve_bytes=scenario.gpu_memory_reserve_bytes,
     )
     tmh_pressure = None
     if tmh_policy is not None:
@@ -57,5 +61,6 @@ def run_inference_contract(
         total_tokens=scenario.request.total_tokens,
         graph_capture_required=scenario.graph is not None,
         tmh_pressure=tmh_pressure,
+        kv_memory_pressure=readiness.kv_memory_pressure,
         readiness=readiness,
     )
