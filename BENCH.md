@@ -351,3 +351,63 @@ Artifacts:
 | `benchmarks/2026-07-18-gmk-qwen3-32b-2bit-gptq/suite-summary.json` | Tracked compact full-suite summary |
 | `tmp/bench-suite-sock-qwen3-32b-2bit-gptq-full.json` | Full raw SOC endpoint responses and per-batch stats |
 | `tmp/bench-large-qwen3-32b-2bit-fixed-serve.log` | SOC serve log for startup, backend, JIT, and request status |
+
+## Qwen3-32B 4-bit GPTQ Large-Model Suite
+
+This run validates the SOC AutoGPTQ 4-bit ROCm path after the packed
+layout normalization fix that also enabled the 2-bit run. The model is
+`kaitchup/Qwen3-32B-autoround-4bit-gptq`. The same six-case expanded
+suite ran with one warmup batch and two measured batches at concurrency
+levels 1, 2, and 4. The full run completed successfully in 2725.4 seconds.
+
+Startup and capacity:
+
+| Metric | Value |
+| --- | ---: |
+| Checkpoint size | 18.01 GiB |
+| Weight load time | 80.11 s |
+| Model load time | 82.25 s |
+| Model memory | 18.15 GiB |
+| Engine warmup | 28.60 s |
+| Available KV cache memory | 57.56 GiB |
+| GPU KV cache size | 235,744 tokens |
+| Max concurrency at 1024 tokens | 230.22x |
+| Attention backend selected | `ROCM_ATTN` |
+
+Mean completion tok/s by case and concurrency:
+
+| Case | Concurrency | Mean completion tok/s | Mean total tok/s | Mean wall s |
+| --- | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 5.2317 | 6.1308 | 12.2332 |
+| `tiny_fact_64` | 2 | 10.0983 | 11.8339 | 12.6793 |
+| `tiny_fact_64` | 4 | 20.0337 | 23.4769 | 12.7785 |
+| `short_codegen_128` | 1 | 5.1958 | 6.0482 | 24.6358 |
+| `short_codegen_128` | 2 | 10.2696 | 11.9544 | 24.9282 |
+| `short_codegen_128` | 4 | 20.1091 | 23.4082 | 25.4631 |
+| `medium_architecture_256` | 1 | 5.1955 | 5.7435 | 49.2746 |
+| `medium_architecture_256` | 2 | 10.2354 | 11.3149 | 50.0237 |
+| `medium_architecture_256` | 4 | 20.1481 | 22.2730 | 50.8238 |
+| `long_cosmology_512` | 1 | 5.1597 | 5.6334 | 99.2306 |
+| `long_cosmology_512` | 2 | 10.1601 | 11.0927 | 100.7867 |
+| `long_cosmology_512` | 4 | 20.0605 | 21.9020 | 102.0910 |
+| `long_context_summary_256` | 1 | 5.1231 | 19.0117 | 49.9693 |
+| `long_context_summary_256` | 2 | 10.0573 | 37.3220 | 50.9085 |
+| `long_context_summary_256` | 4 | 19.8436 | 73.6384 | 51.6038 |
+| `extended_generation_768` | 1 | 5.1103 | 5.4097 | 150.2879 |
+| `extended_generation_768` | 2 | 10.2492 | 10.8497 | 149.8660 |
+| `extended_generation_768` | 4 | 20.3794 | 21.5736 | 150.7400 |
+
+Quality and correctness notes:
+
+- The endpoint produced coherent direct chat output: 384 completion tokens in 75.15 s, or 5.11 completion tok/s.
+- The full benchmark recorded 84 measured responses with 0 low-ASCII/token-soup suspects.
+- The previous `qzeros shape mismatch` failure is fixed: this run loaded the 18.01 GiB checkpoint, served `/health`, and completed the full benchmark matrix.
+- On this current Triton ROCm path, 4-bit is faster than 2-bit despite the larger checkpoint. That means 2-bit is now correct and runnable, but the 2-bit unpack path is not yet throughput-superior to 4-bit.
+
+Artifacts:
+
+| Artifact | Purpose |
+| --- | --- |
+| `benchmarks/2026-07-18-gmk-qwen3-32b-4bit-gptq/suite-summary.json` | Tracked compact full-suite summary |
+| `tmp/bench-suite-sock-qwen3-32b-4bit-gptq-full.json` | Full raw SOC endpoint responses and per-batch stats |
+| `tmp/bench-large-qwen3-32b-4bit-serve.log` | SOC serve log for startup, backend, and request status |

@@ -1,0 +1,208 @@
+{
+  "date": "2026-07-18",
+  "machine": "GMKtec Strix Halo AMD WSL ROCm",
+  "runtime": "sock vendored vLLM",
+  "model": "kaitchup/Qwen3-32B-autoround-4bit-gptq",
+  "label": "sock_qwen3_32b_4bit_gptq_full",
+  "ok": true,
+  "elapsed_s": 2725.4135,
+  "runs": 2,
+  "warmup_runs": 1,
+  "concurrency_levels": [
+    1,
+    2,
+    4
+  ],
+  "startup": {
+    "checkpoint_size_gib": 18.01,
+    "model_memory_gib": 18.15,
+    "weight_load_s": 80.11,
+    "model_load_s": 82.247295,
+    "engine_warmup_s": 28.6,
+    "available_kv_cache_gib": 57.56,
+    "gpu_kv_cache_tokens": 235744,
+    "max_concurrency_1024_tokens": 230.22,
+    "attention_backend": "ROCM_ATTN"
+  },
+  "quality": {
+    "measured_responses": 84,
+    "low_ascii_suspects": 0,
+    "direct_chat_prompt_completion_tokens": 384,
+    "direct_chat_prompt_elapsed_s": 75.14950786099871,
+    "direct_chat_prompt_completion_tok_per_s": 5.109813902045383,
+    "note": "Direct chat completion and full-suite completions were coherent; raw completions may continue instruction text."
+  },
+  "comparison_to_2bit": {
+    "same_model_family": "kaitchup/Qwen3-32B AutoRound GPTQ",
+    "full_suite_elapsed_s_2bit": 4113.4179,
+    "full_suite_elapsed_s_4bit": 2725.4135,
+    "direct_chat_tok_per_s_2bit": 3.439819822623264,
+    "direct_chat_tok_per_s_4bit": 5.109813902045383,
+    "note": "4-bit is faster on this ROCm Triton path despite the larger checkpoint, indicating current 2-bit unpack/kernel path is correct but not yet performance-optimized relative to 4-bit."
+  },
+  "rows": [
+    {
+      "case": "tiny_fact_64",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 5.2317,
+      "mean_total_tok_per_s": 6.1308,
+      "mean_wall_s": 12.2332,
+      "completion_tokens_per_batch": 64.0,
+      "total_tokens_per_batch": 75.0
+    },
+    {
+      "case": "tiny_fact_64",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 10.0983,
+      "mean_total_tok_per_s": 11.8339,
+      "mean_wall_s": 12.6793,
+      "completion_tokens_per_batch": 128.0,
+      "total_tokens_per_batch": 150.0
+    },
+    {
+      "case": "tiny_fact_64",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 20.0337,
+      "mean_total_tok_per_s": 23.4769,
+      "mean_wall_s": 12.7785,
+      "completion_tokens_per_batch": 256.0,
+      "total_tokens_per_batch": 300.0
+    },
+    {
+      "case": "short_codegen_128",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 5.1958,
+      "mean_total_tok_per_s": 6.0482,
+      "mean_wall_s": 24.6358,
+      "completion_tokens_per_batch": 128.0,
+      "total_tokens_per_batch": 149.0
+    },
+    {
+      "case": "short_codegen_128",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 10.2696,
+      "mean_total_tok_per_s": 11.9544,
+      "mean_wall_s": 24.9282,
+      "completion_tokens_per_batch": 256.0,
+      "total_tokens_per_batch": 298.0
+    },
+    {
+      "case": "short_codegen_128",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 20.1091,
+      "mean_total_tok_per_s": 23.4082,
+      "mean_wall_s": 25.4631,
+      "completion_tokens_per_batch": 512.0,
+      "total_tokens_per_batch": 596.0
+    },
+    {
+      "case": "medium_architecture_256",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 5.1955,
+      "mean_total_tok_per_s": 5.7435,
+      "mean_wall_s": 49.2746,
+      "completion_tokens_per_batch": 256.0,
+      "total_tokens_per_batch": 283.0
+    },
+    {
+      "case": "medium_architecture_256",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 10.2354,
+      "mean_total_tok_per_s": 11.3149,
+      "mean_wall_s": 50.0237,
+      "completion_tokens_per_batch": 512.0,
+      "total_tokens_per_batch": 566.0
+    },
+    {
+      "case": "medium_architecture_256",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 20.1481,
+      "mean_total_tok_per_s": 22.273,
+      "mean_wall_s": 50.8238,
+      "completion_tokens_per_batch": 1024.0,
+      "total_tokens_per_batch": 1132.0
+    },
+    {
+      "case": "long_cosmology_512",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 5.1597,
+      "mean_total_tok_per_s": 5.6334,
+      "mean_wall_s": 99.2306,
+      "completion_tokens_per_batch": 512.0,
+      "total_tokens_per_batch": 559.0
+    },
+    {
+      "case": "long_cosmology_512",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 10.1601,
+      "mean_total_tok_per_s": 11.0927,
+      "mean_wall_s": 100.7867,
+      "completion_tokens_per_batch": 1024.0,
+      "total_tokens_per_batch": 1118.0
+    },
+    {
+      "case": "long_cosmology_512",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 20.0605,
+      "mean_total_tok_per_s": 21.902,
+      "mean_wall_s": 102.091,
+      "completion_tokens_per_batch": 2048.0,
+      "total_tokens_per_batch": 2236.0
+    },
+    {
+      "case": "long_context_summary_256",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 5.1231,
+      "mean_total_tok_per_s": 19.0117,
+      "mean_wall_s": 49.9693,
+      "completion_tokens_per_batch": 256.0,
+      "total_tokens_per_batch": 950.0
+    },
+    {
+      "case": "long_context_summary_256",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 10.0573,
+      "mean_total_tok_per_s": 37.322,
+      "mean_wall_s": 50.9085,
+      "completion_tokens_per_batch": 512.0,
+      "total_tokens_per_batch": 1900.0
+    },
+    {
+      "case": "long_context_summary_256",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 19.8436,
+      "mean_total_tok_per_s": 73.6384,
+      "mean_wall_s": 51.6038,
+      "completion_tokens_per_batch": 1024.0,
+      "total_tokens_per_batch": 3800.0
+    },
+    {
+      "case": "extended_generation_768",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 5.1103,
+      "mean_total_tok_per_s": 5.4097,
+      "mean_wall_s": 150.2879,
+      "completion_tokens_per_batch": 768.0,
+      "total_tokens_per_batch": 813.0
+    },
+    {
+      "case": "extended_generation_768",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 10.2492,
+      "mean_total_tok_per_s": 10.8497,
+      "mean_wall_s": 149.866,
+      "completion_tokens_per_batch": 1536.0,
+      "total_tokens_per_batch": 1626.0
+    },
+    {
+      "case": "extended_generation_768",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 20.3794,
+      "mean_total_tok_per_s": 21.5736,
+      "mean_wall_s": 150.74,
+      "completion_tokens_per_batch": 3072.0,
+      "total_tokens_per_batch": 3252.0
+    }
+  ],
+  "raw_artifact": "tmp/bench-suite-sock-qwen3-32b-4bit-gptq-full.json"
+}
