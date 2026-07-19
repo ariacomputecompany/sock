@@ -30,10 +30,10 @@ Use `--dry-run --format json` to record the exact build profile, environment,
 requirements, and command steps before applying changes:
 
 ```bash
-cargo run --bin sock -- install-runtime --profile cuda --build-profile minimal-dev --dry-run --format json
+cargo run --bin sock -- install-runtime --profile cuda --build-profile gptq-marlin --dry-run --format json
 cargo run --bin sock -- install-runtime --profile rocm --build-profile core --dry-run --format json
 cargo run --bin sock -- install-runtime --profile auto --preflight-only
-cargo run --bin sock -- install-runtime --profile cuda --build-profile minimal-dev --recreate-venv
+cargo run --bin sock -- install-runtime --profile cuda --build-profile gptq-marlin --recreate-venv
 ```
 
 The JSON plan includes preflight status and SHA-256 digests for every selected

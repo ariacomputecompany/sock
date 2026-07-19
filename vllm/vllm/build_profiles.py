@@ -144,6 +144,24 @@ _PROFILE_SPECS = {
         },
         "native_families": ("base_runtime",),
     },
+    "gptq-marlin": {
+        "profile_family": "targeted",
+        "developer_friendly": False,
+        "cuda_arches": ("8.9",),
+        "flags": {
+            "VLLM_BUILD_TRITON_KERNELS": True,
+            "VLLM_BUILD_DEEPGEMM": False,
+            "VLLM_BUILD_FMHA_SM100": False,
+            "VLLM_BUILD_FLASHMLA": False,
+            "VLLM_BUILD_QUTLASS": False,
+            "VLLM_BUILD_FLASH_ATTN": False,
+        },
+        "native_families": (
+            "base_runtime",
+            "marlin",
+            "moe_marlin",
+        ),
+    },
     "deepgemm": {
         "profile_family": "targeted",
         "developer_friendly": False,

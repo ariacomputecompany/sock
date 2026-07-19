@@ -102,7 +102,7 @@ fn install_runtime_dry_run_emits_resolved_cuda_plan() {
             "--profile",
             "cuda",
             "--build-profile",
-            "minimal-dev",
+            "gptq-marlin",
             "--dry-run",
             "--recreate-venv",
             "--format",
@@ -119,7 +119,7 @@ fn install_runtime_dry_run_emits_resolved_cuda_plan() {
     assert_eq!(plan["target_device"], Value::String("cuda".to_owned()));
     assert_eq!(
         plan["build_profile"],
-        Value::String("minimal-dev".to_owned())
+        Value::String("gptq-marlin".to_owned())
     );
     assert_eq!(plan["dry_run"], Value::Bool(true));
     assert_eq!(plan["recreate_venv"], Value::Bool(true));
@@ -158,7 +158,21 @@ fn install_runtime_dry_run_emits_resolved_cuda_plan() {
     );
     assert_eq!(
         plan["environment"]["VLLM_BUILD_PROFILE"],
-        Value::String("minimal-dev".to_owned())
+        Value::String("gptq-marlin".to_owned())
+    );
+    assert!(
+        plan["build_profile_resolution"]["enabled_native_families"]
+            .as_array()
+            .expect("enabled native families")
+            .iter()
+            .any(|entry| entry == "marlin")
+    );
+    assert!(
+        plan["build_profile_resolution"]["enabled_native_families"]
+            .as_array()
+            .expect("enabled native families")
+            .iter()
+            .any(|entry| entry == "moe_marlin")
     );
 }
 
