@@ -383,7 +383,7 @@
     "The benchmark profile is intentionally constrained to fit the 512-token serve shape; long 512/768 completion cases require a larger served max_model_len profile."
   ],
   "ok": true,
-  "runtime": "SOC vendored vLLM",
+  "runtime": "sock vendored vLLM",
   "serve_profile": {
     "attention_backend": "ROCM_ATTN",
     "enforce_eager": true,

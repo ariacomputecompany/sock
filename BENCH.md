@@ -1,6 +1,6 @@
 # Benchmarks
 
-This is the durable performance ledger for live SOC runs on the GMK Strix Halo
+This is the durable performance ledger for live sock runs on the GMK Strix Halo
 AMD/ROCm machine. Raw endpoint responses and bulky serve logs may live in
 `tmp/`; compact summaries live under `benchmarks/<run-id>/`.
 
@@ -23,12 +23,12 @@ AMD/ROCm machine. Raw endpoint responses and bulky serve logs may live in
 | GPU arch | `gfx1151` |
 | ROCm/driver reported by `sock doctor` | `7.14.0~pre3-29052710811` |
 | Python ABI | `cp312` |
-| SOC runtime | vendored vLLM `0.25.1`, torch `2.11.0+gitd0c8b1f`, HIP `7.2.53211` |
+| sock runtime | vendored vLLM `0.25.1`, torch `2.11.0+gitd0c8b1f`, HIP `7.2.53211` |
 | Upstream vLLM ROCm baseline | official ROCm wheel `vllm 0.25.1+rocm723`, torch `2.11.0+gitd0c8b1f`, HIP `7.2.53211` |
 
-## Supported SOC vs Upstream vLLM Comparison: Qwen3-4B
+## Supported sock vs Upstream vLLM Comparison: Qwen3-4B
 
-This is the current apples-to-apples comparison where both SOC and an upstream
+This is the current apples-to-apples comparison where both sock and an upstream
 vLLM ROCm baseline served the same model on the same hardware.
 
 | Field | Value |
@@ -39,26 +39,26 @@ vLLM ROCm baseline served the same model on the same hardware.
 | `gpu_memory_utilization` | `0.8` |
 | `enforce_eager` | `true` |
 | Suite shape | 6 prompt classes, concurrency 1/2/4, 1 warmup batch, 2 measured batches |
-| SOC suite wall clock | 571.84 s |
+| sock suite wall clock | 571.84 s |
 | Upstream suite wall clock | 571.04 s |
 
 ### Startup
 
 | Runtime | Ready after | Attention backend | Notes |
 | --- | ---: | --- | --- |
-| SOC vendored runtime | 56 s | `ROCM_ATTN` | `sock serve` path |
+| sock vendored runtime | 56 s | `ROCM_ATTN` | `sock serve` path |
 | Upstream vLLM ROCm baseline | 52 s | `ROCM_ATTN` | upstream ROCm wheel baseline |
 
 ### Single Long-Form 512-Token Prompt
 
 | Runtime | Mean completion tok/s | Mean total tok/s | Mean wall clock/request | Completion tokens |
 | --- | ---: | ---: | ---: | ---: |
-| SOC vendored runtime | 25.24 | 27.55 | 20.29 s | 512 |
+| sock vendored runtime | 25.24 | 27.55 | 20.29 s | 512 |
 | Upstream vLLM ROCm baseline | 25.23 | 27.55 | 20.29 s | 512 |
 
 ### Multi-Case Endpoint Suite
 
-| Case | Concurrency | SOC completion tok/s | SOC wall s | Upstream completion tok/s | Upstream wall s | SOC delta |
+| Case | Concurrency | sock completion tok/s | sock wall s | Upstream completion tok/s | Upstream wall s | sock delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `tiny_fact_64` | 1 | 25.25 | 2.55 | 25.30 | 2.54 | -0.18% |
 | `tiny_fact_64` | 2 | 46.84 | 2.77 | 44.22 | 3.00 | +5.94% |
@@ -80,12 +80,12 @@ vLLM ROCm baseline served the same model on the same hardware.
 | `extended_generation_768` | 4 | 91.71 | 33.50 | 91.93 | 33.42 | -0.24% |
 
 Result: Qwen3-4B throughput is effectively parity on this eager ROCm endpoint
-shape. SOC's win for this comparison is the shorter, cleaner path to a runnable
+shape. sock's win for this comparison is the shorter, cleaner path to a runnable
 ROCm endpoint, not a meaningful tok/s advantage on this small model.
 
-## SOC Large-Model Runs
+## sock Large-Model Runs
 
-These runs validate the SOC runtime paths that matter for the larger AMD box:
+These runs validate the sock runtime paths that matter for the larger AMD box:
 AutoGPTQ 2-bit, AutoGPTQ 4-bit, and MoE WNA16. Comparable upstream vLLM numbers
 are not recorded here unless the upstream runtime supports the same model and
 quantization path end-to-end.
@@ -205,13 +205,13 @@ Direct chat quality check: 220 completion tokens in 8.86 s (24.84 completion tok
 
 | Artifact | Purpose |
 | --- | --- |
-| `benchmarks/2026-07-18-gmk-qwen3-4b/summary.json` | Qwen3-4B compact SOC/upstream summary |
+| `benchmarks/2026-07-18-gmk-qwen3-4b/summary.json` | Qwen3-4B compact sock/upstream summary |
 | `benchmarks/2026-07-18-gmk-qwen3-4b/suite-summary.json` | Qwen3-4B compact suite comparison |
 | `benchmarks/2026-07-18-gmk-qwen3-32b-2bit-gptq/suite-summary.json` | Qwen3-32B 2-bit compact suite summary |
 | `benchmarks/2026-07-18-gmk-qwen3-32b-4bit-gptq/suite-summary.json` | Qwen3-32B 4-bit compact suite summary |
 | `benchmarks/2026-07-18-gmk-qwen3-30b-a3b-gptq-int4/suite-summary.json` | Qwen3-30B-A3B MoE compact suite summary |
-| `tmp/bench-suite-sock-fixed-qwen3-4b.json` | Raw SOC Qwen3-4B endpoint suite |
+| `tmp/bench-suite-sock-fixed-qwen3-4b.json` | Raw sock Qwen3-4B endpoint suite |
 | `tmp/bench-suite-upstream-rocm-wheel-qwen3-4b.json` | Raw upstream vLLM ROCm Qwen3-4B endpoint suite |
-| `tmp/bench-suite-sock-qwen3-32b-2bit-gptq-full.json` | Raw SOC Qwen3-32B 2-bit suite |
-| `tmp/bench-suite-sock-qwen3-32b-4bit-gptq-full.json` | Raw SOC Qwen3-32B 4-bit suite |
-| `tmp/bench-suite-sock-qwen3-30b-a3b-gptq-int4-small.json` | Raw SOC Qwen3-30B-A3B MoE suite |
+| `tmp/bench-suite-sock-qwen3-32b-2bit-gptq-full.json` | Raw sock Qwen3-32B 2-bit suite |
+| `tmp/bench-suite-sock-qwen3-32b-4bit-gptq-full.json` | Raw sock Qwen3-32B 4-bit suite |
+| `tmp/bench-suite-sock-qwen3-30b-a3b-gptq-int4-small.json` | Raw sock Qwen3-30B-A3B MoE suite |
