@@ -566,8 +566,12 @@ below.
 Commit `e007cb4` wires physical TMH kernel materialization into startup through
 the production scheduler path. The warmup now covers both cold single-request
 serving and max safe batch serving for the allocated TMH KV cache, so endpoint
-traffic no longer triggers TMH Triton JIT compilation. This run compares regular
-KV against physical TMH on the same six-case endpoint suite.
+traffic no longer triggers TMH Triton JIT compilation. Commit `2c322d5` then
+optimizes the physical attention path by splitting all-raw, all-warm, and mixed
+tiles, aligning TMH attention tiles with the 16-token physical page, and reusing
+the GPU request-row map across layers instead of rebuilding it per attention
+call. These runs compare regular KV against physical TMH on the same six-case
+endpoint suite.
 
 | Field | Value |
 | --- | --- |
@@ -577,15 +581,27 @@ KV against physical TMH on the same six-case endpoint suite.
 | Suite shape | 6 prompt classes, concurrency 1/2/4, 1 warmup batch, 2 measured batches |
 | TMH layout | `--kv-layout tmh --tmh-hot-budget-pct 25` |
 | Standard suite wall clock | 765.69 s |
-| Physical TMH suite wall clock | 1075.15 s |
+| Physical TMH suite wall clock, first physical kernel | 1075.15 s |
+| Physical TMH suite wall clock, optimized kernel | 945.04 s |
 | Standard ready time | 73 s |
-| Physical TMH ready time | 65 s |
+| Physical TMH ready time, first physical kernel | 65 s |
+| Physical TMH ready time, optimized kernel | 75 s |
 | Standard request-time JIT warnings | 3, non-TMH kernels (`_fwd_kernel`, MoE/GPTQ) |
-| Physical TMH request-time JIT warnings | 2, MoE/GPTQ kernels; zero TMH kernel JIT warnings |
+| Physical TMH request-time JIT warnings, first physical kernel | 2, MoE/GPTQ kernels; zero TMH kernel JIT warnings |
+| Physical TMH request-time JIT warnings, optimized kernel | 2, MoE/GPTQ kernels; zero TMH kernel JIT warnings |
 | Standard geomean completion throughput | 36.70 tok/s |
-| Physical TMH geomean completion throughput | 26.44 tok/s |
-| Physical TMH geomean delta | -27.96% |
-| Raw summaries | `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh/` |
+| Physical TMH geomean completion throughput, first physical kernel | 26.44 tok/s |
+| Physical TMH geomean completion throughput, optimized kernel | 29.76 tok/s |
+| First physical TMH geomean delta vs standard | -27.96% |
+| Optimized physical TMH geomean delta vs first physical TMH | +12.56% |
+| Optimized physical TMH geomean delta vs standard | -18.92% |
+| Raw summaries | `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh/`, `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-kernel-opt/` |
+
+| Runtime | Suite wall s | Ready s | Geomean completion tok/s | Delta vs standard | TMH JIT warnings |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Standard KV baseline | 765.69 | 73 | 36.70 | baseline | n/a |
+| Physical TMH, first physical kernel | 1075.15 | 65 | 26.44 | -27.96% | 0 |
+| Physical TMH, optimized kernel | 945.04 | 75 | 29.76 | -18.92% | 0 |
 
 | Case | Concurrency | Standard completion tok/s | Physical TMH completion tok/s | TMH delta | Standard wall s | TMH wall s | Wall delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -608,12 +624,36 @@ KV against physical TMH on the same six-case endpoint suite.
 | `extended_generation_768` | 2 | 30.91 | 24.88 | -19.5% | 49.70 | 61.75 | +24.3% |
 | `extended_generation_768` | 4 | 49.23 | 35.18 | -28.5% | 62.45 | 87.31 | +39.8% |
 
-Production readout: physical TMH is now correct enough to serve the full 30B
-suite, and the cold-start TMH JIT issue is fixed. The throughput result is not
-yet a win: the first full physical run regresses by -27.96% geomean completion
-throughput, with the worst case on long-context concurrency 4. The likely next
-optimization target is the physical TMH attention/kernel path itself, not
-scheduler accounting or CLI wiring.
+Optimized physical TMH kernel row-level throughput:
+
+| Case | Concurrency | Standard tok/s | First physical TMH tok/s | Optimized physical TMH tok/s | Optimized vs first TMH | Optimized vs standard |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 28.23 | 24.15 | 25.97 | +7.5% | -8.0% |
+| `tiny_fact_64` | 2 | 32.07 | 26.07 | 28.15 | +8.0% | -12.2% |
+| `tiny_fact_64` | 4 | 49.88 | 38.80 | 42.09 | +8.5% | -15.6% |
+| `short_codegen_128` | 1 | 28.10 | 22.93 | 24.94 | +8.8% | -11.2% |
+| `short_codegen_128` | 2 | 39.30 | 28.41 | 30.97 | +9.0% | -21.2% |
+| `short_codegen_128` | 4 | 48.56 | 36.68 | 41.71 | +13.7% | -14.1% |
+| `medium_architecture_256` | 1 | 28.93 | 21.34 | 24.35 | +14.1% | -15.8% |
+| `medium_architecture_256` | 2 | 32.04 | 26.82 | 29.36 | +9.5% | -8.4% |
+| `medium_architecture_256` | 4 | 49.46 | 37.03 | 42.07 | +13.6% | -14.9% |
+| `long_cosmology_512` | 1 | 28.87 | 20.41 | 23.35 | +14.4% | -19.1% |
+| `long_cosmology_512` | 2 | 32.66 | 25.56 | 28.41 | +11.1% | -13.0% |
+| `long_cosmology_512` | 4 | 48.52 | 35.76 | 40.57 | +13.5% | -16.4% |
+| `long_context_summary_256` | 1 | 28.29 | 16.58 | 19.24 | +16.1% | -32.0% |
+| `long_context_summary_256` | 2 | 34.88 | 20.87 | 24.13 | +15.6% | -30.8% |
+| `long_context_summary_256` | 4 | 67.26 | 28.67 | 35.07 | +22.3% | -47.9% |
+| `extended_generation_768` | 1 | 28.48 | 19.89 | 22.24 | +11.8% | -21.9% |
+| `extended_generation_768` | 2 | 30.91 | 24.88 | 28.33 | +13.9% | -8.3% |
+| `extended_generation_768` | 4 | 49.23 | 35.18 | 40.70 | +15.7% | -17.3% |
+
+Production readout: physical TMH is correct enough to serve the full 30B suite,
+and the cold-start TMH JIT issue is fixed. The optimized physical kernel improves
+geomean completion throughput by +12.56% over the first physical implementation
+and cuts suite wall clock by 12.10%. This is real progress, but not yet a
+throughput win: optimized physical TMH remains -18.92% behind standard KV on the
+full endpoint suite. The next target is deeper physical attention algorithm and
+kernel efficiency, not scheduler accounting, CLI wiring, or warmup coverage.
 
 ## Artifacts
 
@@ -626,6 +666,7 @@ scheduler accounting or CLI wiring.
 | `benchmarks/2026-07-18-gmk-qwen3-30b-a3b-gptq-int4/suite-summary.json` | Qwen3-30B-A3B MoE compact suite summary |
 | `benchmarks/2026-07-19-rtx4090-cuda-qwen3/summary.json` | RTX 4090 CUDA Qwen3-4B/8B eager vs compiled summary |
 | `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh/suite-summary.json` | Qwen3-30B-A3B standard vs physical TMH full endpoint suite |
+| `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-kernel-opt/suite-summary.json` | Qwen3-30B-A3B optimized physical TMH kernel full endpoint suite |
 | `artifacts/tmh_runtime_integration/REPORT.md` | Matched regular vs TMH allocator-path endpoint comparison |
 | `artifacts/tmh_runtime_integration/summary.json` | Machine-readable TMH runtime integration summary |
 | `artifacts/tmh_runtime_integration/logs/tmh_accounting_server.log` | TMH allocation-pressure log with 14,016 live allocator records |
