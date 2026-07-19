@@ -402,11 +402,62 @@ class TMHKVRuntimePolicy:
     ) -> None:
         if not blocks_by_group:
             return
-        logical_blocks = [block for block in blocks_by_group[0] if not block.is_null]
+        logical_pages = [
+            (block.block_id, block.block_hash is not None or block.ref_cnt > 1)
+            for block in blocks_by_group[0]
+            if not block.is_null
+        ]
+        self._record_physical_descriptors_for_pages(
+            request_id=request_id,
+            total_pages=total_pages,
+            recent_start_page=recent_start_page,
+            hot_pages=hot_pages,
+            logical_pages=logical_pages,
+        )
+
+    def record_physical_descriptors_from_block_ids(
+        self,
+        *,
+        request_id: str,
+        total_tokens: int,
+        logical_block_ids: list[int] | tuple[int, ...],
+        prefix_cached_page_indices: set[int] | frozenset[int] = frozenset(),
+    ) -> None:
+        if not self.physical or not logical_block_ids:
+            return
+        total_tokens = max(1, total_tokens)
+        total_pages = max(1, math.ceil(total_tokens / self.page_tokens))
+        hot_pages = (
+            0
+            if self.hot_budget_pct <= 0
+            else min(total_pages, math.ceil(total_pages * self.hot_budget_pct / 100.0))
+        )
+        recent_start_page = total_pages if hot_pages <= 0 else max(0, total_pages - hot_pages)
+        logical_pages = [
+            (block_id, page_index in prefix_cached_page_indices)
+            for page_index, block_id in enumerate(logical_block_ids[:total_pages])
+        ]
+        self._record_physical_descriptors_for_pages(
+            request_id=request_id,
+            total_pages=total_pages,
+            recent_start_page=recent_start_page,
+            hot_pages=hot_pages,
+            logical_pages=logical_pages,
+        )
+
+    def _record_physical_descriptors_for_pages(
+        self,
+        *,
+        request_id: str,
+        total_pages: int,
+        recent_start_page: int,
+        hot_pages: int,
+        logical_pages: list[tuple[int, bool]],
+    ) -> None:
         descriptors: list[TMHPhysicalPageDescriptor] = []
-        for page_index, block in enumerate(logical_blocks[:total_pages]):
-            logical_block_id = block.block_id
-            prefix_cached = block.block_hash is not None or block.ref_cnt > 1
+        for page_index, (logical_block_id, prefix_cached) in enumerate(
+            logical_pages[:total_pages]
+        ):
             for layer in self.layers:
                 role = _physical_role_for_page(
                     layer=layer,
@@ -465,7 +516,7 @@ def _extract_layers(groups: list[KVCacheGroupSpec]) -> list[TMHLayerShape]:
                 layer_index=_layer_index(layer_name),
                 num_kv_heads=spec.num_kv_heads,
                 head_size=spec.head_size,
-                head_size_v=getattr(spec, "head_size_v", spec.head_size),
+                head_size_v=spec.head_size_v,
                 raw_dtype_bytes=float(get_dtype_size(spec.dtype)),
             )
     return sorted(layers.values(), key=lambda layer: (layer.layer_index, layer.layer_name))

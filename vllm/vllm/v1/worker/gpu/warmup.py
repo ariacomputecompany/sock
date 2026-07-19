@@ -18,11 +18,60 @@ from vllm.v1.core.sched.output import (
     NewRequestData,
     SchedulerOutput,
 )
+from vllm.v1.core.tmh_policy import TMHKVRuntimePolicy
 from vllm.v1.kv_cache_interface import CrossAttentionSpec, MambaSpec
 from vllm.v1.request import Request
 from vllm.v1.worker.gpu.model_runner import GPUModelRunner
 
 logger = init_logger(__name__)
+
+
+def _make_tmh_warmup_policy(model_runner: GPUModelRunner) -> TMHKVRuntimePolicy | None:
+    kv_cache_config = model_runner.kv_cache_config
+    if kv_cache_config.tmh_kv_policy != "physical":
+        return None
+    if not kv_cache_config.kv_cache_groups:
+        return None
+    scheduler_block_size = kv_cache_config.kv_cache_groups[0].kv_cache_spec.block_size
+    return TMHKVRuntimePolicy.from_kv_cache_config(
+        kv_cache_config,
+        scheduler_block_size,
+    )
+
+
+def _attach_tmh_warmup_events(
+    policy: TMHKVRuntimePolicy | None,
+    scheduler_output: SchedulerOutput,
+    *,
+    total_tokens_by_req: dict[str, int],
+    block_ids_by_req: dict[str, tuple[list[int], ...]],
+) -> None:
+    if policy is None:
+        return
+    for req_id, total_tokens in total_tokens_by_req.items():
+        block_ids = block_ids_by_req.get(req_id)
+        if not block_ids:
+            continue
+        policy.record_physical_descriptors_from_block_ids(
+            request_id=req_id,
+            total_tokens=total_tokens,
+            logical_block_ids=tuple(block_ids[0]),
+        )
+    events = policy.take_physical_events()
+    scheduler_output.tmh_physical_events = events or None
+
+
+def _attach_tmh_warmup_releases(
+    policy: TMHKVRuntimePolicy | None,
+    scheduler_output: SchedulerOutput,
+    req_ids: set[str],
+) -> None:
+    if policy is None:
+        return
+    for req_id in req_ids:
+        policy.forget_request(req_id)
+    events = policy.take_physical_events()
+    scheduler_output.tmh_physical_events = events or None
 
 
 def run_mixed_prefill_decode_warmup(
@@ -45,6 +94,7 @@ def run_mixed_prefill_decode_warmup(
     prefill_len = num_tokens - decode_scheduled_tokens
     decode_token_ids = list(range(decode_prompt_len))
     prefill_token_ids = list(range(prefill_len))
+    tmh_policy = _make_tmh_warmup_policy(model_runner)
 
     kv_cache_groups = model_runner.kv_cache_config.kv_cache_groups
     num_kv_cache_groups = len(kv_cache_groups)
@@ -84,6 +134,9 @@ def run_mixed_prefill_decode_warmup(
     sampling_params = SamplingParams(max_tokens=2, temperature=0.0)
 
     decode_prefill_output = SchedulerOutput.make_empty()
+    decode_prefill_blocks = tuple(
+        _alloc_blocks(n) for n in decode_prefill_block_counts
+    )
     decode_prefill_output.scheduled_new_reqs = [
         NewRequestData(
             req_id=decode_req_id,
@@ -91,7 +144,7 @@ def run_mixed_prefill_decode_warmup(
             mm_features=[],
             sampling_params=sampling_params,
             pooling_params=None,
-            block_ids=tuple(_alloc_blocks(n) for n in decode_prefill_block_counts),
+            block_ids=decode_prefill_blocks,
             num_computed_tokens=0,
             lora_request=None,
             prefill_token_ids=decode_token_ids,
@@ -102,8 +155,18 @@ def run_mixed_prefill_decode_warmup(
     }
     decode_prefill_output.total_num_scheduled_tokens = decode_prompt_len
     decode_prefill_output.num_common_prefix_blocks = [0] * num_kv_cache_groups
+    _attach_tmh_warmup_events(
+        tmh_policy,
+        decode_prefill_output,
+        total_tokens_by_req={decode_req_id: decode_prompt_len},
+        block_ids_by_req={decode_req_id: decode_prefill_blocks},
+    )
 
     decode_new_blocks = tuple(_alloc_blocks(n) for n in decode_block_deltas)
+    decode_full_blocks = tuple(
+        list(existing) + list(delta)
+        for existing, delta in zip(decode_prefill_blocks, decode_new_blocks)
+    )
     cached_decode_req = CachedRequestData.make_empty()
     cached_decode_req.req_ids = [decode_req_id]
     cached_decode_req.num_computed_tokens = [decode_prompt_len]
@@ -114,6 +177,7 @@ def run_mixed_prefill_decode_warmup(
 
     mixed_output = SchedulerOutput.make_empty()
     mixed_output.scheduled_cached_reqs = cached_decode_req
+    prefill_blocks = tuple(_alloc_blocks(n) for n in prefill_block_counts)
     mixed_output.scheduled_new_reqs = [
         NewRequestData(
             req_id=prefill_req_id,
@@ -121,7 +185,7 @@ def run_mixed_prefill_decode_warmup(
             mm_features=[],
             sampling_params=sampling_params,
             pooling_params=None,
-            block_ids=tuple(_alloc_blocks(n) for n in prefill_block_counts),
+            block_ids=prefill_blocks,
             num_computed_tokens=0,
             lora_request=None,
             prefill_token_ids=prefill_token_ids,
@@ -133,9 +197,26 @@ def run_mixed_prefill_decode_warmup(
     }
     mixed_output.total_num_scheduled_tokens = num_tokens
     mixed_output.num_common_prefix_blocks = [0] * num_kv_cache_groups
+    _attach_tmh_warmup_events(
+        tmh_policy,
+        mixed_output,
+        total_tokens_by_req={
+            decode_req_id: decode_prompt_len + decode_scheduled_tokens,
+            prefill_req_id: prefill_len,
+        },
+        block_ids_by_req={
+            decode_req_id: decode_full_blocks,
+            prefill_req_id: prefill_blocks,
+        },
+    )
 
     cleanup_output = SchedulerOutput.make_empty()
     cleanup_output.finished_req_ids = {decode_req_id, prefill_req_id}
+    _attach_tmh_warmup_releases(
+        tmh_policy,
+        cleanup_output,
+        cleanup_output.finished_req_ids,
+    )
 
     context = mixed_step_context or nullcontext()
     model_runner.kv_connector.set_disabled(True)
@@ -177,12 +258,13 @@ def warmup_kernels(
 
     kv_cache_groups = model_runner.kv_cache_config.kv_cache_groups
     num_kv_cache_groups = len(kv_cache_groups)
+    tmh_policy = _make_tmh_warmup_policy(model_runner)
 
     # Encoder-decoder models: give each warmup request a dummy encoder input so
     # cross-attention warms up over a realistic, non-empty key sequence.
     # The dummy mm_feature is registered in the encoder cache and only its encoder
     # length is read (not the inputs themselves); the encoder itself is not scheduled.
-    max_encoder_len = getattr(model_runner.model_state, "max_encoder_len", 0)
+    max_encoder_len = model_runner.model_state.max_encoder_len
     warmup_mm_features: list[MultiModalFeatureSpec] = []
     if model_runner.is_encoder_decoder and max_encoder_len:
         warmup_mm_features = [
@@ -259,60 +341,93 @@ def warmup_kernels(
     prefill_output.num_scheduled_tokens = {rid: prompt_len for rid in req_ids}
     prefill_output.total_num_scheduled_tokens = prompt_len * num_reqs
     prefill_output.num_common_prefix_blocks = [0] * num_kv_cache_groups
+    prefill_blocks_by_req = {req.req_id: req.block_ids for req in new_reqs}
+    _attach_tmh_warmup_events(
+        tmh_policy,
+        prefill_output,
+        total_tokens_by_req={rid: prompt_len for rid in req_ids},
+        block_ids_by_req=prefill_blocks_by_req,
+    )
 
     # Disable KV connector for warmup run.
     model_runner.kv_connector.set_disabled(True)
-    worker_execute_model(prefill_output)
+    try:
+        worker_execute_model(prefill_output)
 
-    if not model_runner.is_pooling_model:
-        # Warm up sampler and perform a decode step for non-pooling models.
+        if not model_runner.is_pooling_model:
+            # Warm up sampler and perform a decode step for non-pooling models.
 
-        grammar_output = None
-        if model_runner.is_last_pp_rank:
-            # Build a GrammarOutput to exercise the structured output bitmask
-            # kernel during the prefill step.
-            vocab_size = model_runner.model_config.get_vocab_size()
-            bitmask_width = (vocab_size + 31) // 32
-            grammar_bitmask = np.full(
-                (len(req_ids), bitmask_width), fill_value=-1, dtype=np.int32
-            )
-            grammar_output = GrammarOutput(
-                structured_output_request_ids=req_ids, grammar_bitmask=grammar_bitmask
-            )
+            grammar_output = None
+            if model_runner.is_last_pp_rank:
+                # Build a GrammarOutput to exercise the structured output bitmask
+                # kernel during the prefill step.
+                vocab_size = model_runner.model_config.get_vocab_size()
+                bitmask_width = (vocab_size + 31) // 32
+                grammar_bitmask = np.full(
+                    (len(req_ids), bitmask_width), fill_value=-1, dtype=np.int32
+                )
+                grammar_output = GrammarOutput(
+                    structured_output_request_ids=req_ids, grammar_bitmask=grammar_bitmask
+                )
 
-        worker_sample_tokens(grammar_output)
+            worker_sample_tokens(grammar_output)
 
-        # Step 2: Decode all requests with decode_query_len tokens each.
-        cached_req_data = CachedRequestData.make_empty()
-        cached_req_data.req_ids = list(req_ids)
-        cached_req_data.num_computed_tokens = [prompt_len] * num_reqs
-        cached_req_data.num_output_tokens = [1] * num_reqs
-        new_block = any(decode_block_deltas)
-        cached_req_data.new_block_ids = [
-            tuple(_alloc_blocks(n) for n in decode_block_deltas) if new_block else None
-            for _ in range(num_reqs)
-        ]
+            # Step 2: Decode all requests with decode_query_len tokens each.
+            cached_req_data = CachedRequestData.make_empty()
+            cached_req_data.req_ids = list(req_ids)
+            cached_req_data.num_computed_tokens = [prompt_len] * num_reqs
+            cached_req_data.num_output_tokens = [1] * num_reqs
+            new_block = any(decode_block_deltas)
+            decode_blocks_by_req: dict[str, tuple[list[int], ...]] = {}
+            new_block_ids: list[tuple[list[int], ...] | None] = []
+            for req_id in req_ids:
+                if new_block:
+                    delta_blocks = tuple(_alloc_blocks(n) for n in decode_block_deltas)
+                    new_block_ids.append(delta_blocks)
+                    decode_blocks_by_req[req_id] = tuple(
+                        list(existing) + list(delta)
+                        for existing, delta in zip(
+                            prefill_blocks_by_req[req_id],
+                            delta_blocks,
+                        )
+                    )
+                else:
+                    new_block_ids.append(None)
+                    decode_blocks_by_req[req_id] = prefill_blocks_by_req[req_id]
+            cached_req_data.new_block_ids = new_block_ids
 
-        decode_output = SchedulerOutput.make_empty()
-        decode_output.scheduled_cached_reqs = cached_req_data
-        decode_output.num_scheduled_tokens = {
-            req_id: decode_query_len for req_id in req_ids
-        }
-        if num_spec_steps > 0:
-            decode_output.scheduled_spec_decode_tokens = {
-                req_id: [0] * num_spec_steps for req_id in req_ids
+            decode_output = SchedulerOutput.make_empty()
+            decode_output.scheduled_cached_reqs = cached_req_data
+            decode_output.num_scheduled_tokens = {
+                req_id: decode_query_len for req_id in req_ids
             }
-        decode_output.total_num_scheduled_tokens = sum(
-            decode_output.num_scheduled_tokens.values()
+            if num_spec_steps > 0:
+                decode_output.scheduled_spec_decode_tokens = {
+                    req_id: [0] * num_spec_steps for req_id in req_ids
+                }
+            decode_output.total_num_scheduled_tokens = sum(
+                decode_output.num_scheduled_tokens.values()
+            )
+            decode_output.num_common_prefix_blocks = [0] * num_kv_cache_groups
+            _attach_tmh_warmup_events(
+                tmh_policy,
+                decode_output,
+                total_tokens_by_req={req_id: decode_len for req_id in req_ids},
+                block_ids_by_req=decode_blocks_by_req,
+            )
+
+            worker_execute_model(decode_output)
+            worker_sample_tokens(None)
+
+        # Clean up - process finish_req_ids.
+        cleanup_output = SchedulerOutput.make_empty()
+        cleanup_output.finished_req_ids = set(req_ids)
+        _attach_tmh_warmup_releases(
+            tmh_policy,
+            cleanup_output,
+            cleanup_output.finished_req_ids,
         )
-        decode_output.num_common_prefix_blocks = [0] * num_kv_cache_groups
-
-        worker_execute_model(decode_output)
-        worker_sample_tokens(None)
-
-    # Clean up - process finish_req_ids.
-    cleanup_output = SchedulerOutput.make_empty()
-    cleanup_output.finished_req_ids = set(req_ids)
-    worker_execute_model(cleanup_output)
-    model_runner.kv_connector.set_disabled(False)
-    torch.accelerator.synchronize()
+        worker_execute_model(cleanup_output)
+        torch.accelerator.synchronize()
+    finally:
+        model_runner.kv_connector.set_disabled(False)

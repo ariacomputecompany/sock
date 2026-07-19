@@ -81,6 +81,7 @@ from vllm.v1.worker.workspace import init_workspace_manager
 
 from ...model_executor.model_loader import TensorizerLoader
 from .gpu.warmup import warmup_kernels
+from .gpu.tmh_physical_warmup import warmup_tmh_physical_kernels
 from .utils import request_memory
 
 logger = init_logger(__name__)
@@ -857,6 +858,14 @@ class Worker(WorkerBase):
 
             logger.debug(msg)
 
+        runtime_kv_policy = self.model_runner.kv_cache_config.tmh_kv_policy
+        logger.info(
+            "Runtime kernel warmup selecting worker_execution_mode=%s "
+            "tmh_kv_policy=%s",
+            "v2" if self.use_v2_model_runner else "v1",
+            runtime_kv_policy,
+        )
+
         if self.use_v2_model_runner:
             # V2: Run full execute_model + sample_tokens to JIT compile triton kernels.
             warmup_kernels(self.model_runner, self.execute_model, self.sample_tokens)
@@ -865,6 +874,19 @@ class Worker(WorkerBase):
                     "stage_kind": "runtime_kernel_materialization",
                     "status": "executed",
                     "worker_execution_mode": "v2",
+                }
+            )
+        elif runtime_kv_policy == "physical":
+            warmup_tmh_physical_kernels(
+                self.model_runner,
+                self.execute_model,
+                self.sample_tokens,
+            )
+            warmup_stages.append(
+                {
+                    "stage_kind": "runtime_kernel_materialization",
+                    "status": "executed",
+                    "worker_execution_mode": "v1_tmh_physical",
                 }
             )
         elif get_pp_group().is_last_rank:

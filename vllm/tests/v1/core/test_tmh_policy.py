@@ -113,6 +113,27 @@ def test_tmh_physical_descriptors_are_prefix_cache_aware() -> None:
     assert descriptors[(layer, 3)].prefix_cached is True
 
 
+def test_tmh_physical_descriptors_can_be_recorded_from_warmup_block_ids() -> None:
+    policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config("physical"), 16)
+
+    policy.record_physical_descriptors_from_block_ids(
+        request_id="req-warmup",
+        total_tokens=64,
+        logical_block_ids=(1, 2, 3, 4),
+        prefix_cached_page_indices=frozenset({3}),
+    )
+
+    events = policy.take_physical_events()
+    assert len(events) == 1
+    descriptors = {
+        (descriptor.layer_name, descriptor.page_index): descriptor
+        for descriptor in events[0].descriptors
+    }
+    layer = "model.layers.0.self_attn"
+    assert descriptors[(layer, 1)].storage == TMHStorageKind.CANONICAL
+    assert descriptors[(layer, 3)].storage == TMHStorageKind.REQUEST_OVERLAY
+
+
 def test_tmh_physical_forget_request_releases_request_overlays() -> None:
     policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config("physical"), 16)
     blocks = [KVCacheBlock(i) for i in range(1, 5)]
