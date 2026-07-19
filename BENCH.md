@@ -291,3 +291,63 @@ The next performance proof should target modes where sock intentionally differs
 from upstream, such as broader context, compilation/cache warmup behavior,
 non-eager paths, larger batch curves, and backend-selection policy under mixed
 model shapes.
+
+## Qwen3-32B 2-bit GPTQ Large-Model Suite
+
+This run validates the new SOC AutoGPTQ 2-bit ROCm path against a real
+large dense checkpoint: `kaitchup/Qwen3-32B-autoround-2bit-gptq`. The
+suite uses the same six prompt classes as the Qwen3-4B expanded benchmark,
+with one warmup batch and two measured batches at concurrency levels 1, 2,
+and 4. The full run completed successfully in 4113.4 seconds.
+
+Startup and capacity:
+
+| Metric | Value |
+| --- | ---: |
+| Checkpoint size | 12.22 GiB |
+| Weight load time | 9.96 s |
+| Model load time | 11.55 s |
+| Model memory | 12.3 GiB |
+| Engine warmup | 25.34 s |
+| Available KV cache memory | 63.42 GiB |
+| GPU KV cache size | 259,776 tokens |
+| Max concurrency at 1024 tokens | 253.69x |
+| Attention backend selected | `ROCM_ATTN` |
+
+Mean completion tok/s by case and concurrency:
+
+| Case | Concurrency | Mean completion tok/s | Mean total tok/s | Mean wall s |
+| --- | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 3.3239 | 3.8952 | 19.2543 |
+| `tiny_fact_64` | 2 | 6.6570 | 7.8012 | 19.2279 |
+| `tiny_fact_64` | 4 | 13.3305 | 15.6216 | 19.2043 |
+| `short_codegen_128` | 1 | 3.4319 | 3.9949 | 37.2976 |
+| `short_codegen_128` | 2 | 6.7790 | 7.8911 | 37.7643 |
+| `short_codegen_128` | 4 | 13.3482 | 15.5381 | 38.3577 |
+| `medium_architecture_256` | 1 | 3.4256 | 3.7869 | 74.7314 |
+| `medium_architecture_256` | 2 | 6.7505 | 7.4625 | 75.8479 |
+| `medium_architecture_256` | 4 | 13.4219 | 14.8376 | 76.2929 |
+| `long_cosmology_512` | 1 | 3.4124 | 3.7257 | 150.0390 |
+| `long_cosmology_512` | 2 | 6.7657 | 7.3867 | 151.3519 |
+| `long_cosmology_512` | 4 | 13.3469 | 14.5721 | 153.4467 |
+| `long_context_summary_256` | 1 | 3.3880 | 12.5726 | 75.5612 |
+| `long_context_summary_256` | 2 | 6.7188 | 24.9332 | 76.2039 |
+| `long_context_summary_256` | 4 | 13.2919 | 49.3252 | 77.0398 |
+| `extended_generation_768` | 1 | 3.4023 | 3.6016 | 225.7308 |
+| `extended_generation_768` | 2 | 6.7544 | 7.1502 | 227.4075 |
+| `extended_generation_768` | 4 | 13.4041 | 14.1895 | 229.1840 |
+
+Quality and correctness notes:
+
+- The first live chat request after the zero-point fix produced coherent Big Bang reasoning: 384 completion tokens in 111.63 s, or 3.44 completion tok/s. The pre-fix output was token soup, so this is a real numerical-path correctness fix, not just a startup fix.
+- The full benchmark recorded 84 measured responses with zero low-ASCII/token-soup suspects. Completions-endpoint samples often continue instruction text, which is expected for raw completions prompts and should not be confused with the earlier corrupted generation.
+- Throughput scales nearly linearly with request concurrency on this workload: roughly 3.3-3.4 completion tok/s at concurrency 1, 6.6-6.8 at concurrency 2, and 13.3-13.4 at concurrency 4.
+- Patched upstream vLLM cannot run the same 2-bit benchmark: it rejects `bits=2, sym=True` with `ValueError: Unsupported quantization config: bits=2, sym=True` before serving. There is no honest vanilla throughput number for this model without carrying SOC's new 2-bit implementation.
+
+Artifacts:
+
+| Artifact | Purpose |
+| --- | --- |
+| `benchmarks/2026-07-18-gmk-qwen3-32b-2bit-gptq/suite-summary.json` | Tracked compact full-suite summary |
+| `tmp/bench-suite-sock-qwen3-32b-2bit-gptq-full.json` | Full raw SOC endpoint responses and per-batch stats |
+| `tmp/bench-large-qwen3-32b-2bit-fixed-serve.log` | SOC serve log for startup, backend, JIT, and request status |

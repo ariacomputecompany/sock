@@ -1,0 +1,205 @@
+{
+  "date": "2026-07-18",
+  "machine": "GMKtec Strix Halo AMD WSL ROCm",
+  "runtime": "sock vendored vLLM",
+  "model": "kaitchup/Qwen3-32B-autoround-2bit-gptq",
+  "label": "sock_qwen3_32b_2bit_gptq_full",
+  "ok": true,
+  "elapsed_s": 4113.4179,
+  "runs": 2,
+  "warmup_runs": 1,
+  "concurrency_levels": [
+    1,
+    2,
+    4
+  ],
+  "startup": {
+    "checkpoint_size_gib": 12.22,
+    "model_memory_gib": 12.3,
+    "weight_load_s": 9.96,
+    "model_load_s": 11.553003,
+    "engine_warmup_s": 25.34,
+    "available_kv_cache_gib": 63.42,
+    "gpu_kv_cache_tokens": 259776,
+    "max_concurrency_1024_tokens": 253.69,
+    "attention_backend": "ROCM_ATTN"
+  },
+  "quality": {
+    "measured_responses": 84,
+    "low_ascii_suspects": 0,
+    "direct_chat_prompt_completion_tokens": 384,
+    "direct_chat_prompt_elapsed_s": 111.63375403399914,
+    "direct_chat_prompt_completion_tok_per_s": 3.439819822623264,
+    "note": "Completions endpoint responses were coherent but often continued instruction text; direct chat completion was coherent after the zero-point fix."
+  },
+  "upstream_comparison": {
+    "status": "not_runnable",
+    "reason": "patched upstream vLLM rejects AutoGPTQ bits=2, sym=True before serving",
+    "error": "ValueError: Unsupported quantization config: bits=2, sym=True"
+  },
+  "rows": [
+    {
+      "case": "tiny_fact_64",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 3.3239,
+      "mean_total_tok_per_s": 3.8952,
+      "mean_wall_s": 19.2543,
+      "completion_tokens_per_batch": 64.0,
+      "total_tokens_per_batch": 75.0
+    },
+    {
+      "case": "tiny_fact_64",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 6.657,
+      "mean_total_tok_per_s": 7.8012,
+      "mean_wall_s": 19.2279,
+      "completion_tokens_per_batch": 128.0,
+      "total_tokens_per_batch": 150.0
+    },
+    {
+      "case": "tiny_fact_64",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 13.3305,
+      "mean_total_tok_per_s": 15.6216,
+      "mean_wall_s": 19.2043,
+      "completion_tokens_per_batch": 256.0,
+      "total_tokens_per_batch": 300.0
+    },
+    {
+      "case": "short_codegen_128",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 3.4319,
+      "mean_total_tok_per_s": 3.9949,
+      "mean_wall_s": 37.2976,
+      "completion_tokens_per_batch": 128.0,
+      "total_tokens_per_batch": 149.0
+    },
+    {
+      "case": "short_codegen_128",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 6.779,
+      "mean_total_tok_per_s": 7.8911,
+      "mean_wall_s": 37.7643,
+      "completion_tokens_per_batch": 256.0,
+      "total_tokens_per_batch": 298.0
+    },
+    {
+      "case": "short_codegen_128",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 13.3482,
+      "mean_total_tok_per_s": 15.5381,
+      "mean_wall_s": 38.3577,
+      "completion_tokens_per_batch": 512.0,
+      "total_tokens_per_batch": 596.0
+    },
+    {
+      "case": "medium_architecture_256",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 3.4256,
+      "mean_total_tok_per_s": 3.7869,
+      "mean_wall_s": 74.7314,
+      "completion_tokens_per_batch": 256.0,
+      "total_tokens_per_batch": 283.0
+    },
+    {
+      "case": "medium_architecture_256",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 6.7505,
+      "mean_total_tok_per_s": 7.4625,
+      "mean_wall_s": 75.8479,
+      "completion_tokens_per_batch": 512.0,
+      "total_tokens_per_batch": 566.0
+    },
+    {
+      "case": "medium_architecture_256",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 13.4219,
+      "mean_total_tok_per_s": 14.8376,
+      "mean_wall_s": 76.2929,
+      "completion_tokens_per_batch": 1024.0,
+      "total_tokens_per_batch": 1132.0
+    },
+    {
+      "case": "long_cosmology_512",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 3.4124,
+      "mean_total_tok_per_s": 3.7257,
+      "mean_wall_s": 150.039,
+      "completion_tokens_per_batch": 512.0,
+      "total_tokens_per_batch": 559.0
+    },
+    {
+      "case": "long_cosmology_512",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 6.7657,
+      "mean_total_tok_per_s": 7.3867,
+      "mean_wall_s": 151.3519,
+      "completion_tokens_per_batch": 1024.0,
+      "total_tokens_per_batch": 1118.0
+    },
+    {
+      "case": "long_cosmology_512",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 13.3469,
+      "mean_total_tok_per_s": 14.5721,
+      "mean_wall_s": 153.4467,
+      "completion_tokens_per_batch": 2048.0,
+      "total_tokens_per_batch": 2236.0
+    },
+    {
+      "case": "long_context_summary_256",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 3.388,
+      "mean_total_tok_per_s": 12.5726,
+      "mean_wall_s": 75.5612,
+      "completion_tokens_per_batch": 256.0,
+      "total_tokens_per_batch": 950.0
+    },
+    {
+      "case": "long_context_summary_256",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 6.7188,
+      "mean_total_tok_per_s": 24.9332,
+      "mean_wall_s": 76.2039,
+      "completion_tokens_per_batch": 512.0,
+      "total_tokens_per_batch": 1900.0
+    },
+    {
+      "case": "long_context_summary_256",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 13.2919,
+      "mean_total_tok_per_s": 49.3252,
+      "mean_wall_s": 77.0398,
+      "completion_tokens_per_batch": 1024.0,
+      "total_tokens_per_batch": 3800.0
+    },
+    {
+      "case": "extended_generation_768",
+      "concurrency": 1,
+      "mean_completion_tok_per_s": 3.4023,
+      "mean_total_tok_per_s": 3.6016,
+      "mean_wall_s": 225.7308,
+      "completion_tokens_per_batch": 768.0,
+      "total_tokens_per_batch": 813.0
+    },
+    {
+      "case": "extended_generation_768",
+      "concurrency": 2,
+      "mean_completion_tok_per_s": 6.7544,
+      "mean_total_tok_per_s": 7.1502,
+      "mean_wall_s": 227.4075,
+      "completion_tokens_per_batch": 1536.0,
+      "total_tokens_per_batch": 1626.0
+    },
+    {
+      "case": "extended_generation_768",
+      "concurrency": 4,
+      "mean_completion_tok_per_s": 13.4041,
+      "mean_total_tok_per_s": 14.1895,
+      "mean_wall_s": 229.184,
+      "completion_tokens_per_batch": 3072.0,
+      "total_tokens_per_batch": 3252.0
+    }
+  ],
+  "raw_artifact": "tmp/bench-suite-sock-qwen3-32b-2bit-gptq-full.json"
+}
