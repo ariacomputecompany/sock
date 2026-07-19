@@ -43,6 +43,29 @@ def test_build_profile_is_not_compile_factor(monkeypatch: pytest.MonkeyPatch):
     assert "VLLM_BUILD_PROFILE" not in envs.compile_factors()
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, False),
+        ("false", False),
+        ("0", False),
+        ("true", True),
+        ("1", True),
+    ],
+)
+def test_tmh_log_allocations_env_is_registered(
+    monkeypatch: pytest.MonkeyPatch,
+    raw: str | None,
+    expected: bool,
+) -> None:
+    if raw is None:
+        monkeypatch.delenv("VLLM_TMH_LOG_ALLOCATIONS", raising=False)
+    else:
+        monkeypatch.setenv("VLLM_TMH_LOG_ALLOCATIONS", raw)
+
+    assert environment_variables["VLLM_TMH_LOG_ALLOCATIONS"]() is expected
+
+
 def test_compile_factor_manifest_classifies_known_inputs() -> None:
     manifest = envs.compile_factor_manifest()
 

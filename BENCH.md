@@ -136,6 +136,67 @@ Qwen3 models (`NoneType` has no `submodule_bytes_store`) but completed startup,
 health, and all endpoint traffic. Treat this as a production observability item,
 not a blocker for the 4090 profile.
 
+### CUDA 30B GPTQ/Marlin Validation: Qwen3-30B-A3B
+
+This run validates the canonical `sock serve` path against the same large model
+family used for AMD pressure testing, but on a 24 GiB RTX 4090. The required
+production profile is `gptq-marlin`; `minimal-dev` is intentionally too slim for
+this model because it omits the GPTQ Marlin repack operator and WNA16 MoE
+kernel family.
+
+| Field | Value |
+| --- | --- |
+| Model | `Qwen/Qwen3-30B-A3B-GPTQ-Int4` |
+| Endpoint | `/v1/completions` |
+| Build profile | `gptq-marlin` |
+| `max_model_len` | `2048` |
+| `gpu_memory_utilization` | `0.90` |
+| `max_num_batched_tokens` | `1024` |
+| `max_num_seqs` | `4` |
+| `enforce_eager` | `true` |
+| Attention backend | `FLASHINFER` |
+| Linear kernel | `MarlinLinearKernel` |
+| MoE backend | `MARLIN` WNA16 |
+| Checkpoint size | 15.77 GiB |
+| Model memory | 15.61 GiB |
+| Standard suite wall clock | 766.92 s |
+| TMH accounting suite wall clock | 870.62 s |
+| Raw summaries | `benchmarks/2026-07-19-rtx4090-qwen3-30b/` |
+
+Startup finding: copying the AMD memory setting (`gpu_memory_utilization=0.35`)
+onto a 24 GiB 4090 is invalid for this 30B model. The model weights load, but
+the KV cache budget is negative after weight allocation. `0.90` leaves enough
+budget for the configured 2048-token endpoint and completed the full suite.
+
+| Case | Concurrency | Standard completion tok/s | TMH completion tok/s | TMH delta | Standard wall s | TMH wall s | Wall delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 26.54 | 25.70 | -3.2% | 2.41 | 2.49 | +3.3% |
+| `tiny_fact_64` | 2 | 52.73 | 50.63 | -4.0% | 2.43 | 2.53 | +4.1% |
+| `tiny_fact_64` | 4 | 102.94 | 98.18 | -4.6% | 2.49 | 2.61 | +4.8% |
+| `short_codegen_128` | 1 | 26.39 | 25.27 | -4.2% | 4.85 | 5.07 | +4.4% |
+| `short_codegen_128` | 2 | 52.43 | 50.10 | -4.4% | 4.88 | 5.11 | +4.6% |
+| `short_codegen_128` | 4 | 103.35 | 96.18 | -6.9% | 4.95 | 5.32 | +7.5% |
+| `medium_architecture_256` | 1 | 26.23 | 25.07 | -4.4% | 9.76 | 10.21 | +4.6% |
+| `medium_architecture_256` | 2 | 51.89 | 48.69 | -6.2% | 9.87 | 10.52 | +6.6% |
+| `medium_architecture_256` | 4 | 102.98 | 93.28 | -9.4% | 9.94 | 10.98 | +10.4% |
+| `long_cosmology_512` | 1 | 26.01 | 24.21 | -6.9% | 19.68 | 21.16 | +7.5% |
+| `long_cosmology_512` | 2 | 51.76 | 47.04 | -9.1% | 19.79 | 21.77 | +10.0% |
+| `long_cosmology_512` | 4 | 103.07 | 87.55 | -15.1% | 19.87 | 23.39 | +17.7% |
+| `long_context_summary_256` | 1 | 25.54 | 23.12 | -9.5% | 10.03 | 11.07 | +10.5% |
+| `long_context_summary_256` | 2 | 51.61 | 42.13 | -18.4% | 9.92 | 12.15 | +22.5% |
+| `long_context_summary_256` | 4 | 102.38 | 71.04 | -30.6% | 10.00 | 14.41 | +44.1% |
+| `extended_generation_768` | 1 | 25.93 | 23.64 | -8.8% | 29.61 | 32.49 | +9.7% |
+| `extended_generation_768` | 2 | 51.74 | 44.68 | -13.6% | 29.69 | 34.43 | +16.0% |
+| `extended_generation_768` | 4 | 102.09 | 82.82 | -18.9% | 30.09 | 37.09 | +23.3% |
+
+Production readout: the CUDA 30B path is live and stable through `sock serve`,
+but TMH on CUDA currently runs as an accounting layout rather than the physical
+AMD/ROCm layout. In this 4090 matrix, TMH accounting is functionally correct but
+slower than standard: mean completion throughput was 60.31 tok/s for standard
+versus 53.30 tok/s for TMH (-11.6%), with suite wall clock +13.5%. Do not market
+CUDA TMH as a throughput win from this run; the verified win is first-class
+large-model CUDA support through the hermetic `gptq-marlin` build profile.
+
 ## Supported sock vs Upstream vLLM Comparison: Qwen3-4B
 
 This is the current apples-to-apples comparison where both sock and an upstream
