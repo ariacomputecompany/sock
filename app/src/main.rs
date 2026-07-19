@@ -889,15 +889,46 @@ fn run_vendored_vllm_subcommand(name: &str, args: Vec<OsString>) -> Result<()> {
     let resolved = resolve_sock_kv_layout_args(args)?;
     validate_sock_kv_layout_policy(&resolved.policy)?;
 
+    let vllm_args = build_vllm_subcommand_args(name, resolved);
+    run_vendored_vllm_cli(vllm_args)
+}
+
+fn build_vllm_subcommand_args(name: &str, resolved: ResolvedSockKvLayoutArgs) -> Vec<OsString> {
     let mut vllm_args = vec![OsString::from(name)];
-    vllm_args.push(OsString::from("--kv-layout"));
-    vllm_args.push(OsString::from(resolved.policy.layout.as_str()));
+    let mut passthrough = resolved.args.into_iter();
+    if name == "serve" {
+        if let Some(first) = passthrough.next() {
+            if starts_with_hyphen(&first) {
+                vllm_args.push(kv_layout_flag());
+                vllm_args.push(OsString::from(resolved.policy.layout.as_str()));
+                vllm_args.push(first);
+            } else {
+                vllm_args.push(first);
+                vllm_args.push(kv_layout_flag());
+                vllm_args.push(OsString::from(resolved.policy.layout.as_str()));
+            }
+        } else {
+            vllm_args.push(kv_layout_flag());
+            vllm_args.push(OsString::from(resolved.policy.layout.as_str()));
+        }
+    } else {
+        vllm_args.push(kv_layout_flag());
+        vllm_args.push(OsString::from(resolved.policy.layout.as_str()));
+    }
     if resolved.policy.layout == KvLayoutId::TmhFidelityPaged {
         vllm_args.push(OsString::from("--tmh-hot-budget-pct"));
         vllm_args.push(OsString::from(resolved.policy.hot_budget_pct.to_string()));
     }
-    vllm_args.extend(resolved.args);
-    run_vendored_vllm_cli(vllm_args)
+    vllm_args.extend(passthrough);
+    vllm_args
+}
+
+fn kv_layout_flag() -> OsString {
+    OsString::from("--kv-layout")
+}
+
+fn starts_with_hyphen(value: &OsString) -> bool {
+    value.to_str().is_some_and(|value| value.starts_with('-'))
 }
 
 fn is_help_request(args: &[OsString]) -> bool {
@@ -1001,6 +1032,61 @@ fn validate_sock_kv_layout_policy(policy: &KvLayoutPolicy) -> Result<()> {
             )
         })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod kv_layout_cli_tests {
+    use super::*;
+
+    #[test]
+    fn serve_keeps_model_positional_before_kv_layout_flag() {
+        let args = build_vllm_subcommand_args(
+            "serve",
+            ResolvedSockKvLayoutArgs {
+                policy: KvLayoutPolicy::tmh_accounting(),
+                args: vec![
+                    OsString::from("Qwen/Qwen3-30B-A3B-GPTQ-Int4"),
+                    OsString::from("--host"),
+                    OsString::from("127.0.0.1"),
+                ],
+            },
+        );
+
+        assert_eq!(
+            args,
+            vec![
+                OsString::from("serve"),
+                OsString::from("Qwen/Qwen3-30B-A3B-GPTQ-Int4"),
+                OsString::from("--kv-layout"),
+                OsString::from("tmh"),
+                OsString::from("--tmh-hot-budget-pct"),
+                OsString::from("25"),
+                OsString::from("--host"),
+                OsString::from("127.0.0.1"),
+            ]
+        );
+    }
+
+    #[test]
+    fn non_serve_commands_receive_canonical_kv_layout_flag_first() {
+        let args = build_vllm_subcommand_args(
+            "bench",
+            ResolvedSockKvLayoutArgs {
+                policy: KvLayoutPolicy::standard(),
+                args: vec![OsString::from("throughput")],
+            },
+        );
+
+        assert_eq!(
+            args,
+            vec![
+                OsString::from("bench"),
+                OsString::from("--kv-layout"),
+                OsString::from("standard"),
+                OsString::from("throughput"),
+            ]
+        );
+    }
 }
 
 fn run_install_runtime(
