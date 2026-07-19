@@ -389,36 +389,31 @@ def _tmh_unified_attention_kernel(
     for j in range(loop_lo, loop_hi):
         seq_offset = j * TILE_SIZE + offs_t
         tile_mask = seq_offset < max_seq_prefix_len
-        page_index = seq_offset // BLOCK_SIZE
-        offset_in_page = seq_offset % BLOCK_SIZE
+        page_index = (j * TILE_SIZE) // BLOCK_SIZE
+        offset_in_page = offs_t
         desc_idx = req_row * request_stride + page_index
         role = tl.load(
             request_role_ptr + desc_idx,
-            mask=tile_mask,
+            mask=(j * TILE_SIZE) < max_seq_prefix_len,
             other=-1,
         ).to(tl.int32)
         physical_slot = tl.load(
             request_slot_ptr + desc_idx,
-            mask=tile_mask,
+            mask=(j * TILE_SIZE) < max_seq_prefix_len,
             other=-1,
         ).to(tl.int64)
         is_raw = (role == 0) | (role == 1)
         is_warm = (role == 2) | (role == 3)
-        valid_count = tl.sum(tl.where(tile_mask, 1, 0), axis=0)
-        raw_count = tl.sum(tl.where(tile_mask & is_raw, 1, 0), axis=0)
-        warm_count = tl.sum(tl.where(tile_mask & is_warm, 1, 0), axis=0)
-        all_raw = raw_count == valid_count
-        all_warm = warm_count == valid_count
 
-        if all_raw:
+        if is_raw:
             raw_k_offset = (
-                physical_slot[None, :] * stride_raw_k_slot
+                physical_slot * stride_raw_k_slot
                 + offset_in_page[None, :] * stride_raw_k_tok
                 + kv_head_idx * stride_raw_k_head
                 + offs_d[:, None]
             )
             raw_v_offset = (
-                physical_slot[:, None] * stride_raw_v_slot
+                physical_slot * stride_raw_v_slot
                 + offset_in_page[:, None] * stride_raw_v_tok
                 + kv_head_idx * stride_raw_v_head
                 + offs_d[None, :]
@@ -433,9 +428,9 @@ def _tmh_unified_attention_kernel(
                 mask=dim_mask[None, :] & tile_mask[:, None],
                 other=0.0,
             ).to(Q.dtype)
-        elif all_warm:
+        elif is_warm:
             warm_k_offset = (
-                physical_slot[None, :] * stride_warm_k_slot
+                physical_slot * stride_warm_k_slot
                 + offset_in_page[None, :] * stride_warm_k_tok
                 + kv_head_idx * stride_warm_k_head
                 + offs_d[:, None]
@@ -472,7 +467,7 @@ def _tmh_unified_attention_kernel(
             if WARM_VALUE_PACKED:
                 packed_offs = offs_d // 2
                 packed_offset = (
-                    physical_slot[:, None] * stride_warm_v_slot
+                    physical_slot * stride_warm_v_slot
                     + offset_in_page[:, None] * stride_warm_v_tok
                     + kv_head_idx * stride_warm_v_head
                     + packed_offs[None, :]
@@ -488,7 +483,7 @@ def _tmh_unified_attention_kernel(
                 V = ((nibble - v4_zp[:, None]) * v4_scale[:, None]).to(Q.dtype)
             else:
                 warm_v_offset = (
-                    physical_slot[:, None] * stride_warm_v_slot
+                    physical_slot * stride_warm_v_slot
                     + offset_in_page[:, None] * stride_warm_v_tok
                     + kv_head_idx * stride_warm_v_head
                     + offs_d[None, :]
@@ -502,100 +497,8 @@ def _tmh_unified_attention_kernel(
                     * warm_v_scale[:, None]
                 ).to(Q.dtype)
         else:
-            raw_k_offset = (
-                physical_slot[None, :] * stride_raw_k_slot
-                + offset_in_page[None, :] * stride_raw_k_tok
-                + kv_head_idx * stride_raw_k_head
-                + offs_d[:, None]
-            )
-            raw_v_offset = (
-                physical_slot[:, None] * stride_raw_v_slot
-                + offset_in_page[:, None] * stride_raw_v_tok
-                + kv_head_idx * stride_raw_v_head
-                + offs_d[None, :]
-            )
-            K_raw = tl.load(
-                raw_key_ptr + raw_k_offset,
-                mask=dim_mask[:, None] & tile_mask[None, :] & is_raw[None, :],
-                other=0.0,
-            ).to(tl.float32)
-            V_raw = tl.load(
-                raw_value_ptr + raw_v_offset,
-                mask=dim_mask[None, :] & tile_mask[:, None] & is_raw[:, None],
-                other=0.0,
-            ).to(tl.float32)
-
-            warm_k_offset = (
-                physical_slot[None, :] * stride_warm_k_slot
-                + offset_in_page[None, :] * stride_warm_k_tok
-                + kv_head_idx * stride_warm_k_head
-                + offs_d[:, None]
-            )
-            warm_ks_idx = (
-                physical_slot * stride_warm_ks_slot
-                + offset_in_page * stride_warm_ks_tok
-                + kv_head_idx * stride_warm_ks_head
-            )
-            warm_k_scale = tl.load(
-                warm_k_scale_ptr + warm_ks_idx,
-                mask=tile_mask & is_warm,
-                other=1.0,
-            )
-            K_warm = tl.load(
-                warm_key_ptr + warm_k_offset,
-                mask=dim_mask[:, None] & tile_mask[None, :] & is_warm[None, :],
-                other=0,
-            ).to(tl.float32) * warm_k_scale[None, :]
-            K = (K_raw + K_warm).to(Q.dtype)
-
-            warm_vs_idx = (
-                physical_slot * stride_warm_vs_slot
-                + offset_in_page * stride_warm_vs_tok
-                + kv_head_idx * stride_warm_vs_head
-            )
-            warm_v_scale_raw = tl.load(
-                warm_v_scale_ptr + warm_vs_idx,
-                mask=tile_mask & is_warm,
-                other=1.0,
-            )
-            warm_v_offset = (
-                physical_slot[:, None] * stride_warm_v_slot
-                + offset_in_page[:, None] * stride_warm_v_tok
-                + kv_head_idx * stride_warm_v_head
-                + offs_d[None, :]
-            )
-            is_warm_v_int8 = role == 3
-            V_warm_i8 = tl.load(
-                warm_value_ptr + warm_v_offset,
-                mask=dim_mask[None, :] & tile_mask[:, None] & is_warm_v_int8[:, None],
-                other=0,
-            ).to(tl.float32) * warm_v_scale_raw[:, None]
-            V = V_raw + V_warm_i8
-
-            if WARM_VALUE_PACKED:
-                is_warm_v_int4 = role == 2
-                packed_offs = offs_d // 2
-                packed_offset = (
-                    physical_slot[:, None] * stride_warm_v_slot
-                    + offset_in_page[:, None] * stride_warm_v_tok
-                    + kv_head_idx * stride_warm_v_head
-                    + packed_offs[None, :]
-                )
-                packed = tl.load(
-                    warm_value_ptr + packed_offset,
-                    mask=(
-                        dim_mask[None, :]
-                        & tile_mask[:, None]
-                        & is_warm_v_int4[:, None]
-                    ),
-                    other=0,
-                )
-                lo, hi = unpack_int4_nibbles(packed)
-                nibble = tl.where((offs_d[None, :] % 2) == 0, lo, hi).to(tl.float32)
-                v4_scale, v4_zp = _unpack_scale_zp(warm_v_scale_raw)
-                V_i4 = (nibble - v4_zp[:, None]) * v4_scale[:, None]
-                V += tl.where(is_warm_v_int4[:, None], V_i4, 0.0)
-            V = V.to(Q.dtype)
+            K = tl.zeros([HEAD_SIZE_PADDED, TILE_SIZE], dtype=tl.float32).to(Q.dtype)
+            V = tl.zeros([TILE_SIZE, HEAD_SIZE_PADDED], dtype=tl.float32).to(Q.dtype)
 
         query_abs_pos = context_len + query_pos[:, None]
         seq_mask = compute_kv_seq_mask(
@@ -784,7 +687,12 @@ def tmh_unified_attention(
     block_q = block_m // num_queries_per_kv
     total_num_q_blocks = q.shape[0] // block_q + num_seqs
     sliding_window = 1 + window_size[0] if window_size[0] >= 0 else 0
-    tile_size = _get_tmh_tile_size(head_size, sliding_window, q.element_size())
+    tile_size = _get_tmh_tile_size(
+        head_size,
+        sliding_window,
+        q.element_size(),
+        block_size,
+    )
     head_size_padded = triton.next_power_of_2(head_size)
     seq_rows = _seq_to_request_row(
         seq_to_request_row,
@@ -863,8 +771,13 @@ def tmh_unified_attention(
     )
 
 
-def _get_tmh_tile_size(head_size: int, sliding_window: int, element_size: int) -> int:
+def _get_tmh_tile_size(
+    head_size: int,
+    sliding_window: int,
+    element_size: int,
+    block_size: int,
+) -> int:
     del element_size
-    if sliding_window > 0:
-        return min(64, triton.next_power_of_2(sliding_window))
-    return 16
+    del head_size
+    del sliding_window
+    return block_size

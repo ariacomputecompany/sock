@@ -1,0 +1,13 @@
+{
+  "jit_warnings": 2,
+  "ready_s": 76,
+  "runtime_warmup_lines": [
+    "(EngineCore pid=741) INFO 07-19 14:03:10 [gpu_worker.py:862] Runtime kernel warmup selecting worker_execution_mode=v1 tmh_kv_policy=physical"
+  ],
+  "status": 200,
+  "tmh_jit_warnings": 0,
+  "tmh_warmup_shapes": [
+    "(EngineCore pid=741) INFO 07-19 14:03:10 [tmh_physical_warmup.py:88] Warming physical TMH kernels with num_reqs=1 prompt_len=16 decode_query_len=1 block_size=16.",
+    "(EngineCore pid=741) INFO 07-19 14:03:11 [tmh_physical_warmup.py:88] Warming physical TMH kernels with num_reqs=4 prompt_len=16 decode_query_len=1 block_size=16."
+  ]
+}
