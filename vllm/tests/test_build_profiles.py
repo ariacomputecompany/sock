@@ -55,6 +55,22 @@ def test_build_profile_normalization_accepts_underscores() -> None:
     assert "flash_attn" in resolution.enabled_components
 
 
+def test_gptq_marlin_profile_enables_quantized_cuda_kernels() -> None:
+    resolution = build_profiles.resolve_build_profile("gptq-marlin")
+
+    assert resolution.profile_family == "targeted"
+    assert resolution.cuda_arches == ("8.9",)
+    assert resolution.enabled_components == ("triton_kernels",)
+    assert resolution.enabled_native_families == (
+        "base_runtime",
+        "marlin",
+        "moe_marlin",
+    )
+    assert "flash_attn" in resolution.disabled_components
+    assert "-DVLLM_BUILD_FAMILY_MARLIN=ON" in resolution.cmake_defines
+    assert "-DVLLM_BUILD_FAMILY_MOE_MARLIN=ON" in resolution.cmake_defines
+
+
 def test_targeted_profiles_select_only_requested_backend_targets() -> None:
     resolution = build_profiles.resolve_build_profile("deepgemm")
 

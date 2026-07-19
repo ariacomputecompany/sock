@@ -824,6 +824,7 @@ environment_variables: dict[str, Callable[[], Any]] = {
             "core",
             "minimal-dev",
             "flashattn",
+            "gptq-marlin",
             "deepgemm",
             "flashmla",
             "qutlass",

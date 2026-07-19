@@ -37,6 +37,7 @@ set_property(CACHE VLLM_BUILD_PROFILE PROPERTY STRINGS
   "core"
   "minimal-dev"
   "flashattn"
+  "gptq-marlin"
   "deepgemm"
   "flashmla"
   "qutlass"
