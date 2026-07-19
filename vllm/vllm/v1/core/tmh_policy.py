@@ -58,6 +58,7 @@ class TMHPhysicalEvent:
     recent_start_page: int
     hot_pages: int
     released_request_ids: tuple[str, ...] = ()
+    released_descriptors: tuple[TMHPhysicalPageDescriptor, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -368,14 +369,22 @@ class TMHKVRuntimePolicy:
     def forget_request(self, request_id: str) -> None:
         self.latest_by_request.pop(request_id, None)
         self._regular_live_bytes_cache.pop(request_id, None)
-        removed = [
-            key
-            for key in self._physical_descriptors
+        removed_descriptors = [
+            descriptor
+            for key, descriptor in self._physical_descriptors.items()
             if key[0] == request_id
         ]
-        for key in removed:
-            self._physical_descriptors.pop(key, None)
-        if self.physical and removed:
+        for descriptor in removed_descriptors:
+            self._physical_descriptors.pop(
+                (descriptor.request_id, descriptor.layer_name, descriptor.page_index),
+                None,
+            )
+        released_descriptors = tuple(
+            descriptor
+            for descriptor in removed_descriptors
+            if self._canonical_descriptor_unreferenced(descriptor)
+        )
+        if self.physical and removed_descriptors:
             self._pending_physical_events.append(
                 TMHPhysicalEvent(
                     request_id=request_id,
@@ -384,6 +393,7 @@ class TMHKVRuntimePolicy:
                     recent_start_page=0,
                     hot_pages=0,
                     released_request_ids=(request_id,),
+                    released_descriptors=released_descriptors,
                 )
             )
 
@@ -455,6 +465,7 @@ class TMHKVRuntimePolicy:
         logical_pages: list[tuple[int, bool]],
     ) -> None:
         descriptors: list[TMHPhysicalPageDescriptor] = []
+        released_descriptors: list[TMHPhysicalPageDescriptor] = []
         for page_index, (logical_block_id, prefix_cached) in enumerate(
             logical_pages[:total_pages]
         ):
@@ -479,10 +490,16 @@ class TMHKVRuntimePolicy:
                     v_quant_mode=v_quant_mode,
                 )
                 key = (request_id, layer.layer_name, page_index)
-                if self._physical_descriptors.get(key) != descriptor:
+                old_descriptor = self._physical_descriptors.get(key)
+                if old_descriptor != descriptor:
                     self._physical_descriptors[key] = descriptor
+                    if (
+                        old_descriptor is not None
+                        and self._canonical_descriptor_unreferenced(old_descriptor)
+                    ):
+                        released_descriptors.append(old_descriptor)
                     descriptors.append(descriptor)
-        if descriptors:
+        if descriptors or released_descriptors:
             self._pending_physical_events.append(
                 TMHPhysicalEvent(
                     request_id=request_id,
@@ -490,8 +507,21 @@ class TMHKVRuntimePolicy:
                     total_pages=total_pages,
                     recent_start_page=recent_start_page,
                     hot_pages=hot_pages,
+                    released_descriptors=tuple(released_descriptors),
                 )
             )
+
+    def _canonical_descriptor_unreferenced(
+        self,
+        descriptor: TMHPhysicalPageDescriptor,
+    ) -> bool:
+        descriptor_key = _canonical_descriptor_key(descriptor)
+        if descriptor_key is None:
+            return False
+        return all(
+            _canonical_descriptor_key(active_descriptor) != descriptor_key
+            for active_descriptor in self._physical_descriptors.values()
+        )
 
 
 def should_log_allocations() -> bool:
@@ -575,6 +605,18 @@ def _storage_kind_for_role(
     if prefix_cached:
         return TMHStorageKind.REQUEST_OVERLAY
     return TMHStorageKind.CANONICAL
+
+
+def _canonical_descriptor_key(
+    descriptor: TMHPhysicalPageDescriptor,
+) -> tuple[str, int, int] | None:
+    if descriptor.storage != TMHStorageKind.CANONICAL:
+        return None
+    return (
+        descriptor.layer_name,
+        descriptor.logical_block_id,
+        int(descriptor.role),
+    )
 
 
 def _layer_index(layer_name: str) -> int:

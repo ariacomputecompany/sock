@@ -192,6 +192,8 @@ class TMHPhysicalRuntime:
         for event in events:
             for req_id in event.released_request_ids:
                 self.release_request(req_id)
+            for descriptor in event.released_descriptors:
+                self.release_descriptor(descriptor)
             if event.descriptors:
                 self.release_request(event.request_id)
                 self._clear_request_rows(event.descriptors, req_id_to_index)
@@ -225,6 +227,58 @@ class TMHPhysicalRuntime:
         for key in released:
             layer_name, _, _ = key
             self._raw_free_slots[layer_name].append(self._overlay_slots.pop(key))
+
+    def release_descriptor(self, descriptor: TMHPhysicalPageDescriptor) -> None:
+        if descriptor.storage == TMHStorageKind.REQUEST_OVERLAY:
+            key = (descriptor.layer_name, descriptor.request_id, descriptor.page_index)
+            slot = self._overlay_slots.pop(key, None)
+            if slot is not None:
+                self._raw_free_slots[descriptor.layer_name].append(slot)
+            return
+
+        key = (
+            descriptor.layer_name,
+            descriptor.logical_block_id,
+            int(descriptor.role),
+        )
+        slot = self._canonical_slots.pop(key, None)
+        if slot is None:
+            return
+        wants_raw = descriptor.role in (TMHPageRole.PINNED_RAW, TMHPageRole.HOT_RAW)
+        free_slots = (
+            self._raw_free_slots[descriptor.layer_name]
+            if wants_raw
+            else self._warm_free_slots[descriptor.layer_name]
+        )
+        free_slots.append(slot)
+        self._refresh_logical_descriptor(
+            descriptor.layer_name,
+            descriptor.logical_block_id,
+        )
+
+    def _refresh_logical_descriptor(
+        self,
+        layer_name: str,
+        logical_block_id: int,
+    ) -> None:
+        cache = self._caches[layer_name]
+        replacement = next(
+            (
+                (role, slot)
+                for (candidate_layer, candidate_block, role), slot
+                in self._canonical_slots.items()
+                if candidate_layer == layer_name
+                and candidate_block == logical_block_id
+            ),
+            None,
+        )
+        if replacement is None:
+            cache.canonical_role_by_logical_block[logical_block_id] = -1
+            cache.canonical_slot_by_logical_block[logical_block_id] = -1
+            return
+        role, slot = replacement
+        cache.canonical_role_by_logical_block[logical_block_id] = role
+        cache.canonical_slot_by_logical_block[logical_block_id] = slot
 
     def _clear_request_rows(
         self,

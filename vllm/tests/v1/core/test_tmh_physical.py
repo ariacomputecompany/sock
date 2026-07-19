@@ -4,6 +4,8 @@
 import torch
 
 from vllm.v1.core.tmh_policy import (
+    TMHKVRuntimePolicy,
+    TMHLayerShape,
     TMHPageRole,
     TMHPhysicalEvent,
     TMHPhysicalPageDescriptor,
@@ -172,3 +174,106 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
         {"req-2": 1},
     )
     assert cache.request_block_by_row_page[1, 3].item() == 3
+
+
+def test_tmh_policy_emits_release_descriptors_for_forgotten_canonical_pages():
+    policy = TMHKVRuntimePolicy(
+        policy="physical",
+        hot_budget_pct=25.0,
+        page_tokens=16,
+        layers=[
+            TMHLayerShape(
+                layer_name="model.layers.0.self_attn",
+                layer_index=0,
+                num_kv_heads=2,
+                head_size=4,
+                head_size_v=4,
+                raw_dtype_bytes=2.0,
+            )
+        ],
+        regular_page_bytes_by_group=[512],
+    )
+
+    policy.record_physical_descriptors_from_block_ids(
+        request_id="req-1",
+        total_tokens=64,
+        logical_block_ids=[0, 1, 2, 3],
+    )
+    policy.take_physical_events()
+
+    policy.forget_request("req-1")
+    events = policy.take_physical_events()
+
+    assert len(events) == 1
+    assert events[0].released_request_ids == ("req-1",)
+    assert {
+        descriptor.logical_block_id
+        for descriptor in events[0].released_descriptors
+    } == {0, 1, 2, 3}
+
+
+def test_tmh_physical_runtime_reuses_released_canonical_raw_slots():
+    cache = make_physical_cache()
+    runtime = TMHPhysicalRuntime()
+    runtime.register_cache("model.layers.0.self_attn", cache)
+    raw_capacity = cache.raw_key.shape[0]
+    first_descriptors = tuple(
+        descriptor(
+            page_index=page,
+            logical_block_id=page,
+            role=TMHPageRole.HOT_RAW,
+            storage=TMHStorageKind.CANONICAL,
+        )
+        for page in range(raw_capacity)
+    )
+    runtime.apply_events(
+        [
+            TMHPhysicalEvent(
+                request_id="req-1",
+                descriptors=first_descriptors,
+                total_pages=raw_capacity,
+                recent_start_page=0,
+                hot_pages=raw_capacity,
+            )
+        ],
+        {"req-1": 0},
+    )
+
+    runtime.apply_events(
+        [
+            TMHPhysicalEvent(
+                request_id="req-1",
+                descriptors=(),
+                total_pages=0,
+                recent_start_page=0,
+                hot_pages=0,
+                released_request_ids=("req-1",),
+                released_descriptors=first_descriptors,
+            )
+        ],
+        {},
+    )
+
+    runtime.apply_events(
+        [
+            TMHPhysicalEvent(
+                request_id="req-2",
+                descriptors=tuple(
+                    descriptor(
+                        request_id="req-2",
+                        page_index=page,
+                        logical_block_id=page + raw_capacity,
+                        role=TMHPageRole.HOT_RAW,
+                        storage=TMHStorageKind.CANONICAL,
+                    )
+                    for page in range(raw_capacity)
+                ),
+                total_pages=raw_capacity,
+                recent_start_page=0,
+                hot_pages=raw_capacity,
+            )
+        ],
+        {"req-2": 1},
+    )
+
+    assert cache.request_block_by_row_page[1, 0].item() == raw_capacity
