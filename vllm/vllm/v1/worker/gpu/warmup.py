@@ -264,7 +264,11 @@ def warmup_kernels(
     # cross-attention warms up over a realistic, non-empty key sequence.
     # The dummy mm_feature is registered in the encoder cache and only its encoder
     # length is read (not the inputs themselves); the encoder itself is not scheduled.
-    max_encoder_len = model_runner.model_state.max_encoder_len
+    max_encoder_len = (
+        model_runner.model_state.max_encoder_len
+        if model_runner.is_encoder_decoder
+        else 0
+    )
     warmup_mm_features: list[MultiModalFeatureSpec] = []
     if model_runner.is_encoder_decoder and max_encoder_len:
         warmup_mm_features = [
