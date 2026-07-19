@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -69,6 +70,28 @@ def command_output(argv: list[str]) -> str | None:
         return None
 
 
+def command_ok(argv: list[str]) -> bool:
+    try:
+        subprocess.run(
+            argv,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=True,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def detect_cuda_arches() -> list[str]:
     query = command_output(
         ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"]
@@ -113,6 +136,91 @@ def detect_rocm_arches() -> list[str]:
         if arches:
             return arches
     return []
+
+
+def python_header_path(python: str) -> str | None:
+    return command_output(
+        [
+            python,
+            "-c",
+            (
+                "import pathlib, sysconfig; "
+                "print(pathlib.Path(sysconfig.get_paths()['include']) / 'Python.h')"
+            ),
+        ]
+    )
+
+
+def build_preflight(profile_name: str, profile_plan: dict[str, Any], python: str) -> dict[str, Any]:
+    required_tools = ["git"]
+    missing_tools = [tool for tool in required_tools if shutil.which(tool) is None]
+    c_compiler = next((tool for tool in ("cc", "gcc", "clang") if shutil.which(tool)), None)
+    cxx_compiler = next(
+        (tool for tool in ("c++", "g++", "clang++") if shutil.which(tool)), None
+    )
+    if c_compiler is None:
+        missing_tools.append("cc|gcc|clang")
+    if cxx_compiler is None:
+        missing_tools.append("c++|g++|clang++")
+
+    header = python_header_path(python)
+    python_headers_ok = bool(header and Path(header).exists())
+    python_venv_ok = command_ok([python, "-m", "venv", "--help"])
+    accelerator_probe_ok = True
+    accelerator_probe = "none"
+    if profile_name == "cuda":
+        accelerator_probe = "nvidia-smi"
+        accelerator_probe_ok = shutil.which("nvidia-smi") is not None and command_ok(
+            ["nvidia-smi", "-L"]
+        )
+    elif profile_name == "rocm":
+        accelerator_probe = "rocminfo|rocm_agent_enumerator"
+        accelerator_probe_ok = (
+            shutil.which("rocm_agent_enumerator") is not None
+            and command_ok(["rocm_agent_enumerator"])
+        ) or (shutil.which("rocminfo") is not None and command_ok(["rocminfo"]))
+
+    issues = []
+    if missing_tools:
+        issues.append("missing_build_tools")
+    if not python_headers_ok:
+        issues.append("missing_python_headers")
+    if not python_venv_ok:
+        issues.append("missing_python_venv")
+    if not accelerator_probe_ok:
+        issues.append("accelerator_probe_failed")
+
+    return {
+        "ok": not issues,
+        "issues": issues,
+        "required_system_packages": profile_plan["system_packages"],
+        "missing_tools": missing_tools,
+        "c_compiler": c_compiler,
+        "cxx_compiler": cxx_compiler,
+        "python_header": header,
+        "python_headers_ok": python_headers_ok,
+        "python_venv_ok": python_venv_ok,
+        "accelerator_probe": accelerator_probe,
+        "accelerator_probe_ok": accelerator_probe_ok,
+    }
+
+
+def require_preflight_ok(preflight: dict[str, Any]) -> None:
+    if preflight["ok"]:
+        return
+    raise SystemExit(
+        "Runtime preflight failed: "
+        + ", ".join(preflight["issues"])
+        + ". Install system packages first: "
+        + ", ".join(preflight["required_system_packages"])
+    )
+
+
+def requirement_digests(requirements: list[str]) -> list[dict[str, str]]:
+    return [
+        {"path": requirement, "sha256": file_sha256(REPO_ROOT / requirement)}
+        for requirement in requirements
+    ]
 
 
 def detect_profile(requested: str) -> tuple[str, list[str]]:
@@ -189,37 +297,80 @@ def step_env(extra: dict[str, str]) -> dict[str, str]:
     return env
 
 
+def prepend_path(env: dict[str, str], path: Path) -> dict[str, str]:
+    next_env = dict(env)
+    parts = [str(path)]
+    existing = next_env.get("PATH") or os.environ.get("PATH")
+    if existing:
+        parts.append(existing)
+    next_env["PATH"] = os.pathsep.join(parts)
+    return next_env
+
+
 def planned_steps(
     plan: dict[str, Any],
     profile_plan: dict[str, Any],
     build_profile: str,
     accelerator_arches: list[str],
     python: str,
+    recreate_venv: bool,
 ) -> list[CommandStep]:
     venv_root = REPO_ROOT / plan["venv_path"]
     venv_python = python_for_venv(venv_root)
-    env = resolve_env(profile_plan, build_profile, accelerator_arches)
+    env = prepend_path(resolve_env(profile_plan, build_profile, accelerator_arches), venv_root / "bin")
     pip = [str(venv_python), "-m", "pip"]
-    steps = [
-        CommandStep(
-            name="create_venv",
-            argv=[python, "-m", "venv", str(venv_root)],
-            cwd=REPO_ROOT,
-            env={},
-        ),
-        CommandStep(
-            name="upgrade_bootstrap",
-            argv=[*pip, "install", "--upgrade", *plan["pip_bootstrap"]],
-            cwd=REPO_ROOT,
-            env=env,
-        ),
-    ]
+    steps = []
+    if recreate_venv:
+        steps.append(
+            CommandStep(
+                name="remove_existing_venv",
+                argv=[
+                    python,
+                    "-c",
+                    (
+                        "import shutil; "
+                        f"shutil.rmtree({str(venv_root)!r}, ignore_errors=True)"
+                    ),
+                ],
+                cwd=REPO_ROOT,
+                env={},
+            )
+        )
+
+    steps.extend(
+        [
+            CommandStep(
+                name="create_venv",
+                argv=[python, "-m", "venv", str(venv_root)],
+                cwd=REPO_ROOT,
+                env={},
+            ),
+            CommandStep(
+                name="upgrade_bootstrap",
+                argv=[
+                    *pip,
+                    "install",
+                    "--disable-pip-version-check",
+                    "--upgrade",
+                    *plan["pip_bootstrap"],
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+            ),
+        ]
+    )
 
     for requirement in profile_plan["requirements"]:
         steps.append(
             CommandStep(
                 name=f"install_requirements:{requirement}",
-                argv=[*pip, "install", "-r", requirement],
+                argv=[
+                    *pip,
+                    "install",
+                    "--disable-pip-version-check",
+                    "-r",
+                    requirement,
+                ],
                 cwd=REPO_ROOT,
                 env=env,
             )
@@ -232,6 +383,7 @@ def planned_steps(
                 argv=[
                     *pip,
                     "install",
+                    "--disable-pip-version-check",
                     "-e",
                     plan["editable_path"],
                     "--no-build-isolation",
@@ -275,7 +427,9 @@ def resolved_plan(args: argparse.Namespace) -> dict[str, Any]:
         build_profile,
         accelerator_arches,
         args.python,
+        args.recreate_venv,
     )
+    preflight = build_preflight(profile_name, profile_plan, args.python)
     return {
         "schema_version": 1,
         "repo_root": str(REPO_ROOT),
@@ -299,7 +453,11 @@ def resolved_plan(args: argparse.Namespace) -> dict[str, Any]:
         },
         "system_packages": profile_plan["system_packages"],
         "requirements": profile_plan["requirements"],
+        "requirement_digests": requirement_digests(profile_plan["requirements"]),
         "environment": env,
+        "preflight": preflight,
+        "recreate_venv": args.recreate_venv,
+        "preflight_only": args.preflight_only,
         "steps": [step.as_json() for step in steps],
         "dry_run": args.dry_run,
         "supported_build_profiles": supported_build_profile_csv(),
@@ -320,9 +478,12 @@ def emit_summary(plan: dict[str, Any]) -> None:
         f"build_profile={plan['build_profile']} "
         f"requirements={','.join(plan['requirements'])} "
         f"steps={len(plan['steps'])} "
+        f"preflight_ok={str(plan['preflight']['ok']).lower()} "
         f"dry_run={str(plan['dry_run']).lower()}"
     )
     print("system packages: " + ", ".join(plan["system_packages"]))
+    if plan["preflight"]["issues"]:
+        print("preflight issues: " + ", ".join(plan["preflight"]["issues"]))
     for step in plan["steps"]:
         print(f"step {step['name']}: {' '.join(step['argv'])}")
 
@@ -339,6 +500,16 @@ def main() -> None:
     )
     parser.add_argument("--python", default=sys.executable or "python3")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--recreate-venv",
+        action="store_true",
+        help="Remove the vendored vLLM virtualenv before installing.",
+    )
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Resolve and validate the install plan without running install steps.",
+    )
     parser.add_argument("--format", choices=("summary", "json"), default="summary")
     args = parser.parse_args()
 
@@ -351,13 +522,11 @@ def main() -> None:
     if args.dry_run:
         return
 
-    missing = [tool for tool in ("cmake", "ninja") if shutil.which(tool) is None]
-    if missing:
-        raise SystemExit(
-            "Missing required build tools "
-            f"{', '.join(missing)}. Install system packages first: "
-            + ", ".join(plan["system_packages"])
-        )
+    if args.preflight_only:
+        require_preflight_ok(plan["preflight"])
+        return
+
+    require_preflight_ok(plan["preflight"])
 
     for raw_step in plan["steps"]:
         run_step(

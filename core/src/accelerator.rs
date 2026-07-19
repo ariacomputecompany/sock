@@ -204,7 +204,6 @@ fn cuda_contract(
                 "VLLM_WORKER_MULTIPROC_METHOD".to_owned(),
                 "spawn".to_owned(),
             ),
-            ("VLLM_USE_V1".to_owned(), "1".to_owned()),
             ("VLLM_USE_V2_MODEL_RUNNER".to_owned(), "1".to_owned()),
         ],
         required_witnesses: vec![

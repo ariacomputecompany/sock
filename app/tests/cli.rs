@@ -70,6 +70,7 @@ fn install_runtime_dry_run_emits_resolved_cuda_plan() {
             "--build-profile",
             "minimal-dev",
             "--dry-run",
+            "--recreate-venv",
             "--format",
             "json",
         ])
@@ -87,6 +88,7 @@ fn install_runtime_dry_run_emits_resolved_cuda_plan() {
         Value::String("minimal-dev".to_owned())
     );
     assert_eq!(plan["dry_run"], Value::Bool(true));
+    assert_eq!(plan["recreate_venv"], Value::Bool(true));
     assert!(
         plan["requirements"]
             .as_array()
@@ -101,6 +103,21 @@ fn install_runtime_dry_run_emits_resolved_cuda_plan() {
             .iter()
             .any(|step| step["name"] == "install_vendored_vllm_editable")
     );
+    assert!(
+        plan["steps"]
+            .as_array()
+            .expect("steps array")
+            .iter()
+            .any(|step| step["name"] == "remove_existing_venv")
+    );
+    assert!(
+        plan["requirement_digests"]
+            .as_array()
+            .expect("requirement digest array")
+            .iter()
+            .all(|entry| entry["sha256"].as_str().expect("sha256").len() == 64)
+    );
+    assert!(plan["preflight"]["ok"].is_boolean());
     assert_eq!(
         plan["environment"]["VLLM_TARGET_DEVICE"],
         Value::String("cuda".to_owned())

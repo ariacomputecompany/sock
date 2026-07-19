@@ -19,7 +19,6 @@ def test_cuda_runtime_profile_sets_production_cuda_defaults(monkeypatch) -> None
         "SOCK_RUNTIME_PROFILE",
         "TOKENIZERS_PARALLELISM",
         "VLLM_TARGET_DEVICE",
-        "VLLM_USE_V1",
         "VLLM_USE_V2_MODEL_RUNNER",
         "VLLM_WORKER_MULTIPROC_METHOD",
     ]:
@@ -30,7 +29,6 @@ def test_cuda_runtime_profile_sets_production_cuda_defaults(monkeypatch) -> None
     assert os.environ["VLLM_TARGET_DEVICE"] == "cuda"
     assert os.environ["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
     assert os.environ["CUDA_MODULE_LOADING"] == "LAZY"
-    assert os.environ["VLLM_USE_V1"] == "1"
     assert os.environ["VLLM_USE_V2_MODEL_RUNNER"] == "1"
     assert os.environ["VLLM_WORKER_MULTIPROC_METHOD"] == "spawn"
     assert os.environ["PYTHONNOUSERSITE"] == "1"

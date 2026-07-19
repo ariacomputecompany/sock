@@ -22,6 +22,9 @@ creates the vendored `vllm/.venv`, installs the backend-neutral top-level
 `requirements.txt`, installs the accelerator-specific vendored vLLM requirement
 set, and builds the vendored vLLM editable package with a deterministic runtime
 environment.
+Host preflight is intentionally narrow: compiler/toolchain, Git, Python headers,
+Python venv support, and the vendor accelerator probe. Python build tools such
+as CMake and Ninja are installed into `vllm/.venv` from `requirements.txt`.
 
 Use `--dry-run --format json` to record the exact build profile, environment,
 requirements, and command steps before applying changes:
@@ -29,7 +32,13 @@ requirements, and command steps before applying changes:
 ```bash
 cargo run --bin sock -- install-runtime --profile cuda --build-profile minimal-dev --dry-run --format json
 cargo run --bin sock -- install-runtime --profile rocm --build-profile core --dry-run --format json
+cargo run --bin sock -- install-runtime --profile auto --preflight-only
+cargo run --bin sock -- install-runtime --profile cuda --build-profile minimal-dev --recreate-venv
 ```
+
+The JSON plan includes preflight status and SHA-256 digests for every selected
+requirement file. `--preflight-only` is a fail-closed readiness gate, while
+`--dry-run` remains a non-mutating plan capture mode.
 
 ## Testbed
 
@@ -61,6 +70,39 @@ Production fix validated on this host: optional model-family fused CUDA kernels
 and their torch library registrations are now controlled by the same
 `VLLM_BUILD_FAMILY_MODEL_FUSED_OPS` build flag, so slim CUDA builds do not
 produce unresolved symbols while full builds still register the fused ops.
+
+### CUDA Endpoint Validation: Qwen2.5-0.5B
+
+This run validates the canonical `sock serve` path on a live RTX 4090 after a
+fresh deterministic `sock install-runtime --profile cuda --build-profile
+minimal-dev --recreate-venv`.
+
+| Field | Value |
+| --- | ---: |
+| Model | `Qwen/Qwen2.5-0.5B-Instruct` |
+| Endpoint | `/v1/chat/completions` streaming |
+| `max_model_len` | `1024` |
+| `gpu_memory_utilization` | `0.70` |
+| `enforce_eager` | `true` |
+| Attention backend | `FLASHINFER` |
+| FlashInfer decode backend | `flashinfer-native` |
+| KV cache memory | 15.21 GiB |
+| KV cache tokens | 1,328,848 |
+| Max concurrency at 1024 tokens | 1297.70x |
+| Health ready after clean restart | 18 s |
+| Engine init after warm cache | 1.61 s |
+| Prompt tokens | 75 |
+| Completion tokens | 384 |
+| Total tokens | 459 |
+| Time to first token | 0.057 s |
+| Wall clock | 3.681 s |
+| Decode throughput | 105.98 completion tok/s |
+| End-to-end throughput | 104.33 completion tok/s |
+
+Result: live CUDA serving now reaches a healthy OpenAI-compatible endpoint from
+the canonical sock CLI, selects FlashInfer instead of a missing vendored
+FlashAttention extension, and completes a streamed long-form inference without
+unknown vLLM environment warnings.
 
 ## Supported sock vs Upstream vLLM Comparison: Qwen3-4B
 

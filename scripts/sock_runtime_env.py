@@ -58,7 +58,6 @@ def apply_cuda_runtime_defaults() -> None:
     set_default_env("VLLM_TARGET_DEVICE", "cuda")
     set_default_env("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
     set_default_env("CUDA_MODULE_LOADING", "LAZY")
-    set_default_env("VLLM_USE_V1", "1")
     set_default_env("VLLM_USE_V2_MODEL_RUNNER", "1")
     set_default_env("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
 

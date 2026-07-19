@@ -448,24 +448,14 @@ mod tests {
             optimization_policy: sock_core::OptimizationPolicy {
                 level: sock_core::OptimizationLevel::O2,
             },
-            layered_config: vec![
-                ConfigLayer {
-                    name: "env".to_owned(),
-                    precedence: 0,
-                    entries: vec![ConfigEntry {
-                        key: "VLLM_USE_V1".to_owned(),
-                        value: "1".to_owned(),
-                    }],
-                },
-                ConfigLayer {
-                    name: "project".to_owned(),
-                    precedence: 1,
-                    entries: vec![ConfigEntry {
-                        key: "tensor_parallel_size".to_owned(),
-                        value: "2".to_owned(),
-                    }],
-                },
-            ],
+            layered_config: vec![ConfigLayer {
+                name: "project".to_owned(),
+                precedence: 1,
+                entries: vec![ConfigEntry {
+                    key: "tensor_parallel_size".to_owned(),
+                    value: "2".to_owned(),
+                }],
+            }],
         }
     }
 

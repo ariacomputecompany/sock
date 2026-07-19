@@ -2468,24 +2468,14 @@ mod tests {
             optimization_policy: sock_core::OptimizationPolicy {
                 level: sock_core::OptimizationLevel::O2,
             },
-            layered_config: vec![
-                ConfigLayer {
-                    name: "env".to_owned(),
-                    precedence: 0,
-                    entries: vec![ConfigEntry {
-                        key: "VLLM_USE_V1".to_owned(),
-                        value: "1".to_owned(),
-                    }],
-                },
-                ConfigLayer {
-                    name: "project".to_owned(),
-                    precedence: 1,
-                    entries: vec![ConfigEntry {
-                        key: "tensor_parallel_size".to_owned(),
-                        value: "2".to_owned(),
-                    }],
-                },
-            ],
+            layered_config: vec![ConfigLayer {
+                name: "project".to_owned(),
+                precedence: 1,
+                entries: vec![ConfigEntry {
+                    key: "tensor_parallel_size".to_owned(),
+                    value: "2".to_owned(),
+                }],
+            }],
         }
     }
 
@@ -2627,7 +2617,13 @@ mod tests {
         amd_request.environment.driver_version = "7.14.0".to_owned();
         amd_request.topology.tensor_parallelism = 1;
         amd_request.backend_policy.preferred_families = vec![BackendFamily::Triton];
-        amd_request.layered_config[1].entries[0].value = "1".to_owned();
+        amd_request
+            .layered_config
+            .iter_mut()
+            .find(|layer| layer.name == "project")
+            .expect("project config layer")
+            .entries[0]
+            .value = "1".to_owned();
 
         let planner = Planner::new(amd_host);
         let outcome = planner.resolve(amd_request).expect("amd triton plan");
@@ -2658,7 +2654,13 @@ mod tests {
             BackendFamily::Triton,
             BackendFamily::CudaGraphs,
         ];
-        ada_request.layered_config[1].entries[0].value = "1".to_owned();
+        ada_request
+            .layered_config
+            .iter_mut()
+            .find(|layer| layer.name == "project")
+            .expect("project config layer")
+            .entries[0]
+            .value = "1".to_owned();
 
         let scope = BuildScope {
             region_names: ["prefill_attention".to_owned()].into_iter().collect(),

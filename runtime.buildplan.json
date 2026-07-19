@@ -14,10 +14,9 @@
       "target_device": "cuda",
       "system_packages": [
         "build-essential",
-        "cmake",
         "git",
-        "ninja-build",
-        "python3-dev"
+        "python3-dev",
+        "python3-venv"
       ],
       "requirements": [
         "requirements.txt",
@@ -43,7 +42,6 @@
         "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
         "CUDA_MODULE_LOADING": "LAZY",
         "VLLM_TARGET_DEVICE": "cuda",
-        "VLLM_USE_V1": "1",
         "VLLM_USE_V2_MODEL_RUNNER": "1",
         "VLLM_WORKER_MULTIPROC_METHOD": "spawn"
       }
@@ -52,10 +50,9 @@
       "target_device": "rocm",
       "system_packages": [
         "build-essential",
-        "cmake",
         "git",
-        "ninja-build",
-        "python3-dev"
+        "python3-dev",
+        "python3-venv"
       ],
       "requirements": [
         "requirements.txt",

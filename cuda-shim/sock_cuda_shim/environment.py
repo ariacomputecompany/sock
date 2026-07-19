@@ -19,8 +19,6 @@ class CudaEnvironment:
     cuda_device_order: str = CUDA_ORDER
     cuda_module_loading: str = "LAZY"
     torch_cuda_arch_list: tuple[str, ...] = field(default_factory=tuple)
-    vllm_attention_backend: str | None = None
-    vllm_use_v1: bool = True
     nccl_p2p_disable: bool = False
     nccl_ib_disable: bool = False
     cuda_launch_blocking: bool = False
@@ -38,8 +36,6 @@ class CudaEnvironment:
             cuda_device_order=env.get("CUDA_DEVICE_ORDER", CUDA_ORDER),
             cuda_module_loading=env.get("CUDA_MODULE_LOADING", "LAZY").upper(),
             torch_cuda_arch_list=arch_list,
-            vllm_attention_backend=env.get("VLLM_ATTENTION_BACKEND"),
-            vllm_use_v1=_parse_bool(env.get("VLLM_USE_V1", "1"), "VLLM_USE_V1"),
             nccl_p2p_disable=_parse_bool(env.get("NCCL_P2P_DISABLE", "0"), "NCCL_P2P_DISABLE"),
             nccl_ib_disable=_parse_bool(env.get("NCCL_IB_DISABLE", "0"), "NCCL_IB_DISABLE"),
             cuda_launch_blocking=_parse_bool(env.get("CUDA_LAUNCH_BLOCKING", "0"), "CUDA_LAUNCH_BLOCKING"),
@@ -60,19 +56,6 @@ class CudaEnvironment:
             raise InvalidCudaConfiguration(
                 "CUDA_LAUNCH_BLOCKING is incompatible with cudagraph capture benchmarking"
             )
-        if self.vllm_attention_backend:
-            allowed = {
-                "FLASH_ATTN",
-                "FLASHINFER",
-                "TRITON_ATTN",
-                "TRITON_MLA",
-                "CUTLASS_MLA",
-                "TORCH_SDPA",
-            }
-            if self.vllm_attention_backend.upper() not in allowed:
-                raise InvalidCudaConfiguration(
-                    f"unknown CUDA attention backend {self.vllm_attention_backend!r}"
-                )
         if any(size <= 0 for size in self.cudagraph_capture_sizes):
             raise InvalidCudaConfiguration("cudagraph capture sizes must be positive")
 

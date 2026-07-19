@@ -110,24 +110,14 @@ pub fn default_request_for_host(host: &PlannerHostSnapshot) -> RawRequest {
         optimization_policy: OptimizationPolicy {
             level: OptimizationLevel::O2,
         },
-        layered_config: vec![
-            ConfigLayer {
-                name: "env".to_owned(),
-                precedence: 0,
-                entries: vec![ConfigEntry {
-                    key: "VLLM_USE_V1".to_owned(),
-                    value: "1".to_owned(),
-                }],
-            },
-            ConfigLayer {
-                name: "project".to_owned(),
-                precedence: 1,
-                entries: vec![ConfigEntry {
-                    key: "tensor_parallel_size".to_owned(),
-                    value: runtime.default_tensor_parallelism.to_string(),
-                }],
-            },
-        ],
+        layered_config: vec![ConfigLayer {
+            name: "project".to_owned(),
+            precedence: 1,
+            entries: vec![ConfigEntry {
+                key: "tensor_parallel_size".to_owned(),
+                value: runtime.default_tensor_parallelism.to_string(),
+            }],
+        }],
     }
 }
 
@@ -460,7 +450,12 @@ mod tests {
 
         assert_eq!(host.device_count, 1);
         assert_eq!(request.topology.tensor_parallelism, 1);
-        assert_eq!(request.layered_config[1].entries[0].value, "1".to_owned());
+        let project_layer = request
+            .layered_config
+            .iter()
+            .find(|layer| layer.name == "project")
+            .expect("project config layer");
+        assert_eq!(project_layer.entries[0].value, "1".to_owned());
     }
 
     #[test]

@@ -105,6 +105,10 @@ enum Command {
         build_profile: String,
         #[arg(long)]
         dry_run: bool,
+        #[arg(long)]
+        recreate_venv: bool,
+        #[arg(long)]
+        preflight_only: bool,
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
         format: OutputMode,
     },
@@ -406,8 +410,17 @@ fn main() -> Result<()> {
             profile,
             build_profile,
             dry_run,
+            recreate_venv,
+            preflight_only,
             format,
-        } => run_install_runtime(profile, &build_profile, dry_run, format)?,
+        } => run_install_runtime(
+            profile,
+            &build_profile,
+            dry_run,
+            recreate_venv,
+            preflight_only,
+            format,
+        )?,
         Command::Serve { args } => run_vendored_vllm_subcommand("serve", args)?,
         Command::Chat { args } => run_vendored_vllm_subcommand("chat", args)?,
         Command::Complete { args } => run_vendored_vllm_subcommand("complete", args)?,
@@ -875,6 +888,8 @@ fn run_install_runtime(
     profile: RuntimeProfileArg,
     build_profile: &str,
     dry_run: bool,
+    recreate_venv: bool,
+    preflight_only: bool,
     format: OutputMode,
 ) -> Result<()> {
     let repo_root = repo_root()?;
@@ -895,6 +910,12 @@ fn run_install_runtime(
         .current_dir(&repo_root);
     if dry_run {
         command.arg("--dry-run");
+    }
+    if recreate_venv {
+        command.arg("--recreate-venv");
+    }
+    if preflight_only {
+        command.arg("--preflight-only");
     }
 
     let status = command.status().context("run sock runtime installer")?;

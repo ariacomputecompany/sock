@@ -1149,24 +1149,14 @@ mod tests {
             optimization_policy: crate::OptimizationPolicy {
                 level: crate::OptimizationLevel::O2,
             },
-            layered_config: vec![
-                crate::ConfigLayer {
-                    name: "env".to_owned(),
-                    precedence: 0,
-                    entries: vec![crate::ConfigEntry {
-                        key: "VLLM_USE_V1".to_owned(),
-                        value: "1".to_owned(),
-                    }],
-                },
-                crate::ConfigLayer {
-                    name: "project".to_owned(),
-                    precedence: 1,
-                    entries: vec![crate::ConfigEntry {
-                        key: "tensor_parallel_size".to_owned(),
-                        value: "2".to_owned(),
-                    }],
-                },
-            ],
+            layered_config: vec![crate::ConfigLayer {
+                name: "project".to_owned(),
+                precedence: 1,
+                entries: vec![crate::ConfigEntry {
+                    key: "tensor_parallel_size".to_owned(),
+                    value: "2".to_owned(),
+                }],
+            }],
         }
     }
 

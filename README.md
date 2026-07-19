@@ -148,6 +148,7 @@ This is what lets sock compile parts of the engine intentionally instead of trea
 The CLI surface is:
 
 - `cargo run --bin sock -- install-runtime --profile auto`
+- `cargo run --bin sock -- install-runtime --profile cuda --build-profile minimal-dev --recreate-venv`
 - `cargo run --bin sock -- install-runtime --profile cuda --build-profile minimal-dev --dry-run --format json`
 - `cargo run --bin sock -- prepare prefill-path --out /tmp/sock-bundle`
 - `cargo run --bin sock -- prepare replay-safe-closure --out /tmp/sock-bundle`
@@ -166,7 +167,10 @@ torch/runtime wheels are mutually exclusive install universes:
 
 - CUDA installs `requirements.txt`, `vllm/requirements/build/cuda.txt`, and `vllm/requirements/cuda.txt`.
 - ROCm installs `requirements.txt`, `vllm/requirements/build/rocm.txt`, and `vllm/requirements/rocm.txt`.
+- Host packages are limited to compiler/toolchain, Git, Python venv support, Python headers, and the vendor driver/runtime probe. Python build tools such as CMake and Ninja come from `requirements.txt` and are resolved inside `vllm/.venv`.
 - The installer emits the resolved environment, native build profile, CMake defines, requirements, and exact command steps in JSON before doing work when run with `--dry-run --format json`.
+- `--preflight-only` fails closed on missing build tools, Python headers, or accelerator probes.
+- `--recreate-venv` removes `vllm/.venv` before installation for clean-machine validation.
 
 The workflow is:
 

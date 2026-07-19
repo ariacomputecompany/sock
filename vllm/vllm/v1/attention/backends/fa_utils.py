@@ -20,11 +20,24 @@ _ROCM_FLASH_ATTN_AVAILABLE = False
 
 if current_platform.is_cuda():
     from vllm._custom_ops import reshape_and_cache_flash
-    from vllm.vllm_flash_attn import (  # type: ignore[attr-defined]
-        compile_flash_attn_varlen_func_from_specs,
-        flash_attn_varlen_func,
-        get_scheduler_metadata,
-    )
+    try:
+        from vllm.vllm_flash_attn import (  # type: ignore[attr-defined]
+            compile_flash_attn_varlen_func_from_specs,
+            flash_attn_varlen_func,
+            get_scheduler_metadata,
+        )
+    except ImportError:
+        compile_flash_attn_varlen_func_from_specs = None  # type: ignore[assignment]
+
+        def flash_attn_varlen_func(*args: Any, **kwargs: Any) -> Any:  # type: ignore[no-redef,misc]
+            raise ImportError(
+                "CUDA flash-attn backend requires the vendored vllm_flash_attn "
+                "extensions. Use a build profile with VLLM_BUILD_FLASH_ATTN=ON "
+                "or select a non-flash-attn backend."
+            )
+
+        def get_scheduler_metadata(*args: Any, **kwargs: Any) -> None:  # type: ignore[misc]
+            return None
 
 elif current_platform.is_xpu():
     from vllm import _custom_ops as ops
@@ -250,7 +263,7 @@ def get_flash_attn_version(
             fa_version = 2
 
         if not is_fa_version_supported(fa_version):
-            logger.error(
+            logger.debug_once(
                 "Cannot use FA version %d is not supported due to %s",
                 fa_version,
                 fa_version_unsupported_reason(fa_version),
@@ -322,9 +335,10 @@ def is_flash_attn_varlen_func_available() -> bool:
     Returns:
         bool: True if a working flash_attn_varlen_func implementation is available.
     """
-    if current_platform.is_cuda() or current_platform.is_xpu():
-        # CUDA and XPU always have flash_attn_varlen_func available
+    if current_platform.is_xpu():
         return True
+    if current_platform.is_cuda():
+        return get_flash_attn_version() is not None
 
     if current_platform.is_rocm():
         # Use the flag set during module import to check if

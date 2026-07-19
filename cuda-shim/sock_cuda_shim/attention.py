@@ -49,11 +49,7 @@ def select_attention_backend(
     shape: AttentionRequestShape,
 ) -> AttentionBackend:
     shape.validate()
-    requested = env.vllm_attention_backend.upper() if env.vllm_attention_backend else None
-    if requested:
-        backend = AttentionBackend(requested)
-        _validate_backend(device, shape, backend)
-        return backend
+    _ = env
     if shape.is_mla and device.capability.supports("tma"):
         return AttentionBackend.CUTLASS_MLA
     if shape.kv_layout in {KVLayout.FLASHINFER_PAGED, KVLayout.TMH_FIDELITY_PAGED}:

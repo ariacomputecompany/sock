@@ -46,6 +46,21 @@ logger = init_logger(__name__)
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
+_FLASH_ATTN_BACKENDS = {
+    AttentionBackendEnum.FLASH_ATTN,
+    AttentionBackendEnum.FLASH_ATTN_DIFFKV,
+    AttentionBackendEnum.FLASH_ATTN_MLA,
+    AttentionBackendEnum.FLASH_ATTN_MLA_SPARSE,
+}
+
+_FLASHINFER_BACKENDS = {
+    AttentionBackendEnum.FLASHINFER,
+    AttentionBackendEnum.FLASHINFER_MLA,
+    AttentionBackendEnum.FLASHINFER_MLA_SPARSE,
+    AttentionBackendEnum.FLASHINFER_MLA_SPARSE_SM120,
+    AttentionBackendEnum.FLASHINFER_MLA_SPARSE_DSV4,
+}
+
 pynvml = import_pynvml()
 
 # pytorch 2.5 uses cudnn sdpa by default, which will cause crash on some models
@@ -166,6 +181,40 @@ def _backend_cls_path(backend_cls: type[AttentionBackend]) -> str:
 
 def _get_attn_backend_class(backend: AttentionBackendEnum) -> type[AttentionBackend]:
     return backend.get_class()
+
+
+@cache
+def _is_cuda_flash_attn_available() -> bool:
+    try:
+        from vllm.v1.attention.backends.fa_utils import (
+            is_flash_attn_varlen_func_available,
+        )
+
+        return is_flash_attn_varlen_func_available()
+    except Exception as exc:
+        logger.debug_once("CUDA FlashAttention availability check failed: %s", exc)
+        return False
+
+
+@cache
+def _is_cuda_flashinfer_available() -> bool:
+    try:
+        from vllm.utils.flashinfer import has_flashinfer
+
+        return has_flashinfer()
+    except Exception as exc:
+        logger.debug_once("FlashInfer availability check failed: %s", exc)
+        return False
+
+
+def _get_backend_runtime_invalid_reasons(
+    backend: AttentionBackendEnum,
+) -> list[str]:
+    if backend in _FLASH_ATTN_BACKENDS and not _is_cuda_flash_attn_available():
+        return ["CUDA flash-attn extension unavailable"]
+    if backend in _FLASHINFER_BACKENDS and not _is_cuda_flashinfer_available():
+        return ["FlashInfer runtime unavailable"]
+    return []
 
 
 class _BackendCandidate(NamedTuple):
@@ -378,6 +427,7 @@ class CudaPlatformBase(Platform):
                 )
             except ImportError:
                 invalid_reasons_i = ["ImportError"]
+            invalid_reasons_i.extend(_get_backend_runtime_invalid_reasons(backend))
             if invalid_reasons_i:
                 invalid_reasons[backend] = (priority, invalid_reasons_i)
             else:
@@ -407,6 +457,9 @@ class CudaPlatformBase(Platform):
                 )
             except ImportError:
                 invalid_reasons = ["ImportError"]
+            invalid_reasons.extend(
+                _get_backend_runtime_invalid_reasons(selected_backend)
+            )
             if invalid_reasons:
                 raise ValueError(
                     f"Selected backend {selected_backend} is not valid for "
