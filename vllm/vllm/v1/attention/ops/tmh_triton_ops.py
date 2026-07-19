@@ -750,12 +750,12 @@ def tmh_unified_attention(
             "TMH physical attention currently requires head_size_v == head_size"
         )
     block_size = cache.spec.block_size
-    block_m = (
-        16
-        if num_queries_per_kv <= 16
-        else triton.next_power_of_2(num_queries_per_kv)
+    block_m, block_q = _get_tmh_query_block_shape(
+        num_queries_per_kv=num_queries_per_kv,
+        head_size=head_size,
+        max_query_len=attn_metadata.max_query_len,
+        num_seqs=num_seqs,
     )
-    block_q = block_m // num_queries_per_kv
     total_num_q_blocks = q.shape[0] // block_q + num_seqs
     sliding_window = 1 + window_size[0] if window_size[0] >= 0 else 0
     tile_size = _get_tmh_tile_size(
@@ -771,9 +771,10 @@ def tmh_unified_attention(
         device=q.device,
     )
     packed_v = cache.warm_value.shape[-1] * 2 == head_size
-    launch_kwargs: dict[str, Any] = {}
-    if current_platform.is_rocm():
-        launch_kwargs["num_warps"] = 4
+    launch_kwargs = _get_tmh_attention_launch_kwargs(
+        block_m=block_m,
+        head_size=head_size,
+    )
     _tmh_unified_attention_kernel[(total_num_q_blocks, num_kv_heads)](
         output_ptr=out,
         query_ptr=q,
@@ -840,6 +841,43 @@ def tmh_unified_attention(
         WARM_VALUE_PACKED=packed_v,
         **launch_kwargs,
     )
+
+
+def _get_tmh_query_block_shape(
+    *,
+    num_queries_per_kv: int,
+    head_size: int,
+    max_query_len: int,
+    num_seqs: int,
+) -> tuple[int, int]:
+    block_m = (
+        16
+        if num_queries_per_kv <= 16
+        else triton.next_power_of_2(num_queries_per_kv)
+    )
+    if (
+        current_platform.is_cuda()
+        and num_queries_per_kv <= 16
+        and head_size <= 128
+        and (max_query_len > 1 or num_seqs >= 4)
+    ):
+        block_m = 32
+    return block_m, block_m // num_queries_per_kv
+
+
+def _get_tmh_attention_launch_kwargs(
+    *,
+    block_m: int,
+    head_size: int,
+) -> dict[str, Any]:
+    if current_platform.is_rocm():
+        return {"num_warps": 4}
+    if current_platform.is_cuda():
+        return {
+            "num_warps": 4,
+            "num_stages": 2 if block_m >= 32 and head_size <= 128 else 3,
+        }
+    return {}
 
 
 def _get_tmh_tile_size(
