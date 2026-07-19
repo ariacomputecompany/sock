@@ -502,6 +502,27 @@ mod tests {
             .expect("decode entrypoint");
         assert!(!decode.isolation.subset_build_valid);
         assert!(!decode.isolation.direct_entrypoint_invocable);
+        assert!(
+            !entrypoints
+                .entrypoints
+                .iter()
+                .any(|entrypoint| entrypoint.scope_name == "moe_specialty_path")
+        );
+    }
+
+    #[test]
+    fn entrypoint_document_includes_moe_surface_when_aot_is_admissible() {
+        let planner = Planner::new(host());
+        let mut request = request();
+        request
+            .backend_policy
+            .preferred_families
+            .push(BackendFamily::AotInductor);
+        let outcome = planner.resolve(request).expect("aot plan");
+        let integration = build_vllm_integration_document(&outcome).expect("integration");
+        let entrypoints =
+            build_vllm_entrypoint_document(&outcome, &integration).expect("entrypoints");
+
         let moe = entrypoints
             .entrypoints
             .iter()

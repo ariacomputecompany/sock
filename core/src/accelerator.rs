@@ -272,6 +272,11 @@ mod tests {
             contract.preferred_backend_families[0],
             BackendFamily::FlashInfer
         );
+        assert!(
+            !contract
+                .preferred_backend_families
+                .contains(&BackendFamily::AotInductor)
+        );
         assert!(contract.fail_closed_reasons.is_empty());
         assert!(
             contract

@@ -102,12 +102,7 @@ impl Planner {
                 secondary: Vec::new(),
             }
         };
-        let compile_regions = self.compile_regions(
-            &selected_backends,
-            &backend_registry,
-            &adapter_survey,
-            scope,
-        );
+        let compile_regions = self.compile_regions(&selected_backends, &adapter_survey, scope);
         if compile_regions.is_empty() {
             return Err(PlanError::Validation(
                 "scoped build request resolved to an empty compile-region closure".to_owned(),
@@ -547,7 +542,6 @@ impl Planner {
     fn compile_regions(
         &self,
         selected_backends: &BackendSelection,
-        registry: &BackendCapabilityRegistry,
         adapter_survey: &AdapterSurvey,
         scope: &BuildScope,
     ) -> Vec<CompileRegion> {
@@ -559,7 +553,9 @@ impl Planner {
             .filter(|region| scope.allows_cache_namespace(&region.cache_namespace))
             .filter(|region| scope.allows_warmup_scope(&region.warmup_scope))
             .filter(|region| scope.allows_rank_disposition(region.rank_disposition))
-            .filter(|region| backend_binding_is_supported(region.backend_binding, registry))
+            .filter(|region| {
+                backend_binding_is_admissible(region.backend_binding, selected_backends)
+            })
             .filter(|region| {
                 scope.allows_backend_family(resolve_backend_binding(
                     region.backend_binding,
@@ -1932,14 +1928,18 @@ fn resolve_backend_binding(
     }
 }
 
-fn backend_binding_is_supported(
+fn backend_binding_is_admissible(
     binding: AdapterBackendBinding,
-    registry: &BackendCapabilityRegistry,
+    selected_backends: &BackendSelection,
 ) -> bool {
     match binding {
         AdapterBackendBinding::Primary => true,
         AdapterBackendBinding::Fixed(family) => {
-            registry.entries.iter().any(|entry| entry.family == family)
+            selected_backends.primary.family == family
+                || selected_backends
+                    .secondary
+                    .iter()
+                    .any(|candidate| candidate.family == family)
         }
     }
 }
@@ -2641,6 +2641,49 @@ mod tests {
                     .declared_required_warmup_scopes
                     .iter()
                     .any(|scope| scope == "decode_attention"))
+        );
+    }
+
+    #[test]
+    fn ada_cuda_plan_filters_tma_only_compile_regions() {
+        let mut ada_host = host();
+        ada_host.gpu_arches = vec!["sm89".to_owned()];
+        ada_host.device_count = 1;
+
+        let mut ada_request = request();
+        ada_request.environment.gpu_arches = vec!["sm89".to_owned()];
+        ada_request.topology.tensor_parallelism = 1;
+        ada_request.backend_policy.preferred_families = vec![
+            BackendFamily::FlashInfer,
+            BackendFamily::Triton,
+            BackendFamily::CudaGraphs,
+        ];
+        ada_request.layered_config[1].entries[0].value = "1".to_owned();
+
+        let scope = BuildScope {
+            region_names: ["prefill_attention".to_owned()].into_iter().collect(),
+            readiness: Some(BuildReadiness::Correctness),
+            ..BuildScope::default()
+        };
+        let planner = Planner::new(ada_host);
+        let outcome = planner
+            .resolve_scoped(ada_request, &scope)
+            .expect("ada prefill plan");
+
+        assert!(
+            outcome
+                .plan
+                .compile_regions
+                .iter()
+                .all(|region| region.family != BackendFamily::AotInductor)
+        );
+        assert!(
+            outcome
+                .plan
+                .selected_backends
+                .secondary
+                .iter()
+                .all(|candidate| candidate.family != BackendFamily::AotInductor)
         );
     }
 }
