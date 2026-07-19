@@ -1,8 +1,9 @@
 # Benchmarks
 
 This is the durable performance ledger for live sock runs on the GMK Strix Halo
-AMD/ROCm machine. Raw endpoint responses and bulky serve logs may live in
-`tmp/`; compact summaries live under `benchmarks/<run-id>/`.
+AMD/ROCm machine and rented NVIDIA/CUDA validation hosts. Raw endpoint responses
+and bulky serve logs may live in `tmp/`; compact summaries live under
+`benchmarks/<run-id>/`.
 
 ## Measurement Notes
 
@@ -251,6 +252,62 @@ the 8B eager path. It is effectively at parity for short prompts and concurrency
 prompt-heavy or long-context. This supports a narrower hypothesis than the 30B
 result alone: the CUDA issue appears tied to high-concurrency accounting/cache
 pressure rather than ordinary single-stream decode.
+
+### CUDA TMH Accounting Probe: GB10 Qwen3-8B
+
+This run repeats the same Qwen3-8B standard-vs-TMH endpoint suite on a GB10 CUDA
+host. GB10 reports `sm121`, driver `595.71.05`, CUDA 13.2 at the driver layer,
+and torch `2.11.0+cu130` inside the hermetic sock venv. The host's
+`nvidia-smi` memory accounting reports memory as `N/A`, but vLLM observes 121.69
+GiB total and only 38.14 GiB free inside the container at startup, so this run
+uses `gpu_memory_utilization=0.25`.
+
+| Field | Value |
+| --- | --- |
+| Model | `Qwen/Qwen3-8B` |
+| Endpoint | `/v1/completions` |
+| Runtime | NVIDIA GB10, CUDA, `sock serve` |
+| Build profile | `gptq-marlin` |
+| `max_model_len` | `1024` |
+| `gpu_memory_utilization` | `0.25` |
+| `max_num_batched_tokens` | `1024` |
+| `max_num_seqs` | `4` |
+| `enforce_eager` | `true` |
+| Standard suite wall clock | 1414.71 s |
+| TMH accounting suite wall clock | 1389.09 s |
+| Suite wall delta | -1.81% |
+| Mean completion throughput | 32.54 tok/s standard, 33.29 tok/s TMH |
+| Geomean completion throughput delta | +1.87% |
+| Raw summaries | `benchmarks/2026-07-19-gb10-qwen3-8b/` |
+
+| Case | Concurrency | Standard completion tok/s | TMH completion tok/s | TMH delta | Standard wall s | TMH wall s | Wall delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 14.32 | 14.37 | +0.4% | 4.47 | 4.45 | -0.4% |
+| `tiny_fact_64` | 2 | 27.98 | 28.71 | +2.6% | 4.58 | 4.46 | -2.6% |
+| `tiny_fact_64` | 4 | 55.39 | 56.37 | +1.8% | 4.62 | 4.54 | -1.7% |
+| `short_codegen_128` | 1 | 14.34 | 14.37 | +0.2% | 8.93 | 8.91 | -0.2% |
+| `short_codegen_128` | 2 | 28.06 | 28.89 | +3.0% | 9.12 | 8.86 | -2.9% |
+| `short_codegen_128` | 4 | 55.82 | 57.18 | +2.4% | 9.17 | 8.95 | -2.4% |
+| `medium_architecture_256` | 1 | 14.28 | 14.31 | +0.2% | 17.93 | 17.90 | -0.2% |
+| `medium_architecture_256` | 2 | 28.07 | 28.79 | +2.6% | 18.24 | 17.79 | -2.5% |
+| `medium_architecture_256` | 4 | 55.79 | 57.24 | +2.6% | 18.35 | 17.89 | -2.5% |
+| `long_cosmology_512` | 1 | 14.26 | 14.30 | +0.3% | 35.91 | 35.80 | -0.3% |
+| `long_cosmology_512` | 2 | 28.01 | 28.80 | +2.8% | 36.56 | 35.56 | -2.7% |
+| `long_cosmology_512` | 4 | 55.59 | 57.01 | +2.6% | 36.84 | 35.92 | -2.5% |
+| `long_context_summary_256` | 1 | 14.19 | 14.24 | +0.4% | 18.05 | 17.98 | -0.4% |
+| `long_context_summary_256` | 2 | 27.81 | 28.58 | +2.7% | 18.41 | 17.92 | -2.7% |
+| `long_context_summary_256` | 4 | 55.35 | 56.70 | +2.4% | 18.50 | 18.06 | -2.4% |
+| `extended_generation_768` | 1 | 14.26 | 14.29 | +0.2% | 53.84 | 53.76 | -0.2% |
+| `extended_generation_768` | 2 | 27.97 | 28.75 | +2.8% | 54.91 | 53.43 | -2.7% |
+| `extended_generation_768` | 4 | 54.21 | 56.36 | +4.0% | 56.73 | 54.51 | -3.9% |
+
+Production readout: the 4090 8B regression does not reproduce on GB10. Under
+the same prompt/concurrency matrix, GB10 TMH is slightly faster than standard in
+every measured concurrency bucket, including the C4 long-context and
+extended-generation cases that regressed on the 4090. That narrows the CUDA TMH
+accounting bug from "CUDA-wide overhead" to an architecture/profile-sensitive
+interaction, likely involving the 4090 `sm89` eager scheduling/cache path rather
+than the abstract sock CLI or benchmark harness.
 
 ## Supported sock vs Upstream vLLM Comparison: Qwen3-4B
 
