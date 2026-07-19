@@ -753,7 +753,7 @@ def tmh_unified_attention(
     block_m, block_q = _get_tmh_query_block_shape(
         num_queries_per_kv=num_queries_per_kv,
         head_size=head_size,
-        max_query_len=attn_metadata.max_query_len,
+        num_query_tokens=q.shape[0],
         num_seqs=num_seqs,
     )
     total_num_q_blocks = q.shape[0] // block_q + num_seqs
@@ -847,7 +847,7 @@ def _get_tmh_query_block_shape(
     *,
     num_queries_per_kv: int,
     head_size: int,
-    max_query_len: int,
+    num_query_tokens: int,
     num_seqs: int,
 ) -> tuple[int, int]:
     block_m = (
@@ -859,7 +859,7 @@ def _get_tmh_query_block_shape(
         current_platform.is_cuda()
         and num_queries_per_kv <= 16
         and head_size <= 128
-        and (max_query_len > 1 or num_seqs >= 4)
+        and (num_query_tokens > num_seqs or num_seqs >= 4)
     ):
         block_m = 32
     return block_m, block_m // num_queries_per_kv
