@@ -104,6 +104,38 @@ the canonical sock CLI, selects FlashInfer instead of a missing vendored
 FlashAttention extension, and completes a streamed long-form inference without
 unknown vLLM environment warnings.
 
+### CUDA Larger-Model Stress: Qwen3-4B And Qwen3-8B
+
+These runs compare eager mode against the default compiled/CUDA-graph serving
+path on the same RTX 4090. The suite uses streamed `/v1/chat/completions`, one
+warmup per case/concurrency, and two measured batches per case/concurrency.
+
+| Model | Mode | Ready s | Avg TTFT ms | Avg completion tok/s | Profile |
+| --- | --- | ---: | ---: | ---: | --- |
+| `Qwen/Qwen3-4B` | eager (`--enforce-eager`) | 50.08 | 41.1 | 69.23 | `max_model_len=2048`, concurrency 1/2/4 |
+| `Qwen/Qwen3-4B` | compiled/CUDA graphs | 52.07 | 25.4 | 98.38 | `max_model_len=2048`, concurrency 1/2/4 |
+| `Qwen/Qwen3-8B` | eager (`--enforce-eager`) | 38.05 | 44.9 | 54.34 | `max_model_len=1024`, concurrency 1/2 |
+| `Qwen/Qwen3-8B` | compiled/CUDA graphs | 48.07 | 27.3 | 56.74 | `max_model_len=1024`, concurrency 1/2 |
+
+| Model | Mode | Model memory | KV cache memory | KV cache tokens | Max concurrency |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `Qwen/Qwen3-4B` | eager | 7.56 GiB | 11.47 GiB | 83,552 | 40.80x at 2048 tokens |
+| `Qwen/Qwen3-4B` | compiled/CUDA graphs | 7.56 GiB | 10.89 GiB | 79,280 | 38.71x at 2048 tokens |
+| `Qwen/Qwen3-8B` | eager | 15.27 GiB | 4.75 GiB | 34,592 | 33.78x at 1024 tokens |
+| `Qwen/Qwen3-8B` | compiled/CUDA graphs | 15.27 GiB | 3.68 GiB | 26,816 | 26.19x at 1024 tokens |
+
+Production readout: for CUDA, the default production serving path should be
+compiled/CUDA-graph mode, not `--enforce-eager`, when memory headroom has been
+validated for the target model/profile. The throughput and TTFT gains are
+material on Qwen3-4B and still positive on Qwen3-8B. `--enforce-eager` remains
+the correct fallback for deterministic bring-up, debugging, and tight-memory
+profiles where compile/CUDA-graph reservations reduce KV headroom too far.
+
+Observed caveat: compiled mode emitted a vLLM AOT cache-save warning on both
+Qwen3 models (`NoneType` has no `submodule_bytes_store`) but completed startup,
+health, and all endpoint traffic. Treat this as a production observability item,
+not a blocker for the 4090 profile.
+
 ## Supported sock vs Upstream vLLM Comparison: Qwen3-4B
 
 This is the current apples-to-apples comparison where both sock and an upstream
@@ -333,6 +365,7 @@ attention kernels are implemented and benchmarked against this same suite.
 | `benchmarks/2026-07-18-gmk-qwen3-32b-2bit-gptq/suite-summary.json` | Qwen3-32B 2-bit compact suite summary |
 | `benchmarks/2026-07-18-gmk-qwen3-32b-4bit-gptq/suite-summary.json` | Qwen3-32B 4-bit compact suite summary |
 | `benchmarks/2026-07-18-gmk-qwen3-30b-a3b-gptq-int4/suite-summary.json` | Qwen3-30B-A3B MoE compact suite summary |
+| `benchmarks/2026-07-19-rtx4090-cuda-qwen3/summary.json` | RTX 4090 CUDA Qwen3-4B/8B eager vs compiled summary |
 | `artifacts/tmh_runtime_integration/REPORT.md` | Matched regular vs TMH allocator-path endpoint comparison |
 | `artifacts/tmh_runtime_integration/summary.json` | Machine-readable TMH runtime integration summary |
 | `artifacts/tmh_runtime_integration/logs/tmh_accounting_server.log` | TMH allocation-pressure log with 14,016 live allocator records |

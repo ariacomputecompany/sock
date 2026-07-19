@@ -1,0 +1,120 @@
+{
+  "date": "2026-07-19",
+  "machine": "Vast.ai RTX 4090 rental",
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "driver": "580.119.02",
+  "torch": "2.11.0+cu130",
+  "cuda": "13.0",
+  "runtime": "sock vendored vLLM 0.0.0+sock",
+  "attention_backend": "FLASHINFER",
+  "benchmark_shape": {
+    "endpoint": "/v1/chat/completions",
+    "streaming": true,
+    "temperature": 0.2,
+    "warmups_per_case_concurrency": 1,
+    "measured_runs_per_case_concurrency": 2
+  },
+  "runs": [
+    {
+      "run_id": "sock-cuda-qwen3-4b-eager",
+      "model": "Qwen/Qwen3-4B",
+      "enforce_eager": true,
+      "max_model_len": 2048,
+      "gpu_memory_utilization": 0.82,
+      "max_num_seqs": 8,
+      "max_num_batched_tokens": 2048,
+      "health_ready_s": 50.08,
+      "avg_completion_tok_s": 69.23,
+      "avg_ttft_ms": 41.1,
+      "gpu_after": "20497 MiB / 24564 MiB",
+      "summary": [
+        {"case": "tiny_fact_64", "concurrency": 1, "completion_tok_s": 65.63, "ttft_ms": 36.6, "wall_s": 0.975},
+        {"case": "tiny_fact_64", "concurrency": 2, "completion_tok_s": 68.57, "ttft_ms": 43.8, "wall_s": 0.933},
+        {"case": "tiny_fact_64", "concurrency": 4, "completion_tok_s": 66.80, "ttft_ms": 47.5, "wall_s": 0.958},
+        {"case": "short_codegen_128", "concurrency": 1, "completion_tok_s": 69.80, "ttft_ms": 34.9, "wall_s": 1.835},
+        {"case": "short_codegen_128", "concurrency": 2, "completion_tok_s": 70.76, "ttft_ms": 35.6, "wall_s": 1.809},
+        {"case": "short_codegen_128", "concurrency": 4, "completion_tok_s": 69.59, "ttft_ms": 48.3, "wall_s": 1.839},
+        {"case": "medium_architecture_256", "concurrency": 1, "completion_tok_s": 71.93, "ttft_ms": 33.2, "wall_s": 3.559},
+        {"case": "medium_architecture_256", "concurrency": 2, "completion_tok_s": 69.19, "ttft_ms": 38.8, "wall_s": 3.700},
+        {"case": "medium_architecture_256", "concurrency": 4, "completion_tok_s": 69.14, "ttft_ms": 49.5, "wall_s": 3.703},
+        {"case": "long_cosmology_384", "concurrency": 1, "completion_tok_s": 71.59, "ttft_ms": 33.4, "wall_s": 5.364},
+        {"case": "long_cosmology_384", "concurrency": 2, "completion_tok_s": 68.29, "ttft_ms": 43.0, "wall_s": 5.626},
+        {"case": "long_cosmology_384", "concurrency": 4, "completion_tok_s": 69.51, "ttft_ms": 48.3, "wall_s": 5.524}
+      ]
+    },
+    {
+      "run_id": "sock-cuda-qwen3-4b-compiled",
+      "model": "Qwen/Qwen3-4B",
+      "enforce_eager": false,
+      "max_model_len": 2048,
+      "gpu_memory_utilization": 0.82,
+      "max_num_seqs": 8,
+      "max_num_batched_tokens": 2048,
+      "health_ready_s": 52.07,
+      "avg_completion_tok_s": 98.38,
+      "avg_ttft_ms": 25.4,
+      "gpu_after": "19965 MiB / 24564 MiB",
+      "summary": [
+        {"case": "tiny_fact_64", "concurrency": 1, "completion_tok_s": 101.85, "ttft_ms": 17.6, "wall_s": 0.628},
+        {"case": "tiny_fact_64", "concurrency": 2, "completion_tok_s": 96.53, "ttft_ms": 23.3, "wall_s": 0.663},
+        {"case": "tiny_fact_64", "concurrency": 4, "completion_tok_s": 95.18, "ttft_ms": 30.2, "wall_s": 0.672},
+        {"case": "short_codegen_128", "concurrency": 1, "completion_tok_s": 102.43, "ttft_ms": 17.7, "wall_s": 1.250},
+        {"case": "short_codegen_128", "concurrency": 2, "completion_tok_s": 97.18, "ttft_ms": 27.1, "wall_s": 1.317},
+        {"case": "short_codegen_128", "concurrency": 4, "completion_tok_s": 95.77, "ttft_ms": 37.4, "wall_s": 1.337},
+        {"case": "medium_architecture_256", "concurrency": 1, "completion_tok_s": 102.22, "ttft_ms": 17.9, "wall_s": 2.504},
+        {"case": "medium_architecture_256", "concurrency": 2, "completion_tok_s": 97.13, "ttft_ms": 27.8, "wall_s": 2.636},
+        {"case": "medium_architecture_256", "concurrency": 4, "completion_tok_s": 96.41, "ttft_ms": 30.1, "wall_s": 2.655},
+        {"case": "long_cosmology_384", "concurrency": 1, "completion_tok_s": 102.19, "ttft_ms": 17.9, "wall_s": 3.758},
+        {"case": "long_cosmology_384", "concurrency": 2, "completion_tok_s": 97.31, "ttft_ms": 27.1, "wall_s": 3.946},
+        {"case": "long_cosmology_384", "concurrency": 4, "completion_tok_s": 96.40, "ttft_ms": 30.2, "wall_s": 3.983}
+      ]
+    },
+    {
+      "run_id": "sock-cuda-qwen3-8b-eager",
+      "model": "Qwen/Qwen3-8B",
+      "enforce_eager": true,
+      "max_model_len": 1024,
+      "gpu_memory_utilization": 0.86,
+      "max_num_seqs": 4,
+      "max_num_batched_tokens": 1024,
+      "health_ready_s": 38.05,
+      "avg_completion_tok_s": 54.34,
+      "avg_ttft_ms": 44.9,
+      "gpu_after": "21463 MiB / 24564 MiB",
+      "summary": [
+        {"case": "tiny_fact_64", "concurrency": 1, "completion_tok_s": 55.69, "ttft_ms": 38.5, "wall_s": 1.149},
+        {"case": "tiny_fact_64", "concurrency": 2, "completion_tok_s": 52.75, "ttft_ms": 49.8, "wall_s": 1.213},
+        {"case": "short_codegen_128", "concurrency": 1, "completion_tok_s": 55.75, "ttft_ms": 38.5, "wall_s": 2.296},
+        {"case": "short_codegen_128", "concurrency": 2, "completion_tok_s": 53.05, "ttft_ms": 52.2, "wall_s": 2.413},
+        {"case": "medium_architecture_256", "concurrency": 1, "completion_tok_s": 55.62, "ttft_ms": 39.6, "wall_s": 4.603},
+        {"case": "medium_architecture_256", "concurrency": 2, "completion_tok_s": 53.19, "ttft_ms": 50.7, "wall_s": 4.813}
+      ]
+    },
+    {
+      "run_id": "sock-cuda-qwen3-8b-compiled",
+      "model": "Qwen/Qwen3-8B",
+      "enforce_eager": false,
+      "max_model_len": 1024,
+      "gpu_memory_utilization": 0.86,
+      "max_num_seqs": 4,
+      "max_num_batched_tokens": 1024,
+      "health_ready_s": 48.07,
+      "avg_completion_tok_s": 56.74,
+      "avg_ttft_ms": 27.3,
+      "gpu_after": "20535 MiB / 24564 MiB",
+      "summary": [
+        {"case": "tiny_fact_64", "concurrency": 1, "completion_tok_s": 57.72, "ttft_ms": 25.8, "wall_s": 1.109},
+        {"case": "tiny_fact_64", "concurrency": 2, "completion_tok_s": 55.61, "ttft_ms": 26.9, "wall_s": 1.151},
+        {"case": "short_codegen_128", "concurrency": 1, "completion_tok_s": 57.85, "ttft_ms": 25.7, "wall_s": 2.213},
+        {"case": "short_codegen_128", "concurrency": 2, "completion_tok_s": 55.72, "ttft_ms": 27.5, "wall_s": 2.297},
+        {"case": "medium_architecture_256", "concurrency": 1, "completion_tok_s": 57.86, "ttft_ms": 25.4, "wall_s": 4.424},
+        {"case": "medium_architecture_256", "concurrency": 2, "completion_tok_s": 55.69, "ttft_ms": 32.8, "wall_s": 4.597}
+      ]
+    }
+  ],
+  "production_readout": {
+    "cuda_default": "compiled",
+    "reason": "Compiled/CUDA graph mode increased Qwen3-4B throughput by 42.1% and reduced TTFT while remaining stable. On Qwen3-8B it still improved throughput by 4.4% and TTFT by 39.2%, at the cost of lower KV memory headroom.",
+    "fallback": "Use --enforce-eager for deterministic bring-up, debug, first-run isolation, or tight-memory profiles where the compile/CUDA-graph memory reserve threatens KV capacity."
+  }
+}

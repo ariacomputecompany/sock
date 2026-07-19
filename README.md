@@ -172,6 +172,13 @@ torch/runtime wheels are mutually exclusive install universes:
 - `--preflight-only` fails closed on missing build tools, Python headers, or accelerator probes.
 - `--recreate-venv` removes `vllm/.venv` before installation for clean-machine validation.
 
+CUDA production serving should use the default compiled/CUDA-graph vLLM path
+when the target model/profile has enough KV headroom. On the RTX 4090 validation
+host, compiled mode materially improved Qwen3-4B throughput and still improved
+Qwen3-8B TTFT/throughput. Use `--enforce-eager` for deterministic bring-up,
+debugging, or tight-memory profiles where compile/CUDA-graph reservations reduce
+KV capacity too far.
+
 The workflow is:
 
 1. install the deterministic accelerator runtime with `sock install-runtime`
