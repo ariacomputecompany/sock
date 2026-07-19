@@ -1,471 +1,217 @@
 # Benchmarks
 
-This file is the durable benchmark ledger for live sock runs. Raw bulky logs and
-full endpoint responses can live under `tmp/` during development; durable
-summaries should be promoted into `benchmarks/<run-id>/summary.json`.
+This is the durable performance ledger for live SOC runs on the GMK Strix Halo
+AMD/ROCm machine. Raw endpoint responses and bulky serve logs may live in
+`tmp/`; compact summaries live under `benchmarks/<run-id>/`.
 
-## 2026-07-18: GMK EVO-X2, Qwen3-4B, ROCm WSL
+## Measurement Notes
 
-### Status
+| Metric | Current coverage |
+| --- | --- |
+| Completion throughput | Captured as completion tokens per second from OpenAI-compatible endpoint responses. |
+| Total throughput | Captured as total tokens per second where endpoint usage reports prompt + completion tokens. |
+| Wall clock latency | Captured as request elapsed seconds and suite elapsed seconds. |
+| Startup latency | Captured as time to `/health` or server-ready bind where available. |
+| Time to first token | Not captured in these non-streaming runs. Future benchmark passes should add a streaming harness that records first response chunk latency (`ttft_s`). |
 
-| Claim | Current evidence | Status |
-| --- | --- | --- |
-| Cleaner DX to runnable inference | `sock serve` reaches a live OpenAI-compatible endpoint on the AMD WSL/ROCm machine with the repo-local runtime defaults. PyPI vanilla installs a CUDA stack and fails. Official upstream ROCm wheel needs explicit ROCm/WSL env plus three local import/detection patches before it serves. | Proven on this machine |
-| Shorter time to runnable inference | Fresh `sock serve` restart reached `/health` in 48 seconds. Patched official upstream ROCm wheel reached `/health` in 52 seconds after manual install/env/patching. PyPI vanilla never reached `/health`. | Proven for runnable endpoint on this workload |
-| Higher throughput than vanilla | The expanded 6-case suite over concurrency 1, 2, and 4 shows sock and patched official upstream ROCm at statistical parity for this Qwen3-4B eager endpoint workload. | Not proven here; measured parity |
-
-### Hardware And Runtime
+## Testbed
 
 | Field | Value |
 | --- | --- |
 | Machine | GMK EVO-X2 / AMD Ryzen AI Max+ 395 with Radeon 8060S |
 | OS | Linux WSL2, glibc 2.39 |
-| Accelerator vendor | AMD |
 | GPU arch | `gfx1151` |
-| ROCm/driver reported by sock doctor | `7.14.0~pre3-29052710811` |
+| ROCm/driver reported by `sock doctor` | `7.14.0~pre3-29052710811` |
 | Python ABI | `cp312` |
-| sock runtime | vendored runtime, `vllm 0.25.1`, `torch 2.11.0+gitd0c8b1f`, HIP `7.2.53211`, `device_count=1` |
-| vanilla runtime attempted | PyPI `vllm 0.25.1`, `torch 2.11.0`, CUDA `13.0`, HIP `null`, `device_count=0` |
-| upstream ROCm runtime attempted | Official ROCm wheel `vllm 0.25.1+rocm723`, `torch 2.11.0+gitd0c8b1f`, HIP `7.2.53211`, `device_count=1` |
+| SOC runtime | vendored vLLM `0.25.1`, torch `2.11.0+gitd0c8b1f`, HIP `7.2.53211` |
+| Upstream vLLM ROCm baseline | official ROCm wheel `vllm 0.25.1+rocm723`, torch `2.11.0+gitd0c8b1f`, HIP `7.2.53211` |
 
-### Model And Server Settings
+## Supported SOC vs Upstream vLLM Comparison: Qwen3-4B
+
+This is the current apples-to-apples comparison where both SOC and an upstream
+vLLM ROCm baseline served the same model on the same hardware.
 
 | Field | Value |
 | --- | --- |
 | Model | `Qwen/Qwen3-4B` |
-| Endpoint | OpenAI-compatible `/v1/completions` |
-| Prompt | `Explain how the universe came into being...` long-form cosmology prompt |
+| Endpoint | `/v1/completions` |
 | `max_model_len` | `1024` |
 | `gpu_memory_utilization` | `0.8` |
 | `enforce_eager` | `true` |
-| `max_tokens` | `512` |
-| `temperature` | `0.2` |
-| Initial benchmark shape | 1 warmup request + 5 measured requests |
-| Expanded suite shape | 6 prompt classes, 1 warmup batch per case/concurrency, 2 measured batches per case/concurrency, concurrency 1/2/4 |
+| Suite shape | 6 prompt classes, concurrency 1/2/4, 1 warmup batch, 2 measured batches |
+| SOC suite wall clock | 571.84 s |
+| Upstream suite wall clock | 571.04 s |
 
-### sock Results
+### Startup
 
-Fresh restart command:
-
-```bash
-SOCK_RUNTIME_PROFILE=rocm target/debug/sock serve Qwen/Qwen3-4B \
-  --host 127.0.0.1 \
-  --port 8000 \
-  --max-model-len 1024 \
-  --gpu-memory-utilization 0.8 \
-  --enforce-eager \
-  --disable-log-stats
-```
-
-Startup result:
-
-| Metric | Value |
-| --- | --- |
-| Health status | healthy |
-| Time to `/health` | 48 seconds |
-| Checkpoint size | 7.49 GiB |
-| Model memory | 7.56 GiB |
-| Available KV cache memory | 68.21 GiB |
-| GPU KV cache size | 496,672 tokens |
-| Max concurrency at 1024 tokens | 485.03x |
-| Attention backend selected | `TRITON_ATTN` after `ROCM_ATTN` and `TURBOQUANT` were rejected |
-
-This initial baseline exposed a production backend-selection bug: ROCm custom
-attention rejected `block_size=None` during backend probing even though the
-runtime block size is materialized later. The fix allows unmaterialized
-`block_size` during eligibility checks while still rejecting concrete non-16
-block sizes on gfx1x. After the fix, `sock serve` naturally selects
-`ROCM_ATTN`.
-
-Endpoint throughput after fresh restart:
-
-| Metric | Min | Mean | Median | Max | P90 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Completion tok/s | 25.0569 | 25.2355 | 25.0992 | 25.7161 | 25.7161 |
-| Total tok/s | 27.3570 | 27.5520 | 27.4033 | 28.0767 | 28.0767 |
-| Elapsed seconds | 19.9097 | 20.2908 | 20.3990 | 20.4335 | 20.4335 |
-| Completion tokens | 512 | 512 | 512 | 512 | 512 |
-| Total tokens | 559 | 559 | 559 | 559 | 559 |
-
-Earlier warm-server run, same endpoint and settings:
-
-| Metric | Min | Mean | Median | Max | P90 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Completion tok/s | 24.8395 | 25.1259 | 25.0648 | 25.6536 | 25.6536 |
-| Total tok/s | 27.1197 | 27.4324 | 27.3657 | 28.0085 | 28.0085 |
-| Elapsed seconds | 19.9582 | 20.3798 | 20.4271 | 20.6123 | 20.6123 |
-
-### Vanilla vLLM Results
-
-Vanilla setup attempted:
-
-```bash
-python3 -m venv /home/deepsaint/work/bench-vanilla-vllm/.venv
-source /home/deepsaint/work/bench-vanilla-vllm/.venv/bin/activate
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install vllm
-vllm serve Qwen/Qwen3-4B \
-  --host 127.0.0.1 \
-  --port 8001 \
-  --max-model-len 1024 \
-  --gpu-memory-utilization 0.8 \
-  --enforce-eager \
-  --disable-log-stats
-```
-
-Result:
-
-| Attempt | Status | Time | Notes |
-| --- | --- | ---: | --- |
-| Naive upstream PyPI install | exited before serving | 2 seconds | Import-time circular import in upstream vLLM before endpoint startup |
-| Same install with ROCm WSL env hints | exited before serving | 2 seconds | Same import-time failure |
-
-The isolated vanilla environment also installed CUDA PyTorch and reported
-`torch.version.cuda="13.0"`, `torch.version.hip=null`,
-`torch.cuda.is_available()=false`, and `device_count=0`. That means the
-straight upstream PyPI path is not a runnable AMD/ROCm baseline on this machine.
-
-Failure excerpt:
-
-```text
-ImportError: cannot import name 'direct_register_custom_op' from partially initialized module 'vllm.utils.torch_utils'
-```
-
-### Upstream ROCm Wheel Results
-
-Official upstream ROCm setup attempted:
-
-```bash
-python3 -m venv /home/deepsaint/work/bench-upstream-vllm-rocm-wheel/.venv
-source /home/deepsaint/work/bench-upstream-vllm-rocm-wheel/.venv/bin/activate
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install 'vllm==0.25.1+rocm723' \
-  --extra-index-url https://wheels.vllm.ai/rocm/752a3a504485790a2e8491cacbb35c137339ad34/rocm723
-```
-
-The official ROCm wheel installs the correct GPU stack and reports
-`torch.version.hip="7.2.53211"`, `torch.cuda.is_available()=true`, and
-`device_count=1`. It still did not serve out of the box on WSL because amdsmi
-fails with `AMDSMI_STATUS_DRIVER_NOT_LOADED`.
-
-Local patches required before upstream would serve:
-
-| File | Patch |
-| --- | --- |
-| `vllm/platforms/interface.py` | Scope the WSL pin-memory `warning_once` to `process` so it does not import distributed rank state during `torch_utils` initialization. |
-| `vllm/platforms/__init__.py` | When `VLLM_TARGET_DEVICE=rocm` and amdsmi fails, activate ROCm if PyTorch HIP is present and sees a device. |
-| `vllm/platforms/rocm.py` | Use plain `logger.warning` for the amdsmi GCN arch fallback to avoid another import-time distributed-state cycle. |
-
-Patched upstream ROCm command:
-
-```bash
-VLLM_TARGET_DEVICE=rocm \
-VLLM_USE_V2_MODEL_RUNNER=0 \
-VLLM_WSL2_ENABLE_PIN_MEMORY=0 \
-VLLM_WORKER_MULTIPROC_METHOD=spawn \
-PYTHONNOUSERSITE=1 \
-PYTHONHASHSEED=0 \
-TOKENIZERS_PARALLELISM=false \
-vllm serve Qwen/Qwen3-4B \
-  --host 127.0.0.1 \
-  --port 8001 \
-  --max-model-len 1024 \
-  --gpu-memory-utilization 0.8 \
-  --enforce-eager \
-  --disable-log-stats
-```
-
-Patched upstream startup result:
-
-| Metric | Value |
-| --- | --- |
-| Health status | healthy |
-| Time to `/health` | 52 seconds |
-| Checkpoint size | 7.49 GiB |
-| Model memory | 7.56 GiB |
-| Available KV cache memory | 68.21 GiB |
-| GPU KV cache size | 496,672 tokens |
-| Max concurrency at 1024 tokens | 485.03x |
-| Attention backend selected | `ROCM_ATTN` after `TURBOQUANT` was rejected |
-
-Patched upstream endpoint throughput:
-
-| Metric | Min | Mean | Median | Max | P90 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Completion tok/s | 24.9711 | 25.2333 | 25.2652 | 25.5303 | 25.5303 |
-| Total tok/s | 27.2634 | 27.5497 | 27.5845 | 27.8739 | 27.8739 |
-| Elapsed seconds | 20.0546 | 20.2917 | 20.2650 | 20.5037 | 20.5037 |
-| Completion tokens | 512 | 512 | 512 | 512 | 512 |
-| Total tokens | 559 | 559 | 559 | 559 | 559 |
-
-Comparison:
-
-| Runtime | Time to health | Mean completion tok/s | Mean total tok/s | Notes |
-| --- | ---: | ---: | ---: | --- |
-| sock vendored runtime | 48s | 25.2355 | 27.5520 | Runs via `sock serve` with repo-local runtime defaults |
-| patched upstream ROCm wheel | 52s | 25.2333 | 27.5497 | Needs manual ROCm wheel install, explicit env, and three WSL/amdsmi patches |
-| PyPI vanilla | n/a | n/a | n/a | Installs CUDA stack and fails before serving |
-
-### Expanded Suite Results
-
-The expanded suite uses `scripts/sock_endpoint_bench_suite.py` against both
-OpenAI-compatible endpoints. It runs six prompt classes from tiny factual output
-through long-form generation and long-context summarization, with concurrency
-levels 1, 2, and 4. Each case/concurrency pair uses one warmup batch and two
-measured batches.
-
-Post-fix startup comparison:
-
-| Runtime | Time to health | Attention backend | Notes |
+| Runtime | Ready after | Attention backend | Notes |
 | --- | ---: | --- | --- |
-| sock vendored runtime | 56s | `ROCM_ATTN` | Default backend selection after the `block_size=None` fix |
-| patched upstream ROCm wheel | 52s | `ROCM_ATTN` | Manual ROCm wheel/env/patch path |
+| SOC vendored runtime | 56 s | `ROCM_ATTN` | `sock serve` path |
+| Upstream vLLM ROCm baseline | 52 s | `ROCM_ATTN` | upstream ROCm wheel baseline |
 
-Mean completion tok/s by case and concurrency:
+### Single Long-Form 512-Token Prompt
 
-| Case | Concurrency | sock | patched upstream | sock delta |
+| Runtime | Mean completion tok/s | Mean total tok/s | Mean wall clock/request | Completion tokens |
 | --- | ---: | ---: | ---: | ---: |
-| `tiny_fact_64` | 1 | 25.2527 | 25.2995 | -0.185% |
-| `tiny_fact_64` | 2 | 46.8422 | 44.2165 | +5.938% |
-| `tiny_fact_64` | 4 | 93.7006 | 93.9555 | -0.271% |
-| `short_codegen_128` | 1 | 25.2840 | 25.0988 | +0.738% |
-| `short_codegen_128` | 2 | 49.5227 | 49.4282 | +0.191% |
-| `short_codegen_128` | 4 | 95.1425 | 95.0075 | +0.142% |
-| `medium_architecture_256` | 1 | 25.1850 | 25.5831 | -1.556% |
-| `medium_architecture_256` | 2 | 50.5021 | 49.8364 | +1.336% |
-| `medium_architecture_256` | 4 | 94.7088 | 94.2985 | +0.435% |
-| `long_cosmology_512` | 1 | 25.1013 | 25.0967 | +0.018% |
-| `long_cosmology_512` | 2 | 49.7113 | 49.6695 | +0.084% |
-| `long_cosmology_512` | 4 | 92.6525 | 93.3443 | -0.741% |
-| `long_context_summary_256` | 1 | 25.1928 | 24.5416 | +2.653% |
-| `long_context_summary_256` | 2 | 48.0964 | 48.0434 | +0.110% |
-| `long_context_summary_256` | 4 | 90.5848 | 91.6758 | -1.190% |
-| `extended_generation_768` | 1 | 24.9289 | 25.1307 | -0.803% |
-| `extended_generation_768` | 2 | 49.1037 | 48.8041 | +0.614% |
-| `extended_generation_768` | 4 | 91.7100 | 91.9298 | -0.239% |
+| SOC vendored runtime | 25.24 | 27.55 | 20.29 s | 512 |
+| Upstream vLLM ROCm baseline | 25.23 | 27.55 | 20.29 s | 512 |
 
-Expanded-suite conclusion: throughput is effectively parity for this specific
-eager Qwen3-4B shape. sock wins the product/DX thesis here because it owns the
-least-dependency ROCm path, the backend-selection policy, and the production fix
-that made the default ROCm path choose `ROCM_ATTN` cleanly.
+### Multi-Case Endpoint Suite
 
-### Raw Artifacts
+| Case | Concurrency | SOC completion tok/s | SOC wall s | Upstream completion tok/s | Upstream wall s | SOC delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 25.25 | 2.55 | 25.30 | 2.54 | -0.18% |
+| `tiny_fact_64` | 2 | 46.84 | 2.77 | 44.22 | 3.00 | +5.94% |
+| `tiny_fact_64` | 4 | 93.70 | 2.75 | 93.96 | 2.74 | -0.27% |
+| `short_codegen_128` | 1 | 25.28 | 5.06 | 25.10 | 5.10 | +0.74% |
+| `short_codegen_128` | 2 | 49.52 | 5.17 | 49.43 | 5.18 | +0.19% |
+| `short_codegen_128` | 4 | 95.14 | 5.38 | 95.01 | 5.39 | +0.14% |
+| `medium_architecture_256` | 1 | 25.18 | 10.16 | 25.58 | 10.01 | -1.56% |
+| `medium_architecture_256` | 2 | 50.50 | 10.14 | 49.84 | 10.27 | +1.34% |
+| `medium_architecture_256` | 4 | 94.71 | 10.81 | 94.30 | 10.86 | +0.43% |
+| `long_cosmology_512` | 1 | 25.10 | 20.40 | 25.10 | 20.40 | +0.02% |
+| `long_cosmology_512` | 2 | 49.71 | 20.60 | 49.67 | 20.62 | +0.08% |
+| `long_cosmology_512` | 4 | 92.65 | 22.11 | 93.34 | 21.94 | -0.74% |
+| `long_context_summary_256` | 1 | 25.19 | 10.17 | 24.54 | 10.43 | +2.65% |
+| `long_context_summary_256` | 2 | 48.10 | 10.65 | 48.04 | 10.66 | +0.11% |
+| `long_context_summary_256` | 4 | 90.58 | 11.31 | 91.68 | 11.17 | -1.19% |
+| `extended_generation_768` | 1 | 24.93 | 30.81 | 25.13 | 30.56 | -0.80% |
+| `extended_generation_768` | 2 | 49.10 | 31.28 | 48.80 | 31.47 | +0.61% |
+| `extended_generation_768` | 4 | 91.71 | 33.50 | 91.93 | 33.42 | -0.24% |
 
-| Artifact | Purpose |
-| --- | --- |
-| `benchmarks/2026-07-18-gmk-qwen3-4b/summary.json` | Tracked compact summary |
-| `tmp/bench-sock-restart-ready.json` | Fresh sock startup readiness result |
-| `tmp/bench-sock-restart-serve.log` | Fresh sock serve log |
-| `tmp/bench-sock-qwen3-4b-restart.json` | Full fresh sock endpoint benchmark responses |
-| `tmp/bench-sock-qwen3-4b.json` | Full earlier warm-server sock endpoint benchmark responses |
-| `tmp/bench-vanilla-naive-serve.log` | Naive vanilla failure log |
-| `tmp/bench-vanilla-rocm-env-serve.log` | Vanilla with ROCm env hints failure log |
-| `tmp/bench-upstream-rocm-wheel-patched-env2-serve.log` | Patched official upstream ROCm wheel serve log |
-| `tmp/bench-upstream-rocm-wheel-qwen3-4b.json` | Full patched upstream ROCm endpoint benchmark responses |
-| `tmp/bench-suite-upstream-rocm-wheel-qwen3-4b.json` | Full expanded-suite upstream ROCm responses |
-| `tmp/bench-suite-sock-fixed-qwen3-4b.json` | Full expanded-suite fixed sock responses |
-| `benchmarks/2026-07-18-gmk-qwen3-4b/suite-summary.json` | Tracked compact expanded-suite comparison |
-| `benchmarks/2026-07-18-gmk-qwen3-4b/upstream-rocm-wsl.patch` | Tracked upstream patch needed to make official ROCm wheel serve under WSL |
+Result: Qwen3-4B throughput is effectively parity on this eager ROCm endpoint
+shape. SOC's win for this comparison is the shorter, cleaner path to a runnable
+ROCm endpoint, not a meaningful tok/s advantage on this small model.
 
-### Sitrep
+## SOC Large-Model Runs
 
-sock has a real production endpoint baseline on the GMK AMD machine:
-`Qwen/Qwen3-4B` serves reliably at `max_model_len=1024` and produces about
-25 completion tok/s for a 512-token long-form prompt.
+These runs validate the SOC runtime paths that matter for the larger AMD box:
+AutoGPTQ 2-bit, AutoGPTQ 4-bit, and MoE WNA16. Comparable upstream vLLM numbers
+are not recorded here unless the upstream runtime supports the same model and
+quantization path end-to-end.
 
-The DX claim is strong: the sock path reaches live inference, while the straight
-vanilla PyPI path downloads a CUDA-oriented stack, sees no GPU, and fails before
-serving. The official upstream ROCm wheel can be made runnable on this WSL AMD
-machine, but only after manual wheel-index selection, explicit ROCm/WSL runtime
-environment, and three local patches that sock already carries.
+### Qwen3-32B AutoGPTQ 2-Bit
 
-The throughput claim is not proven on this Qwen3-4B eager endpoint workload.
-Once upstream is repaired enough to run, it reaches statistical parity with sock
-across the expanded prompt/concurrency suite. The engineering win from this pass
-is stronger than a narrow tok/s headline: the robust benchmark found a real
-default ROCm backend-selection bug, sock now selects `ROCM_ATTN` cleanly, and the
-upstream comparison requires manual dependency/index/env/patch work that sock is
-designed to erase.
-
-The next performance proof should target modes where sock intentionally differs
-from upstream, such as broader context, compilation/cache warmup behavior,
-non-eager paths, larger batch curves, and backend-selection policy under mixed
-model shapes.
-
-## Qwen3-32B 2-bit GPTQ Large-Model Suite
-
-This run validates the new SOC AutoGPTQ 2-bit ROCm path against a real
-large dense checkpoint: `kaitchup/Qwen3-32B-autoround-2bit-gptq`. The
-suite uses the same six prompt classes as the Qwen3-4B expanded benchmark,
-with one warmup batch and two measured batches at concurrency levels 1, 2,
-and 4. The full run completed successfully in 4113.4 seconds.
-
-Startup and capacity:
-
-| Metric | Value |
+| Field | Value |
 | --- | ---: |
+| Model | `kaitchup/Qwen3-32B-autoround-2bit-gptq` |
+| Suite wall clock | 4113.42 s |
+| Runs per case/concurrency | 2 |
+| Warmups per case/concurrency | 1 |
 | Checkpoint size | 12.22 GiB |
-| Weight load time | 9.96 s |
-| Model load time | 11.55 s |
-| Model memory | 12.3 GiB |
+| Weight load | 9.96 s |
+| Model load | 11.55 s |
+| Model memory | 12.30 GiB |
 | Engine warmup | 25.34 s |
-| Available KV cache memory | 63.42 GiB |
-| GPU KV cache size | 259,776 tokens |
+| KV cache memory | 63.42 GiB |
+| KV cache tokens | 259,776 |
 | Max concurrency at 1024 tokens | 253.69x |
-| Attention backend selected | `ROCM_ATTN` |
 
-Mean completion tok/s by case and concurrency:
-
-| Case | Concurrency | Mean completion tok/s | Mean total tok/s | Mean wall s |
+| Case | Concurrency | Completion tok/s | Total tok/s | Wall s |
 | --- | ---: | ---: | ---: | ---: |
-| `tiny_fact_64` | 1 | 3.3239 | 3.8952 | 19.2543 |
-| `tiny_fact_64` | 2 | 6.6570 | 7.8012 | 19.2279 |
-| `tiny_fact_64` | 4 | 13.3305 | 15.6216 | 19.2043 |
-| `short_codegen_128` | 1 | 3.4319 | 3.9949 | 37.2976 |
-| `short_codegen_128` | 2 | 6.7790 | 7.8911 | 37.7643 |
-| `short_codegen_128` | 4 | 13.3482 | 15.5381 | 38.3577 |
-| `medium_architecture_256` | 1 | 3.4256 | 3.7869 | 74.7314 |
-| `medium_architecture_256` | 2 | 6.7505 | 7.4625 | 75.8479 |
-| `medium_architecture_256` | 4 | 13.4219 | 14.8376 | 76.2929 |
-| `long_cosmology_512` | 1 | 3.4124 | 3.7257 | 150.0390 |
-| `long_cosmology_512` | 2 | 6.7657 | 7.3867 | 151.3519 |
-| `long_cosmology_512` | 4 | 13.3469 | 14.5721 | 153.4467 |
-| `long_context_summary_256` | 1 | 3.3880 | 12.5726 | 75.5612 |
-| `long_context_summary_256` | 2 | 6.7188 | 24.9332 | 76.2039 |
-| `long_context_summary_256` | 4 | 13.2919 | 49.3252 | 77.0398 |
-| `extended_generation_768` | 1 | 3.4023 | 3.6016 | 225.7308 |
-| `extended_generation_768` | 2 | 6.7544 | 7.1502 | 227.4075 |
-| `extended_generation_768` | 4 | 13.4041 | 14.1895 | 229.1840 |
+| `tiny_fact_64` | 1 | 3.32 | 3.90 | 19.25 |
+| `tiny_fact_64` | 2 | 6.66 | 7.80 | 19.23 |
+| `tiny_fact_64` | 4 | 13.33 | 15.62 | 19.20 |
+| `short_codegen_128` | 1 | 3.43 | 3.99 | 37.30 |
+| `short_codegen_128` | 2 | 6.78 | 7.89 | 37.76 |
+| `short_codegen_128` | 4 | 13.35 | 15.54 | 38.36 |
+| `medium_architecture_256` | 1 | 3.43 | 3.79 | 74.73 |
+| `medium_architecture_256` | 2 | 6.75 | 7.46 | 75.85 |
+| `medium_architecture_256` | 4 | 13.42 | 14.84 | 76.29 |
+| `long_cosmology_512` | 1 | 3.41 | 3.73 | 150.04 |
+| `long_cosmology_512` | 2 | 6.77 | 7.39 | 151.35 |
+| `long_cosmology_512` | 4 | 13.35 | 14.57 | 153.45 |
+| `long_context_summary_256` | 1 | 3.39 | 12.57 | 75.56 |
+| `long_context_summary_256` | 2 | 6.72 | 24.93 | 76.20 |
+| `long_context_summary_256` | 4 | 13.29 | 49.33 | 77.04 |
+| `extended_generation_768` | 1 | 3.40 | 3.60 | 225.73 |
+| `extended_generation_768` | 2 | 6.75 | 7.15 | 227.41 |
+| `extended_generation_768` | 4 | 13.40 | 14.19 | 229.18 |
 
-Quality and correctness notes:
+Direct chat quality check: 384 completion tokens in 111.63 s (3.44 completion tok/s), coherent output.
 
-- The first live chat request after the zero-point fix produced coherent Big Bang reasoning: 384 completion tokens in 111.63 s, or 3.44 completion tok/s. The pre-fix output was token soup, so this is a real numerical-path correctness fix, not just a startup fix.
-- The full benchmark recorded 84 measured responses with zero low-ASCII/token-soup suspects. Completions-endpoint samples often continue instruction text, which is expected for raw completions prompts and should not be confused with the earlier corrupted generation.
-- Throughput scales nearly linearly with request concurrency on this workload: roughly 3.3-3.4 completion tok/s at concurrency 1, 6.6-6.8 at concurrency 2, and 13.3-13.4 at concurrency 4.
-- Patched upstream vLLM cannot run the same 2-bit benchmark: it rejects `bits=2, sym=True` with `ValueError: Unsupported quantization config: bits=2, sym=True` before serving. There is no honest vanilla throughput number for this model without carrying SOC's new 2-bit implementation.
+### Qwen3-32B AutoGPTQ 4-Bit
 
-Artifacts:
-
-| Artifact | Purpose |
-| --- | --- |
-| `benchmarks/2026-07-18-gmk-qwen3-32b-2bit-gptq/suite-summary.json` | Tracked compact full-suite summary |
-| `tmp/bench-suite-sock-qwen3-32b-2bit-gptq-full.json` | Full raw SOC endpoint responses and per-batch stats |
-| `tmp/bench-large-qwen3-32b-2bit-fixed-serve.log` | SOC serve log for startup, backend, JIT, and request status |
-
-## Qwen3-32B 4-bit GPTQ Large-Model Suite
-
-This run validates the SOC AutoGPTQ 4-bit ROCm path after the packed
-layout normalization fix that also enabled the 2-bit run. The model is
-`kaitchup/Qwen3-32B-autoround-4bit-gptq`. The same six-case expanded
-suite ran with one warmup batch and two measured batches at concurrency
-levels 1, 2, and 4. The full run completed successfully in 2725.4 seconds.
-
-Startup and capacity:
-
-| Metric | Value |
+| Field | Value |
 | --- | ---: |
+| Model | `kaitchup/Qwen3-32B-autoround-4bit-gptq` |
+| Suite wall clock | 2725.41 s |
+| Runs per case/concurrency | 2 |
+| Warmups per case/concurrency | 1 |
 | Checkpoint size | 18.01 GiB |
-| Weight load time | 80.11 s |
-| Model load time | 82.25 s |
+| Weight load | 80.11 s |
+| Model load | 82.25 s |
 | Model memory | 18.15 GiB |
 | Engine warmup | 28.60 s |
-| Available KV cache memory | 57.56 GiB |
-| GPU KV cache size | 235,744 tokens |
+| KV cache memory | 57.56 GiB |
+| KV cache tokens | 235,744 |
 | Max concurrency at 1024 tokens | 230.22x |
-| Attention backend selected | `ROCM_ATTN` |
 
-Mean completion tok/s by case and concurrency:
-
-| Case | Concurrency | Mean completion tok/s | Mean total tok/s | Mean wall s |
+| Case | Concurrency | Completion tok/s | Total tok/s | Wall s |
 | --- | ---: | ---: | ---: | ---: |
-| `tiny_fact_64` | 1 | 5.2317 | 6.1308 | 12.2332 |
-| `tiny_fact_64` | 2 | 10.0983 | 11.8339 | 12.6793 |
-| `tiny_fact_64` | 4 | 20.0337 | 23.4769 | 12.7785 |
-| `short_codegen_128` | 1 | 5.1958 | 6.0482 | 24.6358 |
-| `short_codegen_128` | 2 | 10.2696 | 11.9544 | 24.9282 |
-| `short_codegen_128` | 4 | 20.1091 | 23.4082 | 25.4631 |
-| `medium_architecture_256` | 1 | 5.1955 | 5.7435 | 49.2746 |
-| `medium_architecture_256` | 2 | 10.2354 | 11.3149 | 50.0237 |
-| `medium_architecture_256` | 4 | 20.1481 | 22.2730 | 50.8238 |
-| `long_cosmology_512` | 1 | 5.1597 | 5.6334 | 99.2306 |
-| `long_cosmology_512` | 2 | 10.1601 | 11.0927 | 100.7867 |
-| `long_cosmology_512` | 4 | 20.0605 | 21.9020 | 102.0910 |
-| `long_context_summary_256` | 1 | 5.1231 | 19.0117 | 49.9693 |
-| `long_context_summary_256` | 2 | 10.0573 | 37.3220 | 50.9085 |
-| `long_context_summary_256` | 4 | 19.8436 | 73.6384 | 51.6038 |
-| `extended_generation_768` | 1 | 5.1103 | 5.4097 | 150.2879 |
-| `extended_generation_768` | 2 | 10.2492 | 10.8497 | 149.8660 |
-| `extended_generation_768` | 4 | 20.3794 | 21.5736 | 150.7400 |
+| `tiny_fact_64` | 1 | 5.23 | 6.13 | 12.23 |
+| `tiny_fact_64` | 2 | 10.10 | 11.83 | 12.68 |
+| `tiny_fact_64` | 4 | 20.03 | 23.48 | 12.78 |
+| `short_codegen_128` | 1 | 5.20 | 6.05 | 24.64 |
+| `short_codegen_128` | 2 | 10.27 | 11.95 | 24.93 |
+| `short_codegen_128` | 4 | 20.11 | 23.41 | 25.46 |
+| `medium_architecture_256` | 1 | 5.20 | 5.74 | 49.27 |
+| `medium_architecture_256` | 2 | 10.24 | 11.31 | 50.02 |
+| `medium_architecture_256` | 4 | 20.15 | 22.27 | 50.82 |
+| `long_cosmology_512` | 1 | 5.16 | 5.63 | 99.23 |
+| `long_cosmology_512` | 2 | 10.16 | 11.09 | 100.79 |
+| `long_cosmology_512` | 4 | 20.06 | 21.90 | 102.09 |
+| `long_context_summary_256` | 1 | 5.12 | 19.01 | 49.97 |
+| `long_context_summary_256` | 2 | 10.06 | 37.32 | 50.91 |
+| `long_context_summary_256` | 4 | 19.84 | 73.64 | 51.60 |
+| `extended_generation_768` | 1 | 5.11 | 5.41 | 150.29 |
+| `extended_generation_768` | 2 | 10.25 | 10.85 | 149.87 |
+| `extended_generation_768` | 4 | 20.38 | 21.57 | 150.74 |
 
-Quality and correctness notes:
+Direct chat quality check: 384 completion tokens in 75.15 s (5.11 completion tok/s), coherent output.
 
-- The endpoint produced coherent direct chat output: 384 completion tokens in 75.15 s, or 5.11 completion tok/s.
-- The full benchmark recorded 84 measured responses with 0 low-ASCII/token-soup suspects.
-- The previous `qzeros shape mismatch` failure is fixed: this run loaded the 18.01 GiB checkpoint, served `/health`, and completed the full benchmark matrix.
-- On this current Triton ROCm path, 4-bit is faster than 2-bit despite the larger checkpoint. That means 2-bit is now correct and runnable, but the 2-bit unpack path is not yet throughput-superior to 4-bit.
+### Qwen3-30B-A3B MoE GPTQ Int4
 
-Artifacts:
-
-| Artifact | Purpose |
-| --- | --- |
-| `benchmarks/2026-07-18-gmk-qwen3-32b-4bit-gptq/suite-summary.json` | Tracked compact full-suite summary |
-| `tmp/bench-suite-sock-qwen3-32b-4bit-gptq-full.json` | Full raw SOC endpoint responses and per-batch stats |
-| `tmp/bench-large-qwen3-32b-4bit-serve.log` | SOC serve log for startup, backend, and request status |
-
-## Qwen3-30B-A3B GPTQ Int4 MoE ROCm Endpoint Suite
-
-This run validates SOC serving a real Qwen3 MoE checkpoint on the GMK
-Strix Halo ROCm/WSL machine: `Qwen/Qwen3-30B-A3B-GPTQ-Int4`. It also
-exercises the production ROCm platform fix for WSL machines where amdsmi
-reports `AMDSMI_STATUS_DRIVER_NOT_LOADED`: MoE config lookup now uses the
-canonical ROCm platform API and falls back without crashing.
-
-The measured endpoint profile is intentionally constrained to a 512-token
-serve shape so the benchmark cases are valid for this model length:
-`--max-model-len 512 --max-num-seqs 8 --max-num-batched-tokens 512
---gpu-memory-utilization 0.35 --enforce-eager`.
-
-Startup and capacity:
-
-| Metric | Value |
+| Field | Value |
 | --- | ---: |
+| Model | `Qwen/Qwen3-30B-A3B-GPTQ-Int4` |
+| Serve profile | `max_model_len=512`, `max_num_seqs=8`, `max_num_batched_tokens=512`, `gpu_memory_utilization=0.35` |
+| Suite wall clock | 238.26 s |
+| Measured requests | 63 |
 | Checkpoint size | 15.77 GiB |
-| Weight load time | 17.38 s |
-| Model load time | 19.81 s |
+| Weight load | 17.38 s |
+| Model load | 19.81 s |
 | Model memory | 15.56 GiB |
-| Engine init / warmup | 7.02 s |
-| Available KV cache memory | 17.62 GiB |
-| GPU KV cache size | 192,480 tokens |
+| Engine init/warmup | 7.02 s |
+| KV cache memory | 17.62 GiB |
+| KV cache tokens | 192,480 |
 | Max concurrency at 512 tokens | 375.94x |
-| Attention backend selected | `ROCM_ATTN` |
-| MoE backend | WNA16 fallback, default untuned Strix Halo config |
 
-Mean completion tok/s by case and concurrency:
-
-| Case | Concurrency | Mean completion tok/s | Mean total tok/s | Mean wall s |
+| Case | Concurrency | Completion tok/s | Total tok/s | Wall s |
 | --- | ---: | ---: | ---: | ---: |
-| `tiny_fact_64` | 1 | 29.7099 | 34.8163 | 2.1610 |
-| `tiny_fact_64` | 2 | 32.3263 | 37.8823 | 3.9647 |
-| `tiny_fact_64` | 4 | 51.6278 | 60.5014 | 4.9604 |
-| `short_codegen_128` | 1 | 29.9636 | 34.8795 | 4.2728 |
-| `short_codegen_128` | 2 | 34.4483 | 40.0999 | 7.4339 |
-| `short_codegen_128` | 4 | 57.1306 | 66.5036 | 9.0653 |
-| `medium_architecture_256` | 1 | 30.1593 | 33.3402 | 8.4895 |
-| `medium_architecture_256` | 2 | 33.8998 | 37.4751 | 15.1079 |
-| `medium_architecture_256` | 4 | 53.8751 | 59.5573 | 19.0207 |
+| `tiny_fact_64` | 1 | 29.71 | 34.82 | 2.16 |
+| `tiny_fact_64` | 2 | 32.33 | 37.88 | 3.96 |
+| `tiny_fact_64` | 4 | 51.63 | 60.50 | 4.96 |
+| `short_codegen_128` | 1 | 29.96 | 34.88 | 4.27 |
+| `short_codegen_128` | 2 | 34.45 | 40.10 | 7.43 |
+| `short_codegen_128` | 4 | 57.13 | 66.50 | 9.07 |
+| `medium_architecture_256` | 1 | 30.16 | 33.34 | 8.49 |
+| `medium_architecture_256` | 2 | 33.90 | 37.48 | 15.11 |
+| `medium_architecture_256` | 4 | 53.88 | 59.56 | 19.02 |
 
-Quality and correctness notes:
+Direct chat quality check: 220 completion tokens in 8.86 s (24.84 completion tok/s), coherent output.
 
-- Direct live chat produced coherent cosmology output: 220 completion tokens in 8.86 s, or 24.84 completion tok/s.
-- The measured endpoint suite completed 66/66 requests successfully across concurrency levels 1, 2, and 4.
-- A larger probe (`--max-model-len 1024 --gpu-memory-utilization 0.8`) loaded the 15.77 GiB checkpoint and reached KV sizing: 58.53 GiB KV memory, 639,296 KV tokens, and 624.31x theoretical concurrency at 1024 tokens. It was still active but had not bound the API within the observation window, so it was stopped to run the constrained benchmark profile.
-- The model uses AutoGPTQ dense projections plus MoE WNA16 experts on ROCm. A tuned Strix Halo MoE config is not yet present, so the runtime correctly falls back to the default MoE config rather than failing.
-
-Artifacts:
+## Artifacts
 
 | Artifact | Purpose |
 | --- | --- |
-| `benchmarks/2026-07-18-gmk-qwen3-30b-a3b-gptq-int4/suite-summary.json` | Tracked compact MoE endpoint summary |
-| `tmp/bench-suite-sock-qwen3-30b-a3b-gptq-int4-small.json` | Full raw SOC endpoint responses and per-batch stats |
-| `tmp/qwen3-30b-a3b-gptq-small.log` | SOC serve log for startup, backend, KV sizing, and request status |
-| `tmp/qwen3-30b-a3b-gptq.log` | Larger 1024-token profile probe log |
+| `benchmarks/2026-07-18-gmk-qwen3-4b/summary.json` | Qwen3-4B compact SOC/upstream summary |
+| `benchmarks/2026-07-18-gmk-qwen3-4b/suite-summary.json` | Qwen3-4B compact suite comparison |
+| `benchmarks/2026-07-18-gmk-qwen3-32b-2bit-gptq/suite-summary.json` | Qwen3-32B 2-bit compact suite summary |
+| `benchmarks/2026-07-18-gmk-qwen3-32b-4bit-gptq/suite-summary.json` | Qwen3-32B 4-bit compact suite summary |
+| `benchmarks/2026-07-18-gmk-qwen3-30b-a3b-gptq-int4/suite-summary.json` | Qwen3-30B-A3B MoE compact suite summary |
+| `tmp/bench-suite-sock-fixed-qwen3-4b.json` | Raw SOC Qwen3-4B endpoint suite |
+| `tmp/bench-suite-upstream-rocm-wheel-qwen3-4b.json` | Raw upstream vLLM ROCm Qwen3-4B endpoint suite |
+| `tmp/bench-suite-sock-qwen3-32b-2bit-gptq-full.json` | Raw SOC Qwen3-32B 2-bit suite |
+| `tmp/bench-suite-sock-qwen3-32b-4bit-gptq-full.json` | Raw SOC Qwen3-32B 4-bit suite |
+| `tmp/bench-suite-sock-qwen3-30b-a3b-gptq-int4-small.json` | Raw SOC Qwen3-30B-A3B MoE suite |
