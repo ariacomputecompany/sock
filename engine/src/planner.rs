@@ -2413,6 +2413,7 @@ mod tests {
                 pipeline_parallelism: 1,
                 replicas: 1,
             },
+            kv_layout_policy: sock_core::KvLayoutPolicy::standard(),
             backend_policy: BackendPolicy {
                 preferred_families: vec![
                     BackendFamily::FlashInfer,

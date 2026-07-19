@@ -8,6 +8,7 @@ pub mod entrypoint;
 pub mod governance;
 pub mod identity;
 pub mod integration;
+pub mod kv_layout;
 pub mod materialization;
 pub mod measurement;
 pub mod model;
@@ -34,6 +35,7 @@ pub use diagnostics::{
 pub use entrypoint::*;
 pub use identity::*;
 pub use integration::*;
+pub use kv_layout::*;
 pub use materialization::*;
 pub use measurement::*;
 pub use model::*;

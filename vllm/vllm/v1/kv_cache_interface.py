@@ -938,6 +938,9 @@ class KVCacheConfig:
     tmh_kv_policy: str = "off"
     """TMH runtime policy propagated from CacheConfig into the core allocator."""
 
+    kv_layout: str = "standard"
+    """Canonical KV layout selected for this cache configuration."""
+
     tmh_hot_budget_pct: float = 25.0
     """Percentage of non-anchor pages retained as hot raw KV for TMH accounting."""
 

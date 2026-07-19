@@ -38,6 +38,7 @@ MambaDType = Literal["auto", "float32", "float16", "bfloat16"]
 MambaCacheMode = Literal["all", "align", "none"]
 PrefixCachingHashAlgo = Literal["sha256", "sha256_cbor", "xxhash", "xxhash_cbor"]
 KVOffloadingBackend = Literal["native", "lmcache"]
+KVLayout = Literal["standard", "tmh"]
 TMHKVPolicy = Literal["off", "accounting", "physical"]
 
 
@@ -186,15 +187,18 @@ class CacheConfig:
     'native' (vLLM native CPU offloading), 'lmcache'.
     KV offloading is only activated when kv_offloading_size is set."""
 
-    tmh_kv_policy: TMHKVPolicy = "off"
-    """Transformer Memory Hierarchy policy for KV runtime integration.
+    kv_layout: KVLayout = "standard"
+    """First-class KV storage layout.
 
-    - "off": standard vLLM KV cache behavior.
-    - "accounting": compile and record TMH page-pressure metrics in the live
-      allocator path without changing physical KV storage.
-    - "physical": reserved for the mixed-fidelity page runtime. It currently
-      fails closed rather than silently behaving like standard KV.
+    - "standard": regular vLLM block-major paged KV cache.
+    - "tmh": Transformer Memory Hierarchy fidelity-paged KV layout. Today this
+      enables allocator-path accounting and metrics. Physical TMH storage is
+      fail-closed until mixed-fidelity tensors and layout-aware kernels are
+      implemented.
     """
+
+    tmh_kv_policy: TMHKVPolicy = "off"
+    """Internal Transformer Memory Hierarchy allocator policy derived from kv_layout."""
 
     tmh_hot_budget_pct: float = Field(default=25.0, ge=0.0, le=100.0)
     """Percentage of non-anchor pages retained as hot raw KV in TMH policy."""
@@ -233,6 +237,7 @@ class CacheConfig:
             "kv_sharing_fast_prefill",
             # Runtime policy/metrics only in accounting mode. Physical TMH is
             # fail-closed above until kernels/tensor storage are implemented.
+            "kv_layout",
             "tmh_kv_policy",
             "tmh_hot_budget_pct",
         }
@@ -305,12 +310,19 @@ class CacheConfig:
         return cache_dtype
 
     @model_validator(mode="after")
-    def _validate_tmh_policy(self) -> "CacheConfig":
+    def _resolve_and_validate_kv_layout(self) -> "CacheConfig":
+        if self.kv_layout == "standard":
+            self.tmh_kv_policy = "off"
+        elif self.kv_layout == "tmh" and self.tmh_kv_policy == "off":
+            self.tmh_kv_policy = "accounting"
+
         if self.tmh_kv_policy == "physical":
             raise ValueError(
-                "--tmh-kv-policy=physical is not available until the "
+                "kv_layout=tmh physical mode is not available until the "
                 "mixed-fidelity TMH attention kernels and warm-page tensors "
-                "are wired. Use 'accounting' for allocator-path validation "
-                "or 'off' for regular vLLM."
+                "are wired. Use kv_layout='tmh' for allocator-path validation "
+                "or kv_layout='standard' for regular vLLM."
             )
+        if self.kv_layout == "standard" and self.tmh_kv_policy != "off":
+            raise ValueError("standard kv_layout cannot enable TMH allocator policy")
         return self

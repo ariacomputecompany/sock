@@ -4,8 +4,8 @@ use crate::backend::{PackagingStrategy, RuntimeJitPolicy};
 use crate::canonical::{CanonicalError, CanonicalHash, canonical_hash};
 use crate::optimization::OptimizationPolicy;
 use crate::{
-    AcceleratorVendor, BackendFamily, CoveragePlane, FailureMode, GuaranteeLevel, OperatingSystem,
-    TargetEngine,
+    AcceleratorVendor, BackendFamily, CoveragePlane, FailureMode, GuaranteeLevel, KvLayoutPolicy,
+    OperatingSystem, TargetEngine,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -131,6 +131,7 @@ pub struct RawRequest {
     pub engine_source: EngineSource,
     pub environment: RequestedEnvironment,
     pub topology: ExecutionTopology,
+    pub kv_layout_policy: KvLayoutPolicy,
     pub backend_policy: BackendPolicy,
     pub shape_policy: ShapePolicy,
     pub cache_policy: CachePolicy,
@@ -146,6 +147,7 @@ pub struct NormalizedRequest {
     pub engine_source: EngineSource,
     pub environment: RequestedEnvironment,
     pub topology: ExecutionTopology,
+    pub kv_layout_policy: KvLayoutPolicy,
     pub backend_policy: BackendPolicy,
     pub shape_policy: ShapePolicy,
     pub cache_policy: CachePolicy,
@@ -158,6 +160,7 @@ pub struct NormalizedRequest {
 impl RawRequest {
     pub fn normalize(mut self) -> Result<NormalizedRequest, CanonicalError> {
         self.environment.canonicalize();
+        self.kv_layout_policy.canonicalize();
         self.backend_policy.canonicalize();
         self.shape_policy.canonicalize();
         self.layered_config
@@ -173,6 +176,7 @@ impl RawRequest {
             engine_source: self.engine_source,
             environment: self.environment,
             topology: self.topology,
+            kv_layout_policy: self.kv_layout_policy,
             backend_policy: self.backend_policy,
             shape_policy: self.shape_policy,
             cache_policy: self.cache_policy,
@@ -188,6 +192,7 @@ impl RawRequest {
             engine_source: body.engine_source,
             environment: body.environment,
             topology: body.topology,
+            kv_layout_policy: body.kv_layout_policy,
             backend_policy: body.backend_policy,
             shape_policy: body.shape_policy,
             cache_policy: body.cache_policy,
@@ -206,6 +211,7 @@ struct NormalizedRequestBody {
     engine_source: EngineSource,
     environment: RequestedEnvironment,
     topology: ExecutionTopology,
+    kv_layout_policy: KvLayoutPolicy,
     backend_policy: BackendPolicy,
     shape_policy: ShapePolicy,
     cache_policy: CachePolicy,

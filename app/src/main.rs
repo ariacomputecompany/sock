@@ -13,9 +13,10 @@ use sock_app::{
 use sock_core::{
     AcceleratorVendor, BackendFamily, BenchmarkCaseArtifactPaths, BenchmarkMatrixEntry,
     BenchmarkMatrixReport, BenchmarkTraceReference, BuildMeasurementReport, DiagnosticsDocument,
-    MaterializationExecutionReport, MeasurementCaseReport, MeasurementComparisonReport,
-    MeasurementPhaseTimings, OptimizationExplainDocument, OptimizationLevel, ReplayBundle,
-    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
+    KvLayoutBackend, KvLayoutId, KvLayoutPolicy, MaterializationExecutionReport,
+    MeasurementCaseReport, MeasurementComparisonReport, MeasurementPhaseTimings,
+    OptimizationExplainDocument, OptimizationLevel, ReplayBundle, ReplayBundleMetadata,
+    ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
     render_backend_decision, render_explain, render_plan_summary, render_soc_explain,
     render_verification_report,
 };
@@ -879,9 +880,127 @@ fn run_vendored_vllm_cli(args: Vec<OsString>) -> Result<()> {
 }
 
 fn run_vendored_vllm_subcommand(name: &str, args: Vec<OsString>) -> Result<()> {
+    if is_help_request(&args) {
+        let mut vllm_args = vec![OsString::from(name)];
+        vllm_args.extend(args);
+        return run_vendored_vllm_cli(vllm_args);
+    }
+
+    let resolved = resolve_sock_kv_layout_args(args)?;
+    validate_sock_kv_layout_policy(&resolved.policy)?;
+
     let mut vllm_args = vec![OsString::from(name)];
-    vllm_args.extend(args);
+    vllm_args.push(OsString::from("--kv-layout"));
+    vllm_args.push(OsString::from(resolved.policy.layout.as_str()));
+    if resolved.policy.layout == KvLayoutId::TmhFidelityPaged {
+        vllm_args.push(OsString::from("--tmh-hot-budget-pct"));
+        vllm_args.push(OsString::from(resolved.policy.hot_budget_pct.to_string()));
+    }
+    vllm_args.extend(resolved.args);
     run_vendored_vllm_cli(vllm_args)
+}
+
+fn is_help_request(args: &[OsString]) -> bool {
+    args.iter()
+        .filter_map(|arg| arg.to_str())
+        .any(|arg| arg == "-h" || arg == "--help" || arg.starts_with("--help="))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ResolvedSockKvLayoutArgs {
+    policy: KvLayoutPolicy,
+    args: Vec<OsString>,
+}
+
+fn resolve_sock_kv_layout_args(args: Vec<OsString>) -> Result<ResolvedSockKvLayoutArgs> {
+    let mut passthrough = Vec::with_capacity(args.len());
+    let mut policy = KvLayoutPolicy::standard();
+    let mut iter = args.into_iter().peekable();
+
+    while let Some(arg) = iter.next() {
+        let Some(text) = arg.to_str() else {
+            passthrough.push(arg);
+            continue;
+        };
+
+        if text == "--tmh-kv-policy" || text.starts_with("--tmh-kv-policy=") {
+            bail!(
+                "--tmh-kv-policy has been removed from the sock CLI; use --kv-layout standard or --kv-layout tmh"
+            );
+        }
+
+        if text == "--kv-layout" {
+            let value = iter
+                .next()
+                .context("--kv-layout requires a value: standard or tmh")?;
+            policy = kv_layout_policy_from_os_value(&value)?;
+            continue;
+        }
+
+        if let Some(value) = text.strip_prefix("--kv-layout=") {
+            policy = kv_layout_policy_from_str(value)?;
+            continue;
+        }
+
+        passthrough.push(arg);
+    }
+
+    policy.canonicalize();
+    Ok(ResolvedSockKvLayoutArgs {
+        policy,
+        args: passthrough,
+    })
+}
+
+fn kv_layout_policy_from_os_value(value: &OsString) -> Result<KvLayoutPolicy> {
+    let value = value
+        .to_str()
+        .context("--kv-layout value must be valid UTF-8")?;
+    kv_layout_policy_from_str(value)
+}
+
+fn kv_layout_policy_from_str(value: &str) -> Result<KvLayoutPolicy> {
+    match value {
+        "standard" => Ok(KvLayoutPolicy::standard()),
+        "tmh" => Ok(KvLayoutPolicy::tmh_accounting()),
+        "tmh-physical" | "tmh_physical" | "physical" => Ok(KvLayoutPolicy::tmh_physical()),
+        _ => {
+            let layout = value.parse::<KvLayoutId>()?;
+            Ok(match layout {
+                KvLayoutId::StandardPaged => KvLayoutPolicy::standard(),
+                KvLayoutId::TmhFidelityPaged => KvLayoutPolicy::tmh_accounting(),
+            })
+        }
+    }
+}
+
+fn validate_sock_kv_layout_policy(policy: &KvLayoutPolicy) -> Result<()> {
+    let host = default_host_snapshot();
+    let runtime = host.runtime_contract();
+    let requested_environment = sock_core::RequestedEnvironment {
+        operating_system: host.operating_system,
+        accelerator_vendor: host.accelerator_vendor,
+        gpu_arches: host.gpu_arches,
+        cuda_version: host.cuda_version,
+        driver_version: host.driver_version,
+        python_abi: host.python_abi,
+        libc_abi: host.libc_abi,
+    };
+    let layout_backend = KvLayoutBackend::for_policy(policy);
+    layout_backend
+        .validate(
+            policy,
+            &requested_environment,
+            &runtime.preferred_backend_families,
+        )
+        .with_context(|| {
+            format!(
+                "KV layout {} is not compatible with the detected {} runtime",
+                policy.layout.as_str(),
+                runtime.profile.as_str()
+            )
+        })?;
+    Ok(())
 }
 
 fn run_install_runtime(

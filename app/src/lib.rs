@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use sock_core::{
     AcceleratorVendor, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer, CoveragePlane,
     DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode, GuaranteeLevel,
-    GuaranteeTarget, MaterializationExecutionReport, ModelRef, OperatingSystem,
+    GuaranteeTarget, KvLayoutPolicy, MaterializationExecutionReport, ModelRef, OperatingSystem,
     OptimizationExplainDocument, OptimizationLevel, OptimizationPolicy, RawRequest, ReplayBundle,
     ReplayProofDocument, RequestedEnvironment, RewriteTraceDocument, ShapePoint, ShapePolicy,
     ShapeRange, TargetEngine, WarmupPolicy,
@@ -52,6 +52,7 @@ pub fn default_request_for_host(host: &PlannerHostSnapshot) -> RawRequest {
             pipeline_parallelism: 1,
             replicas: 1,
         },
+        kv_layout_policy: KvLayoutPolicy::standard(),
         backend_policy: BackendPolicy {
             preferred_families: runtime.preferred_backend_families.clone(),
             packaging_strategy: sock_core::PackagingStrategy::PreferPrebuiltThenAot,

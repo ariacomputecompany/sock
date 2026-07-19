@@ -47,6 +47,40 @@ fn serve_delegates_help_to_vendored_vllm_cli_when_runtime_available() {
 }
 
 #[test]
+fn serve_cache_help_includes_canonical_kv_layout_flag() {
+    if !vendored_vllm_runtime_available() {
+        return;
+    }
+
+    let mut cmd = Command::cargo_bin("sock").expect("sock binary");
+    cmd.env("SOCK_TEST_HOST_PROFILE", "amd-gfx1151")
+        .args(["serve", "--help=CacheConfig"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--kv-layout"))
+        .stdout(predicate::str::contains("standard"))
+        .stdout(predicate::str::contains("tmh"));
+}
+
+#[test]
+fn serve_rejects_removed_tmh_policy_flag() {
+    sock_cmd()
+        .args(["serve", "--tmh-kv-policy", "accounting"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--tmh-kv-policy has been removed"));
+}
+
+#[test]
+fn serve_rejects_physical_tmh_until_storage_and_kernels_exist() {
+    sock_cmd()
+        .args(["serve", "--kv-layout", "physical"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("physical TMH requires"));
+}
+
+#[test]
 fn bench_delegates_help_to_vendored_vllm_cli_when_runtime_available() {
     if !vendored_vllm_runtime_available() {
         return;

@@ -1087,6 +1087,7 @@ mod tests {
                 pipeline_parallelism: 1,
                 replicas: 1,
             },
+            kv_layout_policy: crate::KvLayoutPolicy::standard(),
             backend_policy: crate::BackendPolicy {
                 preferred_families: vec![
                     crate::BackendFamily::Triton,
@@ -1177,6 +1178,16 @@ mod tests {
         let a = base_request().normalize().expect("normalized");
         let mut changed = base_request();
         changed.topology.tensor_parallelism = 4;
+        let b = changed.normalize().expect("normalized");
+
+        assert_ne!(a.identity, b.identity);
+    }
+
+    #[test]
+    fn kv_layout_changes_invalidate_identity() {
+        let a = base_request().normalize().expect("normalized");
+        let mut changed = base_request();
+        changed.kv_layout_policy = crate::KvLayoutPolicy::tmh_accounting();
         let b = changed.normalize().expect("normalized");
 
         assert_ne!(a.identity, b.identity);

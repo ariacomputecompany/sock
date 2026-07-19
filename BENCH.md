@@ -315,10 +315,10 @@ Direct chat quality check: 220 completion tokens in 8.86 s (24.84 completion tok
 
 This run compares regular `sock serve` against the TMH allocator-path runtime
 policy on the same endpoint suite. The important boundary is explicit:
-`--tmh-kv-policy accounting` is wired into live vendored-vLLM `KVCacheManager`
-allocation and records TMH pressure during real traffic, while
-`--tmh-kv-policy physical` currently fails closed until mixed-fidelity warm-page
-tensors and attention kernels are implemented.
+`--kv-layout tmh` is wired into live vendored-vLLM `KVCacheManager` allocation
+and records TMH pressure during real traffic. Physical TMH currently fails
+closed until mixed-fidelity warm-page tensors and attention kernels are
+implemented.
 
 | Field | Value |
 | --- | --- |
@@ -326,7 +326,7 @@ tensors and attention kernels are implemented.
 | Serve path | `sock serve` OpenAI-compatible endpoint |
 | Serve profile | `max_model_len=2048`, `max_num_seqs=4`, `max_num_batched_tokens=1024`, `gpu_memory_utilization=0.35`, `enforce_eager=true` |
 | Suite shape | 10 smoke pressure cases, concurrency 1/2/4, 1 warmup batch, 1 measured batch, 10 streaming TTFT probes |
-| TMH policy | `--tmh-kv-policy accounting --tmh-hot-budget-pct 25` |
+| TMH layout | `--kv-layout tmh --tmh-hot-budget-pct 25` |
 
 | Runtime mode | Wall clock | Mean TTFT | Target retention mean | C1 mean tok/s | C2 mean tok/s | C4 mean tok/s |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |

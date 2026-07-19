@@ -1338,6 +1338,7 @@ def get_kv_cache_config_from_groups(
             num_blocks=1,
             kv_cache_tensors=[],
             kv_cache_groups=kv_cache_groups,
+            kv_layout=vllm_config.cache_config.kv_layout,
             tmh_kv_policy=vllm_config.cache_config.tmh_kv_policy,
             tmh_hot_budget_pct=vllm_config.cache_config.tmh_hot_budget_pct,
         )
@@ -1399,6 +1400,7 @@ def get_kv_cache_config_from_groups(
         num_blocks=num_blocks,
         kv_cache_tensors=kv_cache_tensors,
         kv_cache_groups=kv_cache_groups,
+        kv_layout=vllm_config.cache_config.kv_layout,
         tmh_kv_policy=vllm_config.cache_config.tmh_kv_policy,
         tmh_hot_budget_pct=vllm_config.cache_config.tmh_hot_budget_pct,
     )

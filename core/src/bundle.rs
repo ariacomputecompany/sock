@@ -351,6 +351,7 @@ mod tests {
                 pipeline_parallelism: 1,
                 replicas: 1,
             },
+            kv_layout_policy: crate::KvLayoutPolicy::standard(),
             backend_policy: BackendPolicy {
                 preferred_families: vec![BackendFamily::FlashInfer, BackendFamily::Triton],
                 packaging_strategy: crate::PackagingStrategy::PreferPrebuiltThenAot,
