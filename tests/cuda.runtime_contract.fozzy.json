@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "name": "cuda-runtime-contract",
+  "steps": [
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nsingle_json=$(mktemp)\ntwo_json=$(mktemp)\nSOCK_TEST_HOST_PROFILE=nvidia-sm90 cargo run --quiet --bin sock -- doctor --format json > \"$single_json\"\nSOCK_TEST_HOST_PROFILE=nvidia-sm90-2gpu cargo run --quiet --bin sock -- doctor --format json > \"$two_json\"\npython3 - \"$single_json\" \"$two_json\" <<'PY'\nimport json, sys\nsingle = json.load(open(sys.argv[1]))\ntwo = json.load(open(sys.argv[2]))\nassert single['accelerator_vendor'] == 'Nvidia'\nassert single['device_count'] == 1\nassert single['runtime_contract']['profile'] == 'cuda'\nassert single['runtime_contract']['vllm_target_device'] == 'cuda'\nassert single['runtime_contract']['default_tensor_parallelism'] == 1\nassert single['runtime_contract']['env_defaults']['CUDA_DEVICE_ORDER'] == 'PCI_BUS_ID'\nassert single['runtime_contract']['env_defaults']['CUDA_MODULE_LOADING'] == 'LAZY'\nassert single['runtime_contract']['env_defaults']['VLLM_WORKER_MULTIPROC_METHOD'] == 'spawn'\nassert 'cuda.runtime_version' in single['runtime_contract']['required_witnesses']\nassert 'nvidia.compute_capability' in single['runtime_contract']['required_witnesses']\nassert 'CudaGraphs' in single['runtime_contract']['preferred_backend_families']\nassert 'AotInductor' in single['runtime_contract']['preferred_backend_families']\nassert two['accelerator_vendor'] == 'Nvidia'\nassert two['device_count'] == 2\nassert two['runtime_contract']['default_tensor_parallelism'] == 2\nassert two['runtime_contract']['env_defaults'] == single['runtime_contract']['env_defaults']\nPY\nprintf 'cuda-runtime-contract\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "cuda-runtime-contract\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\nsingle_json=$(mktemp)\ntwo_json=$(mktemp)\nSOCK_TEST_HOST_PROFILE=nvidia-sm90 cargo run --quiet --bin sock -- doctor --format json > \"$single_json\"\nSOCK_TEST_HOST_PROFILE=nvidia-sm90-2gpu cargo run --quiet --bin sock -- doctor --format json > \"$two_json\"\npython3 - \"$single_json\" \"$two_json\" <<'PY'\nimport json, sys\nsingle = json.load(open(sys.argv[1]))\ntwo = json.load(open(sys.argv[2]))\nassert single['accelerator_vendor'] == 'Nvidia'\nassert single['device_count'] == 1\nassert single['runtime_contract']['profile'] == 'cuda'\nassert single['runtime_contract']['vllm_target_device'] == 'cuda'\nassert single['runtime_contract']['default_tensor_parallelism'] == 1\nassert single['runtime_contract']['env_defaults']['CUDA_DEVICE_ORDER'] == 'PCI_BUS_ID'\nassert single['runtime_contract']['env_defaults']['CUDA_MODULE_LOADING'] == 'LAZY'\nassert single['runtime_contract']['env_defaults']['VLLM_WORKER_MULTIPROC_METHOD'] == 'spawn'\nassert 'cuda.runtime_version' in single['runtime_contract']['required_witnesses']\nassert 'nvidia.compute_capability' in single['runtime_contract']['required_witnesses']\nassert 'CudaGraphs' in single['runtime_contract']['preferred_backend_families']\nassert 'AotInductor' in single['runtime_contract']['preferred_backend_families']\nassert two['accelerator_vendor'] == 'Nvidia'\nassert two['device_count'] == 2\nassert two['runtime_contract']['default_tensor_parallelism'] == 2\nassert two['runtime_contract']['env_defaults'] == single['runtime_contract']['env_defaults']\nPY\nprintf 'cuda-runtime-contract\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "cuda-runtime-contract\n",
+      "expect_stderr": ""
+    },
+    {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\npy_bin=python3\nif [ -x vllm/.venv/bin/python ]; then\n  py_bin=vllm/.venv/bin/python\nfi\nmatrix_json=$(mktemp)\n\"$py_bin\" cuda-shim/run_matrix.py --json --inference-contract > \"$matrix_json\"\n\"$py_bin\" - \"$matrix_json\" <<'PY'\nimport json, sys\nmatrix = json.load(open(sys.argv[1]))\nassert matrix['ok'] is False\nassert matrix['scenario_count'] == 5\nby_name = {row['scenario']: row for row in matrix['results']}\nassert by_name['rtx4090_single_gpu_flashinfer_gptq']['inference_contract']['ok'] is True\nassert by_name['h100_fp8_cutlass_mla']['inference_contract']['ok'] is True\nblackwell = by_name['blackwell_nvfp4']['inference_contract']\nassert blackwell['ok'] is True\nassert blackwell['tmh_pressure']['layout'] == 'tmh_fidelity_paged_kv'\nassert blackwell['tmh_pressure']['reduction_pct'] > 40.0\ninvalid = by_name['invalid_launch_blocking_with_graphs']['inference_contract']\nassert invalid['ok'] is False\nassert invalid['failure_reasons']\nPY\nprintf 'cuda-shim-inference-contract\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "cuda-shim-inference-contract\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
+      "type": "proc_spawn",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\npy_bin=python3\nif [ -x vllm/.venv/bin/python ]; then\n  py_bin=vllm/.venv/bin/python\nfi\nmatrix_json=$(mktemp)\n\"$py_bin\" cuda-shim/run_matrix.py --json --inference-contract > \"$matrix_json\"\n\"$py_bin\" - \"$matrix_json\" <<'PY'\nimport json, sys\nmatrix = json.load(open(sys.argv[1]))\nassert matrix['ok'] is False\nassert matrix['scenario_count'] == 5\nby_name = {row['scenario']: row for row in matrix['results']}\nassert by_name['rtx4090_single_gpu_flashinfer_gptq']['inference_contract']['ok'] is True\nassert by_name['h100_fp8_cutlass_mla']['inference_contract']['ok'] is True\nblackwell = by_name['blackwell_nvfp4']['inference_contract']\nassert blackwell['ok'] is True\nassert blackwell['tmh_pressure']['layout'] == 'tmh_fidelity_paged_kv'\nassert blackwell['tmh_pressure']['reduction_pct'] > 40.0\ninvalid = by_name['invalid_launch_blocking_with_graphs']['inference_contract']\nassert invalid['ok'] is False\nassert invalid['failure_reasons']\nPY\nprintf 'cuda-shim-inference-contract\\n'"
+      ],
+      "expect_exit": 0,
+      "expect_stdout": "cuda-shim-inference-contract\n",
+      "expect_stderr": ""
+    }
+  ]
+}

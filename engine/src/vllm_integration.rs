@@ -715,6 +715,7 @@ mod tests {
             python_abi: "cp311".to_owned(),
             libc_abi: "glibc-2.35".to_owned(),
             flashinfer_prebuilt_available: true,
+            device_count: 1,
         }
     }
 

@@ -9,17 +9,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.sock_runtime_env import (
-    apply_python_runtime_contract,
-    apply_rocm_wsl_runtime_defaults,
+    apply_runtime_profile,
 )
 
 
 def apply_sock_runtime_profile() -> None:
     profile = os.environ.get("SOCK_RUNTIME_PROFILE", "").strip().lower()
-    if profile in {"rocm", "rocm-wsl", "amd"}:
-        apply_rocm_wsl_runtime_defaults()
-    else:
-        apply_python_runtime_contract()
+    apply_runtime_profile(profile)
 
 
 def apply_sock_tmh_cli_defaults() -> None:

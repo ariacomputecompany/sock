@@ -16,6 +16,7 @@ from sock_cuda_shim.device import CudaDevice
 from sock_cuda_shim.diagnostics import evaluate_readiness
 from sock_cuda_shim.distributed import DistributedPlan
 from sock_cuda_shim.environment import CudaEnvironment
+from sock_cuda_shim.inference import run_inference_contract
 from sock_cuda_shim.kv_cache import (
     KVLayout,
     KVPageSpec,
@@ -144,3 +145,14 @@ def test_default_build_covers_first_rented_4090_path() -> None:
             }
         ),
     )
+
+
+def test_inference_contract_reports_blackwell_tmh_pressure() -> None:
+    scenario = next(item for item in CANONICAL_SCENARIOS if item.name == "blackwell_nvfp4")
+    report = run_inference_contract(scenario, tmh_policy=TMHPhysicalPolicy())
+
+    assert report.ready is True
+    assert report.selected_attention_backend == "FLASHINFER"
+    assert report.kv_layout == "tmh_fidelity_paged_kv"
+    assert report.tmh_pressure is not None
+    assert report.tmh_pressure["tmh_effective_bytes"] < report.tmh_pressure["regular_bytes"]

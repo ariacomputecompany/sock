@@ -2,16 +2,16 @@ use std::process::Command;
 use std::sync::OnceLock;
 
 use sock_core::{
-    AcceleratorVendor, BackendFamily, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer,
-    CoveragePlane, DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode,
-    GuaranteeLevel, GuaranteeTarget, MaterializationExecutionReport, ModelRef, OperatingSystem,
+    AcceleratorVendor, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer, CoveragePlane,
+    DiagnosticsDocument, EngineSource, ExecutionTopology, FailureMode, GuaranteeLevel,
+    GuaranteeTarget, MaterializationExecutionReport, ModelRef, OperatingSystem,
     OptimizationExplainDocument, OptimizationLevel, OptimizationPolicy, RawRequest, ReplayBundle,
     ReplayProofDocument, RequestedEnvironment, RewriteTraceDocument, ShapePoint, ShapePolicy,
     ShapeRange, TargetEngine, WarmupPolicy,
 };
 use sock_engine::{
-    build_soc_plan_document, build_vllm_entrypoint_document, build_vllm_integration_document, vllm,
-    BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome,
+    BuildScope, PlanError, Planner, PlannerHostSnapshot, PlanningOutcome, build_soc_plan_document,
+    build_vllm_entrypoint_document, build_vllm_integration_document, vllm,
 };
 
 #[must_use]
@@ -27,6 +27,7 @@ pub fn default_request() -> RawRequest {
 
 #[must_use]
 pub fn default_request_for_host(host: &PlannerHostSnapshot) -> RawRequest {
+    let runtime = host.runtime_contract();
     RawRequest {
         engine: TargetEngine::Vllm,
         model: ModelRef {
@@ -47,12 +48,12 @@ pub fn default_request_for_host(host: &PlannerHostSnapshot) -> RawRequest {
             libc_abi: host.libc_abi.clone(),
         },
         topology: ExecutionTopology {
-            tensor_parallelism: default_tensor_parallelism(host.accelerator_vendor),
+            tensor_parallelism: runtime.default_tensor_parallelism,
             pipeline_parallelism: 1,
             replicas: 1,
         },
         backend_policy: BackendPolicy {
-            preferred_families: preferred_backend_families(host.accelerator_vendor),
+            preferred_families: runtime.preferred_backend_families.clone(),
             packaging_strategy: sock_core::PackagingStrategy::PreferPrebuiltThenAot,
             runtime_jit_policy: sock_core::RuntimeJitPolicy {
                 disposition: sock_core::RuntimeJitDisposition::Forbidden,
@@ -123,29 +124,10 @@ pub fn default_request_for_host(host: &PlannerHostSnapshot) -> RawRequest {
                 precedence: 1,
                 entries: vec![ConfigEntry {
                     key: "tensor_parallel_size".to_owned(),
-                    value: default_tensor_parallelism(host.accelerator_vendor).to_string(),
+                    value: runtime.default_tensor_parallelism.to_string(),
                 }],
             },
         ],
-    }
-}
-
-fn preferred_backend_families(vendor: AcceleratorVendor) -> Vec<BackendFamily> {
-    match vendor {
-        AcceleratorVendor::Nvidia => vec![
-            BackendFamily::FlashInfer,
-            BackendFamily::Triton,
-            BackendFamily::CudaGraphs,
-        ],
-        AcceleratorVendor::Amd => vec![BackendFamily::Triton],
-        AcceleratorVendor::Unknown => Vec::new(),
-    }
-}
-
-fn default_tensor_parallelism(vendor: AcceleratorVendor) -> u16 {
-    match vendor {
-        AcceleratorVendor::Nvidia => 2,
-        AcceleratorVendor::Amd | AcceleratorVendor::Unknown => 1,
     }
 }
 
@@ -237,12 +219,17 @@ fn detect_host_snapshot() -> PlannerHostSnapshot {
         python_abi,
         libc_abi,
         flashinfer_prebuilt_available: false,
+        device_count: 0,
     }
 }
 
 fn test_host_snapshot_from_env() -> Option<PlannerHostSnapshot> {
     let profile = std::env::var("SOCK_TEST_HOST_PROFILE").ok()?;
-    match profile.as_str() {
+    test_host_snapshot_from_env_name(&profile)
+}
+
+fn test_host_snapshot_from_env_name(profile: &str) -> Option<PlannerHostSnapshot> {
+    match profile {
         "nvidia-sm90" => Some(PlannerHostSnapshot {
             operating_system: OperatingSystem::Linux,
             accelerator_vendor: AcceleratorVendor::Nvidia,
@@ -252,6 +239,18 @@ fn test_host_snapshot_from_env() -> Option<PlannerHostSnapshot> {
             python_abi: "cp311".to_owned(),
             libc_abi: "glibc-2.35".to_owned(),
             flashinfer_prebuilt_available: true,
+            device_count: 1,
+        }),
+        "nvidia-sm90-2gpu" => Some(PlannerHostSnapshot {
+            operating_system: OperatingSystem::Linux,
+            accelerator_vendor: AcceleratorVendor::Nvidia,
+            gpu_arches: vec!["sm90".to_owned(), "sm90".to_owned()],
+            cuda_version: "12.4".to_owned(),
+            driver_version: "550.54".to_owned(),
+            python_abi: "cp311".to_owned(),
+            libc_abi: "glibc-2.35".to_owned(),
+            flashinfer_prebuilt_available: true,
+            device_count: 2,
         }),
         "amd-gfx1151" => Some(PlannerHostSnapshot {
             operating_system: OperatingSystem::Linux,
@@ -262,6 +261,7 @@ fn test_host_snapshot_from_env() -> Option<PlannerHostSnapshot> {
             python_abi: "cp312".to_owned(),
             libc_abi: "glibc-2.39".to_owned(),
             flashinfer_prebuilt_available: false,
+            device_count: 1,
         }),
         "unknown" => Some(PlannerHostSnapshot {
             operating_system: OperatingSystem::Linux,
@@ -272,6 +272,7 @@ fn test_host_snapshot_from_env() -> Option<PlannerHostSnapshot> {
             python_abi: "unknown".to_owned(),
             libc_abi: "unknown".to_owned(),
             flashinfer_prebuilt_available: false,
+            device_count: 0,
         }),
         _ => None,
     }
@@ -308,6 +309,7 @@ fn detect_rocm_snapshot(
         python_abi: python_abi.to_owned(),
         libc_abi: libc_abi.to_owned(),
         flashinfer_prebuilt_available: false,
+        device_count: 1,
     })
 }
 
@@ -323,14 +325,22 @@ fn detect_nvidia_snapshot(
             "--format=csv,noheader",
         ],
     )?;
-    let first_line = output
+    let rows = output
         .lines()
         .map(str::trim)
-        .find(|line| !line.is_empty())?;
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    let first_line = rows.first()?;
     let mut parts = first_line.split(',').map(str::trim);
-    let compute_cap = parts.next()?;
+    parts.next()?;
     let driver_version = parts.next().unwrap_or_default().to_owned();
-    let gpu_arches = vec![parse_nvidia_compute_capability(compute_cap)];
+    let mut gpu_arches = rows
+        .iter()
+        .filter_map(|line| line.split(',').map(str::trim).next())
+        .map(parse_nvidia_compute_capability)
+        .collect::<Vec<_>>();
+    gpu_arches.sort();
+    gpu_arches.dedup();
     let cuda_version = run_command("nvidia-smi", &[])
         .and_then(|text| parse_cuda_version_from_nvidia_smi(&text))
         .unwrap_or_default();
@@ -344,6 +354,7 @@ fn detect_nvidia_snapshot(
         python_abi: python_abi.to_owned(),
         libc_abi: libc_abi.to_owned(),
         flashinfer_prebuilt_available: true,
+        device_count: rows.len().try_into().unwrap_or(u16::MAX),
     })
 }
 
@@ -440,5 +451,24 @@ mod tests {
             parse_glibc_abi("ldd (Ubuntu GLIBC 2.39-0ubuntu8.7) 2.39"),
             "glibc-2.39"
         );
+    }
+
+    #[test]
+    fn nvidia_single_gpu_profile_uses_single_rank_runtime_contract() {
+        let host = super::test_host_snapshot_from_env_name("nvidia-sm90").expect("host");
+        let request = super::default_request_for_host(&host);
+
+        assert_eq!(host.device_count, 1);
+        assert_eq!(request.topology.tensor_parallelism, 1);
+        assert_eq!(request.layered_config[1].entries[0].value, "1".to_owned());
+    }
+
+    #[test]
+    fn nvidia_two_gpu_profile_uses_two_rank_runtime_contract() {
+        let host = super::test_host_snapshot_from_env_name("nvidia-sm90-2gpu").expect("host");
+        let request = super::default_request_for_host(&host);
+
+        assert_eq!(host.device_count, 2);
+        assert_eq!(request.topology.tensor_parallelism, 2);
     }
 }

@@ -53,6 +53,26 @@ def apply_rocm_wsl_runtime_defaults() -> None:
     set_default_env("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
 
 
+def apply_cuda_runtime_defaults() -> None:
+    apply_python_runtime_contract()
+    set_default_env("VLLM_TARGET_DEVICE", "cuda")
+    set_default_env("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    set_default_env("CUDA_MODULE_LOADING", "LAZY")
+    set_default_env("VLLM_USE_V1", "1")
+    set_default_env("VLLM_USE_V2_MODEL_RUNNER", "1")
+    set_default_env("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
+
+
+def apply_runtime_profile(profile: str) -> None:
+    normalized = profile.strip().lower()
+    if normalized in {"rocm", "rocm-wsl", "amd"}:
+        apply_rocm_wsl_runtime_defaults()
+    elif normalized in {"cuda", "nvidia", "nva"}:
+        apply_cuda_runtime_defaults()
+    else:
+        apply_python_runtime_contract()
+
+
 def subprocess_env(*, rocm_wsl: bool = True) -> dict[str, str]:
     if rocm_wsl:
         apply_rocm_wsl_runtime_defaults()

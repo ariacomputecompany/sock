@@ -11,19 +11,19 @@ use sock_app::{
     rewrite_trace_for,
 };
 use sock_core::{
-    canonical_json, render_backend_decision, render_explain, render_plan_summary,
-    render_soc_explain, render_verification_report, AcceleratorVendor, BackendFamily,
-    BenchmarkCaseArtifactPaths, BenchmarkMatrixEntry, BenchmarkMatrixReport,
-    BenchmarkTraceReference, BuildMeasurementReport, DiagnosticsDocument,
+    AcceleratorVendor, BackendFamily, BenchmarkCaseArtifactPaths, BenchmarkMatrixEntry,
+    BenchmarkMatrixReport, BenchmarkTraceReference, BuildMeasurementReport, DiagnosticsDocument,
     MaterializationExecutionReport, MeasurementCaseReport, MeasurementComparisonReport,
     MeasurementPhaseTimings, OptimizationExplainDocument, OptimizationLevel, ReplayBundle,
-    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion,
+    ReplayBundleMetadata, ResolvedBuildPlan, RewriteTraceDocument, SchemaVersion, canonical_json,
+    render_backend_decision, render_explain, render_plan_summary, render_soc_explain,
+    render_verification_report,
 };
 use sock_engine::{
-    build_soc_plan_document, build_vllm_entrypoint_document, build_vllm_integration_document,
-    emit_vllm_entrypoints, validate_scoped_vllm_subset, BuildReadiness, BuildScope,
-    BuildTopologyScope, MaterializationExecutor, Planner, PlannerHostSnapshot, PlanningOutcome,
-    StorageRoots,
+    BuildReadiness, BuildScope, BuildTopologyScope, MaterializationExecutor, Planner,
+    PlannerHostSnapshot, PlanningOutcome, StorageRoots, build_soc_plan_document,
+    build_vllm_entrypoint_document, build_vllm_integration_document, emit_vllm_entrypoints,
+    validate_scoped_vllm_subset,
 };
 
 #[derive(Debug, Parser)]
@@ -762,29 +762,46 @@ fn emit_doctor(host: &PlannerHostSnapshot, format: OutputMode) -> Result<()> {
     match format {
         OutputMode::Summary => {
             println!(
-                "host os={:?} vendor={:?} arches={} cuda={} driver={} python_abi={} libc_abi={} flashinfer_prebuilt={}",
+                "host os={:?} vendor={:?} devices={} arches={} cuda={} driver={} python_abi={} libc_abi={} runtime_profile={} vllm_target={} flashinfer_prebuilt={}",
                 host.operating_system,
                 host.accelerator_vendor,
+                host.device_count,
                 host.gpu_arches.join(","),
                 host.cuda_version,
                 host.driver_version,
                 host.python_abi,
                 host.libc_abi,
+                host.runtime_contract().profile.as_str(),
+                host.runtime_contract().vllm_target_device,
                 host.flashinfer_prebuilt_available
             );
         }
         OutputMode::Json => {
+            let runtime_contract = host.runtime_contract();
             println!(
                 "{}",
                 canonical_json(&serde_json::json!({
                     "operating_system": format!("{:?}", host.operating_system),
                     "accelerator_vendor": format!("{:?}", host.accelerator_vendor),
+                    "device_count": host.device_count,
                     "gpu_arches": host.gpu_arches,
                     "cuda_version": host.cuda_version,
                     "driver_version": host.driver_version,
                     "python_abi": host.python_abi,
                     "libc_abi": host.libc_abi,
                     "flashinfer_prebuilt_available": host.flashinfer_prebuilt_available,
+                    "runtime_contract": {
+                        "profile": runtime_contract.profile.as_str(),
+                        "vllm_target_device": runtime_contract.vllm_target_device,
+                        "preferred_backend_families": runtime_contract.preferred_backend_families
+                            .iter()
+                            .map(|family| family.as_str())
+                            .collect::<Vec<_>>(),
+                        "default_tensor_parallelism": runtime_contract.default_tensor_parallelism,
+                        "env_defaults": runtime_contract.env_defaults(),
+                        "required_witnesses": runtime_contract.required_witnesses,
+                        "fail_closed_reasons": runtime_contract.fail_closed_reasons,
+                    },
                 }))?
             );
         }
@@ -848,21 +865,8 @@ fn configure_vllm_cli_env(
         prepend_path_env(repo_root.join("vllm"), "PYTHONPATH"),
     );
 
-    match host.accelerator_vendor {
-        AcceleratorVendor::Amd => {
-            command.env("SOCK_RUNTIME_PROFILE", "rocm-wsl");
-            command.env("VLLM_TARGET_DEVICE", "rocm");
-            command.env("VLLM_USE_V2_MODEL_RUNNER", "0");
-            command.env("VLLM_WSL2_ENABLE_PIN_MEMORY", "0");
-            command.env("VLLM_WORKER_MULTIPROC_METHOD", "spawn");
-        }
-        AcceleratorVendor::Nvidia => {
-            command.env("SOCK_RUNTIME_PROFILE", "cuda");
-            command.env("VLLM_TARGET_DEVICE", "cuda");
-        }
-        AcceleratorVendor::Unknown => {
-            command.env("SOCK_RUNTIME_PROFILE", "python");
-        }
+    for (key, value) in host.runtime_contract().env_defaults() {
+        command.env(key, value);
     }
 }
 

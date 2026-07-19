@@ -1,3 +1,4 @@
+pub mod accelerator;
 pub mod adapter;
 pub mod backend;
 pub mod bundle;
@@ -19,6 +20,7 @@ pub mod runtime;
 pub mod soc;
 pub mod verification;
 
+pub use accelerator::*;
 pub use adapter::*;
 pub use backend::*;
 pub use bundle::{ArtifactManifestDocument, ReplayBundle, ReplayBundleError, ReplayBundleMetadata};

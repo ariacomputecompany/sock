@@ -346,7 +346,7 @@ if __name__ == "__main__":
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{build_vllm_integration_document, vllm, Planner, PlannerHostSnapshot};
+    use crate::{Planner, PlannerHostSnapshot, build_vllm_integration_document, vllm};
     use sock_core::{
         AcceleratorVendor, BackendFamily, BackendPolicy, CachePolicy, ConfigEntry, ConfigLayer,
         CoveragePlane, EngineSource, ExecutionTopology, FailureMode, GuaranteeLevel,
@@ -364,6 +364,7 @@ mod tests {
             python_abi: "cp311".to_owned(),
             libc_abi: "glibc-2.35".to_owned(),
             flashinfer_prebuilt_available: true,
+            device_count: 1,
         }
     }
 
@@ -476,18 +477,24 @@ mod tests {
         let entrypoints =
             build_vllm_entrypoint_document(&outcome, &integration).expect("entrypoints");
 
-        assert!(entrypoints
-            .entrypoints
-            .iter()
-            .any(|entrypoint| entrypoint.scope_name == "prefill_attention"));
-        assert!(entrypoints
-            .entrypoints
-            .iter()
-            .any(|entrypoint| entrypoint.scope_name == "decode_attention"));
-        assert!(entrypoints
-            .entrypoints
-            .iter()
-            .all(|entrypoint| entrypoint.wrapper_path.starts_with("vllm-entrypoints/")));
+        assert!(
+            entrypoints
+                .entrypoints
+                .iter()
+                .any(|entrypoint| entrypoint.scope_name == "prefill_attention")
+        );
+        assert!(
+            entrypoints
+                .entrypoints
+                .iter()
+                .any(|entrypoint| entrypoint.scope_name == "decode_attention")
+        );
+        assert!(
+            entrypoints
+                .entrypoints
+                .iter()
+                .all(|entrypoint| entrypoint.wrapper_path.starts_with("vllm-entrypoints/"))
+        );
         let decode = entrypoints
             .entrypoints
             .iter()

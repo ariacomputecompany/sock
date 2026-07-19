@@ -54,7 +54,7 @@ than by copying into this directory.
 ```bash
 cd /home/deepsaint/work/sock
 python -m pytest cuda-shim/tests -q
-python cuda-shim/run_matrix.py --json
+python cuda-shim/run_matrix.py --json --inference-contract
 ```
 
 Passing these tests does not prove CUDA kernel correctness. It proves sock is

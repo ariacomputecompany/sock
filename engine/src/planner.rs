@@ -1,23 +1,24 @@
 use std::collections::BTreeMap;
 
 use sock_core::{
-    AbiFingerprint, AdapterBackendBinding, AdapterError, AdapterSurvey, AdmissibilityVerdict,
-    ArtifactAcquisition, ArtifactAdmissibilityProof, ArtifactClass, ArtifactClosure,
-    ArtifactManifestEntry, ArtifactPortability, ArtifactRequirement, BackendAdmissibilityProof,
-    BackendCandidate, BackendCapability, BackendCapabilityRegistry, BackendDecisionEntry,
-    BackendDecisionPlan, BackendExtensionFingerprint, BackendExtensionManifest, BackendFamily,
-    BackendSelection, CanonicalError, CapabilityProvenance, CapabilityWitness, CompileRegion,
-    CoveragePlane, CoverageState, CoverageWitness, EngineAdapter, ExecutionTopology,
-    FanoutStrategy, GuaranteeDimension, GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel,
-    HazardClass, LeaderAssignment, MaterializationGraph, MaterializationNode,
-    MaterializationNodeKind, MaterializationWave, NodeExecutionContract, NormalizedRequest,
-    OperatingSystem, OptimizationEnvelope, PackagingStrategy, PassTrace, PortabilityFingerprint,
-    QueueDiscipline, QueueKind, RangeIntent, RankDisposition, RawRequest, ResidualRuntimeRisk,
-    ResolvedBuildPlan, RewritePassContract, RewritePhase, RuntimeJitDisposition,
-    RuntimeJitEvidence, RuntimeRoi, ServePhase, ShapeEnvelope, ShapeEnvelopeNode, ShapePoint,
-    ShapeRange, StructuralIdentity, ValidationStatus, WarmupContradiction, WarmupCoverageProof,
-    WarmupObligation, WaveEstimate, WaveExecutionContract, artifact_manifest_identity,
-    artifact_node_handle, canonical_hash, fanout_node_handle,
+    AbiFingerprint, AcceleratorRuntimeContract, AdapterBackendBinding, AdapterError, AdapterSurvey,
+    AdmissibilityVerdict, ArtifactAcquisition, ArtifactAdmissibilityProof, ArtifactClass,
+    ArtifactClosure, ArtifactManifestEntry, ArtifactPortability, ArtifactRequirement,
+    BackendAdmissibilityProof, BackendCandidate, BackendCapability, BackendCapabilityRegistry,
+    BackendDecisionEntry, BackendDecisionPlan, BackendExtensionFingerprint,
+    BackendExtensionManifest, BackendFamily, BackendSelection, CanonicalError,
+    CapabilityProvenance, CapabilityWitness, CompileRegion, CoveragePlane, CoverageState,
+    CoverageWitness, EngineAdapter, ExecutionTopology, FanoutStrategy, GuaranteeDimension,
+    GuaranteeEnvelope, GuaranteeEvidence, GuaranteeLevel, HazardClass, LeaderAssignment,
+    MaterializationGraph, MaterializationNode, MaterializationNodeKind, MaterializationWave,
+    NodeExecutionContract, NormalizedRequest, OperatingSystem, OptimizationEnvelope,
+    PackagingStrategy, PassTrace, PortabilityFingerprint, QueueDiscipline, QueueKind, RangeIntent,
+    RankDisposition, RawRequest, ResidualRuntimeRisk, ResolvedBuildPlan, RewritePassContract,
+    RewritePhase, RuntimeJitDisposition, RuntimeJitEvidence, RuntimeRoi, ServePhase, ShapeEnvelope,
+    ShapeEnvelopeNode, ShapePoint, ShapeRange, StructuralIdentity, ValidationStatus,
+    WarmupContradiction, WarmupCoverageProof, WarmupObligation, WaveEstimate,
+    WaveExecutionContract, artifact_manifest_identity, artifact_node_handle, canonical_hash,
+    fanout_node_handle,
 };
 use thiserror::Error;
 
@@ -33,6 +34,19 @@ pub struct PlannerHostSnapshot {
     pub python_abi: String,
     pub libc_abi: String,
     pub flashinfer_prebuilt_available: bool,
+    pub device_count: u16,
+}
+
+impl PlannerHostSnapshot {
+    #[must_use]
+    pub fn runtime_contract(&self) -> AcceleratorRuntimeContract {
+        AcceleratorRuntimeContract::for_host(
+            self.accelerator_vendor,
+            &self.gpu_arches,
+            self.device_count,
+            self.flashinfer_prebuilt_available,
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -88,8 +102,12 @@ impl Planner {
                 secondary: Vec::new(),
             }
         };
-        let compile_regions =
-            self.compile_regions(&selected_backends, &backend_registry, &adapter_survey, scope);
+        let compile_regions = self.compile_regions(
+            &selected_backends,
+            &backend_registry,
+            &adapter_survey,
+            scope,
+        );
         if compile_regions.is_empty() {
             return Err(PlanError::Validation(
                 "scoped build request resolved to an empty compile-region closure".to_owned(),
@@ -248,6 +266,7 @@ impl Planner {
         normalized: &NormalizedRequest,
         adapter_survey: &AdapterSurvey,
     ) -> Vec<CapabilityWitness> {
+        let runtime_contract = self.host.runtime_contract();
         let mut witnesses = vec![
             witness(
                 "platform.os",
@@ -268,6 +287,21 @@ impl Planner {
                 "platform.cuda",
                 normalized.environment.cuda_version.clone(),
                 "requested-environment",
+            ),
+            witness(
+                "platform.device_count",
+                self.host.device_count.to_string(),
+                "host-discovery",
+            ),
+            witness(
+                "runtime.profile",
+                runtime_contract.profile.as_str().to_owned(),
+                "accelerator-runtime-contract",
+            ),
+            witness(
+                "runtime.vllm_target_device",
+                runtime_contract.vllm_target_device.clone(),
+                "accelerator-runtime-contract",
             ),
             witness(
                 "platform.python_abi",
@@ -296,6 +330,76 @@ impl Planner {
                 "available",
                 "host-discovery",
             ));
+        }
+        if normalized.environment.accelerator_vendor == sock_core::AcceleratorVendor::Nvidia {
+            if !normalized.environment.gpu_arches.is_empty() {
+                witnesses.push(witness(
+                    "nvidia.compute_capability",
+                    normalized.environment.gpu_arches.join(","),
+                    "host-discovery",
+                ));
+            }
+            if !normalized.environment.driver_version.is_empty() {
+                witnesses.push(witness(
+                    "nvidia.driver_version",
+                    normalized.environment.driver_version.clone(),
+                    "host-discovery",
+                ));
+            }
+            if !normalized.environment.cuda_version.is_empty() {
+                witnesses.push(witness(
+                    "cuda.runtime_version",
+                    normalized.environment.cuda_version.clone(),
+                    "host-discovery",
+                ));
+            }
+            if runtime_contract
+                .env_defaults()
+                .iter()
+                .any(|(key, value)| key == "CUDA_DEVICE_ORDER" && value == "PCI_BUS_ID")
+            {
+                witnesses.push(witness(
+                    "cuda.device_order.pci_bus_id",
+                    "true",
+                    "accelerator-runtime-contract",
+                ));
+            }
+            if normalized.environment.gpu_arches.iter().any(|arch| {
+                matches!(
+                    sock_core::parse_nvidia_architecture_class(arch),
+                    Some(class) if class.supports_cuda_graphs()
+                )
+            }) {
+                witnesses.push(witness(
+                    "cuda.graphs",
+                    "available",
+                    "accelerator-runtime-contract",
+                ));
+            }
+            if normalized.environment.gpu_arches.iter().any(|arch| {
+                matches!(
+                    sock_core::parse_nvidia_architecture_class(arch),
+                    Some(class) if class.supports_tma()
+                )
+            }) {
+                witnesses.push(witness(
+                    "nvidia.tma",
+                    "available",
+                    "accelerator-runtime-contract",
+                ));
+            }
+            if normalized.environment.gpu_arches.iter().any(|arch| {
+                matches!(
+                    sock_core::parse_nvidia_architecture_class(arch),
+                    Some(class) if class.supports_nvfp4()
+                )
+            }) {
+                witnesses.push(witness(
+                    "nvidia.nvfp4",
+                    "available",
+                    "accelerator-runtime-contract",
+                ));
+            }
         }
         witnesses.extend(adapter_survey.diagnostics.iter().map(|diagnostic| {
             witness(
@@ -357,11 +461,11 @@ impl Planner {
                 supported_operating_systems: vec![OperatingSystem::Linux],
                 supported_accelerator_vendors: vec![sock_core::AcceleratorVendor::Nvidia],
                 allowed_acquisitions: vec![ArtifactAcquisition::UpstreamCacheBundle],
-                required_witnesses: Vec::new(),
+                required_witnesses: vec!["nvidia.tma".to_owned()],
                 legal_portability: vec![ArtifactPortability::AbiClusterPortable],
                 provenance: vec![provenance(
                     "vllm-adapter-survey",
-                    "AoTInductor reuse is bounded to stable region bundles",
+                    "AoTInductor reuse is bounded to stable region bundles and Hopper/Blackwell TMA-capable NVIDIA runtimes",
                 )],
             },
             BackendCapability {
@@ -369,7 +473,7 @@ impl Planner {
                 supported_operating_systems: vec![OperatingSystem::Linux],
                 supported_accelerator_vendors: vec![sock_core::AcceleratorVendor::Nvidia],
                 allowed_acquisitions: vec![ArtifactAcquisition::LocalAotBuild],
-                required_witnesses: Vec::new(),
+                required_witnesses: vec!["cuda.graphs".to_owned()],
                 legal_portability: vec![ArtifactPortability::TopologyScoped],
                 provenance: vec![provenance(
                     "vllm-adapter-survey",
@@ -401,13 +505,10 @@ impl Planner {
                 sock_core::AcceleratorVendor::Nvidia | sock_core::AcceleratorVendor::Amd
             );
         if !linux_supported {
-            return Err(PlanError::Validation(
-                format!(
-                    "planning is unsupported for operating_system={:?} accelerator_vendor={:?}",
-                    normalized.environment.operating_system,
-                    normalized.environment.accelerator_vendor
-                ),
-            ));
+            return Err(PlanError::Validation(format!(
+                "planning is unsupported for operating_system={:?} accelerator_vendor={:?}",
+                normalized.environment.operating_system, normalized.environment.accelerator_vendor
+            )));
         }
         let mut viable = Vec::new();
         for family in &normalized.backend_policy.preferred_families {
@@ -1112,6 +1213,7 @@ impl Planner {
             .residual_jit_surfaces
             .iter()
             .filter(|surface| surface_applies(surface.backend_family.as_str(), selected_backends))
+            .filter(|surface| surface_is_topology_applicable(normalized, surface))
             .filter(|surface| {
                 scope.is_unscoped()
                     || surface.affected_regions.iter().any(|region| {
@@ -1164,6 +1266,7 @@ impl Planner {
             .residual_jit_surfaces
             .iter()
             .filter(|surface| surface_applies(surface.backend_family.as_str(), selected_backends))
+            .filter(|surface| surface_is_topology_applicable(normalized, surface))
             .filter(|surface| {
                 compile_regions.iter().any(|region| {
                     surface
@@ -1176,11 +1279,7 @@ impl Planner {
                 let declared_required_warmup_scopes = surface
                     .required_warmup_scopes
                     .iter()
-                    .filter(|scope| {
-                        compile_regions
-                            .iter()
-                            .any(|region| &region.name == *scope)
-                    })
+                    .filter(|scope| compile_regions.iter().any(|region| &region.name == *scope))
                     .cloned()
                     .collect::<Vec<_>>();
                 let affected_regions = surface
@@ -1839,7 +1938,9 @@ fn backend_binding_is_supported(
 ) -> bool {
     match binding {
         AdapterBackendBinding::Primary => true,
-        AdapterBackendBinding::Fixed(family) => registry.entries.iter().any(|entry| entry.family == family),
+        AdapterBackendBinding::Fixed(family) => {
+            registry.entries.iter().any(|entry| entry.family == family)
+        }
     }
 }
 
@@ -1963,6 +2064,15 @@ fn contradiction_reasons(
         );
     }
     contradictions
+}
+
+fn surface_is_topology_applicable(
+    normalized: &NormalizedRequest,
+    surface: &sock_core::ResidualRuntimeJitSurface,
+) -> bool {
+    !(surface.topology_sensitive
+        && normalized.topology.tensor_parallelism == 1
+        && topology_context_requires_distributed_ranks(&surface.topology_context))
 }
 
 fn topology_context_requires_distributed_ranks(topology_context: &str) -> bool {
@@ -2274,6 +2384,7 @@ mod tests {
             python_abi: "cp311".to_owned(),
             libc_abi: "glibc-2.35".to_owned(),
             flashinfer_prebuilt_available: true,
+            device_count: 1,
         }
     }
 
@@ -2507,6 +2618,7 @@ mod tests {
         amd_host.cuda_version = "7.14.0".to_owned();
         amd_host.driver_version = "7.14.0".to_owned();
         amd_host.flashinfer_prebuilt_available = false;
+        amd_host.device_count = 1;
 
         let mut amd_request = request();
         amd_request.environment.accelerator_vendor = AcceleratorVendor::Amd;

@@ -113,7 +113,7 @@ CANONICAL_SCENARIOS: tuple[CudaScenario, ...] = (
         devices=(B200,),
         env=CudaEnvironment.from_mapping({"CUDA_DEVICE_ORDER": "PCI_BUS_ID"}),
         build=DEFAULT_BUILD,
-        kv_spec=KVPageSpec(16, 64, 8, 128, 128, Precision.NVFP4, KVLayout.TMH_FIDELITY_PAGED),
+        kv_spec=KVPageSpec(16, 64, 8, 128, 128, Precision.FP16, KVLayout.TMH_FIDELITY_PAGED),
         request=_request(4096, 16),
         attention=AttentionRequestShape(128, 8, 128, 8192, KVLayout.TMH_FIDELITY_PAGED, Precision.NVFP4),
         graph=CudaGraphPlan(batch_size=8, max_tokens=4096),
