@@ -309,6 +309,39 @@ accounting bug from "CUDA-wide overhead" to an architecture/profile-sensitive
 interaction, likely involving the 4090 `sm89` eager scheduling/cache path rather
 than the abstract sock CLI or benchmark harness.
 
+### CUDA TMH Accounting Fix Validation
+
+Commit `c4c3788` removes the false hot-path shape from TMH accounting. The
+accounting path now computes pressure from page spans instead of walking every
+layer/page pair during scheduler allocation, caches live-block byte accounting by
+request, and clears request accounting state on KV free. It also makes explicit
+`tmh_kv_policy=physical` fail closed before layout normalization so physical TMH
+cannot be silently downgraded to standard.
+
+| Host | Standard wall s | TMH wall s | Wall delta | Standard geomean tok/s | TMH geomean tok/s | Geomean delta | Raw summaries |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| RTX 4090 before fix | 367.83 | 383.62 | +4.29% | 107.58 | 103.81 | -3.51% | `benchmarks/2026-07-19-rtx4090-qwen3-8b/` |
+| RTX 4090 after fix | 368.20 | 368.13 | -0.02% | 107.48 | 107.48 | +0.00% | `benchmarks/2026-07-19-rtx4090-qwen3-8b-tmh-fix/` |
+| GB10 before fix | 1414.71 | 1389.09 | -1.81% | 28.07 | 28.59 | +1.87% | `benchmarks/2026-07-19-gb10-qwen3-8b/` |
+| GB10 after fix | 1405.59 | 1388.06 | -1.25% | 28.24 | 28.63 | +1.37% | `benchmarks/2026-07-19-gb10-qwen3-8b-tmh-fix/` |
+
+| Host | Case | Concurrency | Before TMH delta | After TMH delta |
+| --- | --- | ---: | ---: | ---: |
+| RTX 4090 | `long_context_summary_256` | 4 | -29.0% | -0.1% |
+| RTX 4090 | `extended_generation_768` | 4 | -12.0% | +0.2% |
+| RTX 4090 | `long_cosmology_512` | 4 | -5.3% | +0.0% |
+| GB10 | `long_context_summary_256` | 4 | +2.4% | +2.1% |
+| GB10 | `extended_generation_768` | 4 | +4.0% | +0.8% |
+| GB10 | `long_cosmology_512` | 4 | +2.6% | +2.0% |
+
+Production readout: the RTX 4090 regression was not a CUDA attention-kernel
+failure and not a real TMH memory-layout effect. It was CPU-side Python
+accounting placed inside the scheduler allocation path. After the fix, the same
+4090 suite returns to parity with standard while GB10 remains stable. Physical
+TMH remains fail-closed until mixed-fidelity tensors and layout-aware kernels are
+wired; accounting mode is now production-safe for observability and benchmarking
+without imposing a throughput tax.
+
 ## Supported sock vs Upstream vLLM Comparison: Qwen3-4B
 
 This is the current apples-to-apples comparison where both sock and an upstream
