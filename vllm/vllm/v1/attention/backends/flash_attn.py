@@ -812,6 +812,27 @@ class FlashAttentionImpl(AttentionImpl):
                 layer,
             )
 
+        from vllm.v1.tmh_physical import TMHPhysicalKVCache
+
+        if isinstance(kv_cache, TMHPhysicalKVCache):
+            from vllm.v1.attention.ops.tmh_triton_ops import (
+                tmh_backend_paged_attention,
+            )
+
+            return tmh_backend_paged_attention(
+                query=query,
+                cache=kv_cache,
+                attn_metadata=attn_metadata,
+                output=output,
+                softmax_scale=self.scale,
+                causal=attn_metadata.causal,
+                window_size=self.sliding_window,
+                softcap=self.logits_soft_cap,
+                alibi_slopes=self.alibi_slopes,
+                output_scale=output_scale,
+                sinks=self.sinks,
+            )
+
         # For decoder and cross-attention, use KV cache as before
         key_cache, value_cache = kv_cache.unbind(1)
         # Fix degenerate strides on size-1 dims (e.g. num_kv_heads=1 with TP).
@@ -1010,6 +1031,22 @@ class FlashAttentionImpl(AttentionImpl):
         if self.attn_type in (AttentionType.ENCODER_ONLY, AttentionType.ENCODER):
             # For encoder attention,
             # we use direct Q, K, V tensors without caching
+            return
+
+        from vllm.v1.tmh_physical import TMHPhysicalKVCache
+
+        if isinstance(kv_cache, TMHPhysicalKVCache):
+            from vllm.v1.attention.ops.tmh_triton_ops import (
+                tmh_backend_kv_cache_update,
+            )
+
+            tmh_backend_kv_cache_update(
+                layer=layer,
+                key=key,
+                value=value,
+                cache=kv_cache,
+                slot_mapping=slot_mapping,
+            )
             return
 
         # Scatter write into the KV cache using slot_mapping indices.

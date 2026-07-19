@@ -50,6 +50,29 @@ def test_tmh_pool_planning_preserves_warm_capacity_with_high_scheduler_concurren
     assert raw_pages + warm_pages == 29693
 
 
+def test_tmh_request_descriptor_tables_are_bounded_by_request_pages():
+    spec = TMHFullAttentionSpec(
+        block_size=16,
+        num_kv_heads=2,
+        head_size=4,
+        head_size_v=4,
+        dtype=torch.float16,
+        tmh_hot_budget_pct=25.0,
+        tmh_max_num_seqs=3,
+        tmh_max_model_pages=11,
+    )
+    backing = torch.empty(spec.physical_allocation_bytes(4096), dtype=torch.uint8)
+
+    cache = reshape_tmh_physical_kv_cache(
+        backing,
+        spec,
+        num_logical_blocks=4096,
+    )
+
+    assert cache.canonical_role_by_logical_block.shape == (4096,)
+    assert cache.request_block_by_row_page.shape == (3, 11)
+
+
 def descriptor(
     *,
     request_id: str = "req-1",

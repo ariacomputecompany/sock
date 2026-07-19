@@ -617,6 +617,28 @@ class TritonAttentionImpl(AttentionImpl):
                 layer,
             )
 
+        from vllm.v1.tmh_physical import TMHPhysicalKVCache
+
+        if isinstance(kv_cache, TMHPhysicalKVCache):
+            from vllm.v1.attention.ops.tmh_triton_ops import (
+                tmh_backend_paged_attention,
+            )
+
+            return tmh_backend_paged_attention(
+                query=query,
+                cache=kv_cache,
+                attn_metadata=attn_metadata,
+                output=output,
+                softmax_scale=self.scale,
+                causal=attn_metadata.causal,
+                window_size=self.sliding_window,
+                softcap=self.logits_soft_cap,
+                alibi_slopes=self.alibi_slopes,
+                use_alibi_sqrt=self.use_alibi_sqrt,
+                output_scale=output_scale,
+                sinks=self.sinks,
+            )
+
         # Per-token-head quantized KV cache: handled by the core unified
         # kernel, which dequantizes per-(token, head) inline via constexpr
         # branches (INT8 / FP8) and dispatches to the packed INT4 kernel.
@@ -775,6 +797,22 @@ class TritonAttentionImpl(AttentionImpl):
             # For encoder attention,
             # we use direct Q, K, V tensors without caching
             return
+        from vllm.v1.tmh_physical import TMHPhysicalKVCache
+
+        if isinstance(kv_cache, TMHPhysicalKVCache):
+            from vllm.v1.attention.ops.tmh_triton_ops import (
+                tmh_backend_kv_cache_update,
+            )
+
+            tmh_backend_kv_cache_update(
+                layer=layer,
+                key=key,
+                value=value,
+                cache=kv_cache,
+                slot_mapping=slot_mapping,
+            )
+            return
+
         # Reshape the input keys and values and store them in the cache.
         if self._is_per_token_head_quant:
             self._ensure_scale_caches(kv_cache)

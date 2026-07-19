@@ -325,22 +325,16 @@ class Attention(nn.Module, AttentionLayerBase):
         # weight and activation dtype.
         dtype = torch.get_default_dtype()
         if attn_backend is None:
-            if (
-                vllm_config.cache_config.kv_layout == "tmh"
-                and vllm_config.cache_config.tmh_kv_policy == "physical"
-            ):
-                self.attn_backend = AttentionBackendEnum.TMH_TRITON_ATTN.get_class()
-            else:
-                self.attn_backend = get_attn_backend(
-                    head_size,
-                    dtype,
-                    kv_cache_dtype,
-                    use_mla=False,
-                    has_sink=self.has_sink,
-                    use_mm_prefix=self.use_mm_prefix,
-                    use_per_head_quant_scales=use_per_head_quant_scales,
-                    attn_type=attn_type,
-                )
+            self.attn_backend = get_attn_backend(
+                head_size,
+                dtype,
+                kv_cache_dtype,
+                use_mla=False,
+                has_sink=self.has_sink,
+                use_mm_prefix=self.use_mm_prefix,
+                use_per_head_quant_scales=use_per_head_quant_scales,
+                attn_type=attn_type,
+            )
         else:
             self.attn_backend = attn_backend
         backend_supports_alibi_sqrt = self.attn_backend.supports_alibi_sqrt()
@@ -777,25 +771,13 @@ def unified_kv_cache_update(
         assert hasattr(attn_layer.impl, "do_kv_cache_update"), (
             f"{attn_layer.impl.__class__.__name__} does not support kv cache update"
         )
-        from vllm.v1.tmh_physical import TMHPhysicalKVCache
-
-        if isinstance(kv_cache, TMHPhysicalKVCache):
-            attn_layer.impl.do_kv_cache_update(  # type: ignore[attr-defined]
-                attn_layer,
-                key,
-                value,
-                kv_cache,
-                layer_slot_mapping,
-                attn_metadata,
-            )
-        else:
-            attn_layer.impl.do_kv_cache_update(  # type: ignore[attr-defined]
-                attn_layer,
-                key,
-                value,
-                kv_cache,
-                layer_slot_mapping,
-            )
+        attn_layer.impl.do_kv_cache_update(  # type: ignore[attr-defined]
+            attn_layer,
+            key,
+            value,
+            kv_cache,
+            layer_slot_mapping,
+        )
 
     return torch.empty(0, device=kv_cache.device, dtype=kv_cache.dtype)
 

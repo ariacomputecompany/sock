@@ -1057,6 +1057,27 @@ class AiterFlashAttentionImpl(AttentionImpl):
         # Whenever making a change in this method, please benchmark the
         # performance to make sure it does not introduce any overhead.
         num_actual_tokens = attn_metadata.num_actual_tokens
+
+        from vllm.v1.tmh_physical import TMHPhysicalKVCache
+
+        if isinstance(kv_cache, TMHPhysicalKVCache):
+            from vllm.v1.attention.ops.tmh_triton_ops import (
+                tmh_backend_paged_attention,
+            )
+
+            return tmh_backend_paged_attention(
+                query=query,
+                cache=kv_cache,
+                attn_metadata=attn_metadata,
+                output=output,
+                softmax_scale=self.scale,
+                causal=attn_metadata.causal,
+                window_size=self.sliding_window,
+                softcap=self.logits_soft_cap,
+                alibi_slopes=self.alibi_slopes,
+                sinks=self.sinks,
+            )
+
         key_cache, value_cache = kv_cache.unbind(1)
 
         if is_quantized_kv_cache(self.kv_cache_dtype):
@@ -1384,6 +1405,22 @@ class AiterFlashAttentionImpl(AttentionImpl):
         kv_cache: torch.Tensor,
         slot_mapping: torch.Tensor,
     ):
+        from vllm.v1.tmh_physical import TMHPhysicalKVCache
+
+        if isinstance(kv_cache, TMHPhysicalKVCache):
+            from vllm.v1.attention.ops.tmh_triton_ops import (
+                tmh_backend_kv_cache_update,
+            )
+
+            tmh_backend_kv_cache_update(
+                layer=layer,
+                key=key,
+                value=value,
+                cache=kv_cache,
+                slot_mapping=slot_mapping,
+            )
+            return
+
         key_cache, value_cache = kv_cache.unbind(1)
 
         # key and value may be None in the case of cross attention. They are

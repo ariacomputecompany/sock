@@ -8,6 +8,7 @@ from typing import Any
 
 import torch
 
+from vllm.forward_context import get_forward_context
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.v1.attention.ops.int4_per_token_head import (
@@ -632,6 +633,76 @@ def tmh_reshape_and_cache(
         WARM_VALUE_PACKED=packed_v,
         num_warps=num_warps,
     )
+
+
+def _tmh_current_layer_metadata(layer_name: str):
+    attn_metadata = get_forward_context().attn_metadata
+    if isinstance(attn_metadata, dict):
+        return attn_metadata[layer_name]
+    if isinstance(attn_metadata, list):
+        return attn_metadata[0][layer_name]
+    return attn_metadata
+
+
+def tmh_backend_kv_cache_update(
+    *,
+    layer,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    cache,
+    slot_mapping: torch.Tensor,
+) -> None:
+    attn_metadata = _tmh_current_layer_metadata(layer.layer_name)
+    if attn_metadata is None:
+        return
+    seq_to_request_row = get_forward_context().additional_kwargs.get(
+        "tmh_seq_to_request_row"
+    )
+    tmh_reshape_and_cache(
+        key,
+        value,
+        cache,
+        slot_mapping,
+        attn_metadata,
+        seq_to_request_row,
+    )
+
+
+def tmh_backend_paged_attention(
+    *,
+    query: torch.Tensor,
+    cache,
+    attn_metadata,
+    output: torch.Tensor,
+    softmax_scale: float,
+    causal,
+    window_size: tuple[int, int],
+    softcap: float,
+    alibi_slopes=None,
+    use_alibi_sqrt: bool = False,
+    output_scale=None,
+    sinks=None,
+) -> torch.Tensor:
+    forward_context = get_forward_context()
+    seq_to_request_row = forward_context.additional_kwargs.get("tmh_seq_to_request_row")
+    mm_prefix_range_tensor = getattr(attn_metadata, "mm_prefix_range_tensor", None)
+    tmh_unified_attention(
+        q=query[: attn_metadata.num_actual_tokens],
+        cache=cache,
+        out=output[: attn_metadata.num_actual_tokens],
+        attn_metadata=attn_metadata,
+        seq_to_request_row=seq_to_request_row,
+        softmax_scale=softmax_scale,
+        causal=causal,
+        window_size=window_size,
+        softcap=softcap,
+        alibi_slopes=alibi_slopes,
+        use_alibi_sqrt=use_alibi_sqrt,
+        output_scale=output_scale,
+        sinks=sinks,
+        mm_prefix_range=mm_prefix_range_tensor,
+    )
+    return output
 
 
 def tmh_unified_attention(

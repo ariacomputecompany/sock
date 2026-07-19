@@ -120,7 +120,7 @@ def reshape_tmh_physical_kv_cache(
         dtype=torch.int32,
         device=kv_raw_tensor.device,
     )
-    request_shape = (spec.tmh_max_num_seqs, num_logical_blocks)
+    request_shape = (spec.tmh_max_num_seqs, spec.tmh_max_model_pages)
     request_block_by_row_page = torch.full(
         request_shape,
         fill_value=-1,
