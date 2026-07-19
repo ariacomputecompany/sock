@@ -736,6 +736,7 @@ class GPUModelRunner(
         # Encoder timing registry for observability
         self.encoder_timing_registry: dict[str, EncoderTimingStats] = {}
         self._encoder_timing_lock = threading.Lock()
+        self.tmh_physical_runtime = None
 
         # Persistent buffers for CUDA graphs.
         self.input_ids = self._make_buffer(self.max_num_tokens, dtype=torch.int32)
@@ -746,6 +747,9 @@ class GPUModelRunner(
             self.max_num_reqs + 1, dtype=torch.int32
         )
         self.seq_lens = torch.zeros(
+            self.max_num_reqs, dtype=torch.int32, device=self.device
+        )
+        self.tmh_seq_to_request_row = torch.arange(
             self.max_num_reqs, dtype=torch.int32, device=self.device
         )
         self.optimistic_seq_lens_cpu = torch.zeros(
@@ -4345,9 +4349,11 @@ class GPUModelRunner(
                 slot_mapping=slot_mappings,
                 additional_kwargs={
                     "tmh_physical_runtime": self.tmh_physical_runtime,
-                    "tmh_seq_to_request_row": None,
+                    "tmh_seq_to_request_row": self.tmh_seq_to_request_row[
+                        : self.input_batch.num_reqs
+                    ],
                 }
-                if getattr(self, "tmh_physical_runtime", None) is not None
+                if self.tmh_physical_runtime is not None
                 else None,
                 skip_compiled=has_encoder_input,
             ),
@@ -5987,9 +5993,11 @@ class GPUModelRunner(
                     slot_mapping=slot_mappings,
                     additional_kwargs={
                         "tmh_physical_runtime": self.tmh_physical_runtime,
-                        "tmh_seq_to_request_row": None,
+                        "tmh_seq_to_request_row": self.tmh_seq_to_request_row[
+                            : self.input_batch.num_reqs
+                        ],
                     }
-                    if getattr(self, "tmh_physical_runtime", None) is not None
+                    if self.tmh_physical_runtime is not None
                     else None,
                 ),
             ):

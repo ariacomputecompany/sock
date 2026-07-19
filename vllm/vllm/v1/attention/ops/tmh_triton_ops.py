@@ -125,125 +125,125 @@ def _tmh_reshape_and_cache_kernel(
     val_vals = tl.load(val_base + offs, mask=v_mask, other=0.0).to(tl.float32)
 
     is_raw = (role == 0) | (role == 1)
-    raw_k_offset = (
-        physical_slot * stride_raw_k_slot
-        + offset_in_page * stride_raw_k_tok
-        + head * stride_raw_k_head
-        + offs
-    )
-    raw_v_offset = (
-        physical_slot * stride_raw_v_slot
-        + offset_in_page * stride_raw_v_tok
-        + head * stride_raw_v_head
-        + offs
-    )
-    tl.store(raw_key_ptr + raw_k_offset, key_vals, mask=is_raw & k_mask)
-    tl.store(raw_value_ptr + raw_v_offset, val_vals, mask=is_raw & v_mask)
+    if is_raw:
+        raw_k_offset = (
+            physical_slot * stride_raw_k_slot
+            + offset_in_page * stride_raw_k_tok
+            + head * stride_raw_k_head
+            + offs
+        )
+        raw_v_offset = (
+            physical_slot * stride_raw_v_slot
+            + offset_in_page * stride_raw_v_tok
+            + head * stride_raw_v_head
+            + offs
+        )
+        tl.store(raw_key_ptr + raw_k_offset, key_vals, mask=k_mask)
+        tl.store(raw_value_ptr + raw_v_offset, val_vals, mask=v_mask)
+    else:
+        k_absmax = tl.max(tl.abs(tl.where(k_mask, key_vals, 0.0)))
+        k_scale = tl.maximum(k_absmax / 127.0, 1e-6)
+        k_q = key_vals * (1.0 / k_scale)
+        k_q = tl.where(k_q >= 0, k_q + 0.5, k_q - 0.5)
+        k_q = tl.clamp(k_q, -128.0, 127.0)
+        warm_k_offset = (
+            physical_slot * stride_warm_k_slot
+            + offset_in_page * stride_warm_k_tok
+            + head * stride_warm_k_head
+            + offs
+        )
+        tl.store(warm_key_ptr + warm_k_offset, k_q, mask=k_mask)
+        scale_offset = (
+            physical_slot * stride_warm_ks_slot
+            + offset_in_page * stride_warm_ks_tok
+            + head * stride_warm_ks_head
+        )
+        tl.store(warm_k_scale_ptr + scale_offset, k_scale)
 
-    is_warm = role == 2
-    is_warm = is_warm | (role == 3)
-    k_absmax = tl.max(tl.abs(tl.where(k_mask, key_vals, 0.0)))
-    k_scale = tl.maximum(k_absmax / 127.0, 1e-6)
-    k_q = key_vals * (1.0 / k_scale)
-    k_q = tl.where(k_q >= 0, k_q + 0.5, k_q - 0.5)
-    k_q = tl.clamp(k_q, -128.0, 127.0)
-    warm_k_offset = (
-        physical_slot * stride_warm_k_slot
-        + offset_in_page * stride_warm_k_tok
-        + head * stride_warm_k_head
-        + offs
-    )
-    tl.store(warm_key_ptr + warm_k_offset, k_q, mask=is_warm & k_mask)
-    scale_offset = (
-        physical_slot * stride_warm_ks_slot
-        + offset_in_page * stride_warm_ks_tok
-        + head * stride_warm_ks_head
-    )
-    tl.store(warm_k_scale_ptr + scale_offset, k_scale, mask=is_warm)
-
-    is_warm_v_int8 = role == 3
-    v_absmax = tl.max(tl.abs(tl.where(v_mask, val_vals, 0.0)))
-    v_scale = tl.maximum(v_absmax / 127.0, 1e-6)
-    v_q = val_vals * (1.0 / v_scale)
-    v_q = tl.where(v_q >= 0, v_q + 0.5, v_q - 0.5)
-    v_q = tl.clamp(v_q, -128.0, 127.0)
-    warm_v_offset = (
-        physical_slot * stride_warm_v_slot
-        + offset_in_page * stride_warm_v_tok
-        + head * stride_warm_v_head
-        + offs
-    )
-    tl.store(warm_value_ptr + warm_v_offset, v_q, mask=is_warm_v_int8 & v_mask)
-    v_scale_offset = (
-        physical_slot * stride_warm_vs_slot
-        + offset_in_page * stride_warm_vs_tok
-        + head * stride_warm_vs_head
-    )
-    tl.store(warm_v_scale_ptr + v_scale_offset, v_scale, mask=is_warm_v_int8)
-
-    if WARM_VALUE_PACKED:
-        is_warm_v_int4 = role == 2
-        packed_offs = tl.arange(0, HEAD_SIZE_PADDED // 2)
-        even_offs = packed_offs * 2
-        odd_offs = even_offs + 1
-        even_mask = even_offs < head_size_v
-        odd_mask = odd_offs < head_size_v
-        v_even = tl.load(val_base + even_offs, mask=even_mask, other=0.0).to(tl.float32)
-        v_odd = tl.load(val_base + odd_offs, mask=odd_mask, other=0.0).to(tl.float32)
-        v_min = tl.minimum(
-            tl.min(tl.where(even_mask, v_even, float("inf"))),
-            tl.min(tl.where(odd_mask, v_odd, float("inf"))),
-        )
-        v_max = tl.maximum(
-            tl.max(tl.where(even_mask, v_even, float("-inf"))),
-            tl.max(tl.where(odd_mask, v_odd, float("-inf"))),
-        )
-        v4_scale = tl.maximum((v_max - v_min) / 15.0, 1e-6)
-        v_zp = tl.clamp(
-            tl.where(
-                -v_min / v4_scale >= 0,
-                (-v_min / v4_scale + 0.5).to(tl.int32),
-                (-v_min / v4_scale - 0.5).to(tl.int32),
-            ).to(tl.float32),
-            0.0,
-            15.0,
-        )
-        inv_v4 = 1.0 / v4_scale
-        v_even_q = tl.clamp(
-            tl.where(
-                v_even * inv_v4 + v_zp >= 0,
-                (v_even * inv_v4 + v_zp + 0.5).to(tl.int32),
-                (v_even * inv_v4 + v_zp - 0.5).to(tl.int32),
-            ).to(tl.float32),
-            0.0,
-            15.0,
-        )
-        v_odd_q = tl.clamp(
-            tl.where(
-                v_odd * inv_v4 + v_zp >= 0,
-                (v_odd * inv_v4 + v_zp + 0.5).to(tl.int32),
-                (v_odd * inv_v4 + v_zp - 0.5).to(tl.int32),
-            ).to(tl.float32),
-            0.0,
-            15.0,
-        )
-        packed = pack_int4_nibbles(v_even_q.to(tl.uint8), v_odd_q.to(tl.uint8))
-        packed_offset = (
+        warm_v_offset = (
             physical_slot * stride_warm_v_slot
             + offset_in_page * stride_warm_v_tok
             + head * stride_warm_v_head
-            + packed_offs
+            + offs
         )
-        tl.store(
-            warm_value_ptr + packed_offset,
-            packed,
-            mask=is_warm_v_int4 & (packed_offs < (head_size_v // 2)),
+        v_scale_offset = (
+            physical_slot * stride_warm_vs_slot
+            + offset_in_page * stride_warm_vs_tok
+            + head * stride_warm_vs_head
         )
-        tl.store(
-            warm_v_scale_ptr + v_scale_offset,
-            _pack_scale_zp(v4_scale, v_zp),
-            mask=is_warm_v_int4,
-        )
+        if role == 3:
+            v_absmax = tl.max(tl.abs(tl.where(v_mask, val_vals, 0.0)))
+            v_scale = tl.maximum(v_absmax / 127.0, 1e-6)
+            v_q = val_vals * (1.0 / v_scale)
+            v_q = tl.where(v_q >= 0, v_q + 0.5, v_q - 0.5)
+            v_q = tl.clamp(v_q, -128.0, 127.0)
+            tl.store(warm_value_ptr + warm_v_offset, v_q, mask=v_mask)
+            tl.store(warm_v_scale_ptr + v_scale_offset, v_scale)
+        elif WARM_VALUE_PACKED:
+            packed_offs = tl.arange(0, HEAD_SIZE_PADDED // 2)
+            even_offs = packed_offs * 2
+            odd_offs = even_offs + 1
+            even_mask = even_offs < head_size_v
+            odd_mask = odd_offs < head_size_v
+            v_even = tl.load(val_base + even_offs, mask=even_mask, other=0.0).to(
+                tl.float32
+            )
+            v_odd = tl.load(val_base + odd_offs, mask=odd_mask, other=0.0).to(
+                tl.float32
+            )
+            v_min = tl.minimum(
+                tl.min(tl.where(even_mask, v_even, float("inf"))),
+                tl.min(tl.where(odd_mask, v_odd, float("inf"))),
+            )
+            v_max = tl.maximum(
+                tl.max(tl.where(even_mask, v_even, float("-inf"))),
+                tl.max(tl.where(odd_mask, v_odd, float("-inf"))),
+            )
+            v4_scale = tl.maximum((v_max - v_min) / 15.0, 1e-6)
+            v_zp = tl.clamp(
+                tl.where(
+                    -v_min / v4_scale >= 0,
+                    (-v_min / v4_scale + 0.5).to(tl.int32),
+                    (-v_min / v4_scale - 0.5).to(tl.int32),
+                ).to(tl.float32),
+                0.0,
+                15.0,
+            )
+            inv_v4 = 1.0 / v4_scale
+            v_even_q = tl.clamp(
+                tl.where(
+                    v_even * inv_v4 + v_zp >= 0,
+                    (v_even * inv_v4 + v_zp + 0.5).to(tl.int32),
+                    (v_even * inv_v4 + v_zp - 0.5).to(tl.int32),
+                ).to(tl.float32),
+                0.0,
+                15.0,
+            )
+            v_odd_q = tl.clamp(
+                tl.where(
+                    v_odd * inv_v4 + v_zp >= 0,
+                    (v_odd * inv_v4 + v_zp + 0.5).to(tl.int32),
+                    (v_odd * inv_v4 + v_zp - 0.5).to(tl.int32),
+                ).to(tl.float32),
+                0.0,
+                15.0,
+            )
+            packed = pack_int4_nibbles(v_even_q.to(tl.uint8), v_odd_q.to(tl.uint8))
+            packed_offset = (
+                physical_slot * stride_warm_v_slot
+                + offset_in_page * stride_warm_v_tok
+                + head * stride_warm_v_head
+                + packed_offs
+            )
+            tl.store(
+                warm_value_ptr + packed_offset,
+                packed,
+                mask=packed_offs < (head_size_v // 2),
+            )
+            tl.store(
+                warm_v_scale_ptr + v_scale_offset,
+                _pack_scale_zp(v4_scale, v_zp),
+            )
 
 
 @triton.jit
@@ -404,97 +404,198 @@ def _tmh_unified_attention_kernel(
         ).to(tl.int64)
         is_raw = (role == 0) | (role == 1)
         is_warm = (role == 2) | (role == 3)
+        valid_count = tl.sum(tl.where(tile_mask, 1, 0), axis=0)
+        raw_count = tl.sum(tl.where(tile_mask & is_raw, 1, 0), axis=0)
+        warm_count = tl.sum(tl.where(tile_mask & is_warm, 1, 0), axis=0)
+        all_raw = raw_count == valid_count
+        all_warm = warm_count == valid_count
 
-        raw_k_offset = (
-            physical_slot[None, :] * stride_raw_k_slot
-            + offset_in_page[None, :] * stride_raw_k_tok
-            + kv_head_idx * stride_raw_k_head
-            + offs_d[:, None]
-        )
-        raw_v_offset = (
-            physical_slot[:, None] * stride_raw_v_slot
-            + offset_in_page[:, None] * stride_raw_v_tok
-            + kv_head_idx * stride_raw_v_head
-            + offs_d[None, :]
-        )
-        K_raw = tl.load(
-            raw_key_ptr + raw_k_offset,
-            mask=dim_mask[:, None] & tile_mask[None, :] & is_raw[None, :],
-            other=0.0,
-        ).to(tl.float32)
-        V_raw = tl.load(
-            raw_value_ptr + raw_v_offset,
-            mask=dim_mask[None, :] & tile_mask[:, None] & is_raw[:, None],
-            other=0.0,
-        ).to(tl.float32)
+        if all_raw:
+            raw_k_offset = (
+                physical_slot[None, :] * stride_raw_k_slot
+                + offset_in_page[None, :] * stride_raw_k_tok
+                + kv_head_idx * stride_raw_k_head
+                + offs_d[:, None]
+            )
+            raw_v_offset = (
+                physical_slot[:, None] * stride_raw_v_slot
+                + offset_in_page[:, None] * stride_raw_v_tok
+                + kv_head_idx * stride_raw_v_head
+                + offs_d[None, :]
+            )
+            K = tl.load(
+                raw_key_ptr + raw_k_offset,
+                mask=dim_mask[:, None] & tile_mask[None, :],
+                other=0.0,
+            ).to(Q.dtype)
+            V = tl.load(
+                raw_value_ptr + raw_v_offset,
+                mask=dim_mask[None, :] & tile_mask[:, None],
+                other=0.0,
+            ).to(Q.dtype)
+        elif all_warm:
+            warm_k_offset = (
+                physical_slot[None, :] * stride_warm_k_slot
+                + offset_in_page[None, :] * stride_warm_k_tok
+                + kv_head_idx * stride_warm_k_head
+                + offs_d[:, None]
+            )
+            warm_ks_idx = (
+                physical_slot * stride_warm_ks_slot
+                + offset_in_page * stride_warm_ks_tok
+                + kv_head_idx * stride_warm_ks_head
+            )
+            warm_k_scale = tl.load(
+                warm_k_scale_ptr + warm_ks_idx,
+                mask=tile_mask,
+                other=1.0,
+            )
+            K = (
+                tl.load(
+                    warm_key_ptr + warm_k_offset,
+                    mask=dim_mask[:, None] & tile_mask[None, :],
+                    other=0,
+                ).to(tl.float32)
+                * warm_k_scale[None, :]
+            ).to(Q.dtype)
 
-        warm_k_offset = (
-            physical_slot[None, :] * stride_warm_k_slot
-            + offset_in_page[None, :] * stride_warm_k_tok
-            + kv_head_idx * stride_warm_k_head
-            + offs_d[:, None]
-        )
-        warm_ks_idx = (
-            physical_slot * stride_warm_ks_slot
-            + offset_in_page * stride_warm_ks_tok
-            + kv_head_idx * stride_warm_ks_head
-        )
-        warm_k_scale = tl.load(
-            warm_k_scale_ptr + warm_ks_idx,
-            mask=tile_mask & is_warm,
-            other=1.0,
-        )
-        K_warm = tl.load(
-            warm_key_ptr + warm_k_offset,
-            mask=dim_mask[:, None] & tile_mask[None, :] & is_warm[None, :],
-            other=0,
-        ).to(tl.float32) * warm_k_scale[None, :]
-        K = (K_raw + K_warm).to(Q.dtype)
+            warm_vs_idx = (
+                physical_slot * stride_warm_vs_slot
+                + offset_in_page * stride_warm_vs_tok
+                + kv_head_idx * stride_warm_vs_head
+            )
+            warm_v_scale = tl.load(
+                warm_v_scale_ptr + warm_vs_idx,
+                mask=tile_mask,
+                other=1.0,
+            )
+            if WARM_VALUE_PACKED:
+                packed_offs = offs_d // 2
+                packed_offset = (
+                    physical_slot[:, None] * stride_warm_v_slot
+                    + offset_in_page[:, None] * stride_warm_v_tok
+                    + kv_head_idx * stride_warm_v_head
+                    + packed_offs[None, :]
+                )
+                packed = tl.load(
+                    warm_value_ptr + packed_offset,
+                    mask=dim_mask[None, :] & tile_mask[:, None],
+                    other=0,
+                )
+                lo, hi = unpack_int4_nibbles(packed)
+                nibble = tl.where((offs_d[None, :] % 2) == 0, lo, hi).to(tl.float32)
+                v4_scale, v4_zp = _unpack_scale_zp(warm_v_scale)
+                V = ((nibble - v4_zp[:, None]) * v4_scale[:, None]).to(Q.dtype)
+            else:
+                warm_v_offset = (
+                    physical_slot[:, None] * stride_warm_v_slot
+                    + offset_in_page[:, None] * stride_warm_v_tok
+                    + kv_head_idx * stride_warm_v_head
+                    + offs_d[None, :]
+                )
+                V = (
+                    tl.load(
+                        warm_value_ptr + warm_v_offset,
+                        mask=dim_mask[None, :] & tile_mask[:, None],
+                        other=0,
+                    ).to(tl.float32)
+                    * warm_v_scale[:, None]
+                ).to(Q.dtype)
+        else:
+            raw_k_offset = (
+                physical_slot[None, :] * stride_raw_k_slot
+                + offset_in_page[None, :] * stride_raw_k_tok
+                + kv_head_idx * stride_raw_k_head
+                + offs_d[:, None]
+            )
+            raw_v_offset = (
+                physical_slot[:, None] * stride_raw_v_slot
+                + offset_in_page[:, None] * stride_raw_v_tok
+                + kv_head_idx * stride_raw_v_head
+                + offs_d[None, :]
+            )
+            K_raw = tl.load(
+                raw_key_ptr + raw_k_offset,
+                mask=dim_mask[:, None] & tile_mask[None, :] & is_raw[None, :],
+                other=0.0,
+            ).to(tl.float32)
+            V_raw = tl.load(
+                raw_value_ptr + raw_v_offset,
+                mask=dim_mask[None, :] & tile_mask[:, None] & is_raw[:, None],
+                other=0.0,
+            ).to(tl.float32)
 
-        warm_vs_idx = (
-            physical_slot * stride_warm_vs_slot
-            + offset_in_page * stride_warm_vs_tok
-            + kv_head_idx * stride_warm_vs_head
-        )
-        warm_v_scale_raw = tl.load(
-            warm_v_scale_ptr + warm_vs_idx,
-            mask=tile_mask & is_warm,
-            other=1.0,
-        )
-        warm_v_offset = (
-            physical_slot[:, None] * stride_warm_v_slot
-            + offset_in_page[:, None] * stride_warm_v_tok
-            + kv_head_idx * stride_warm_v_head
-            + offs_d[None, :]
-        )
-        is_warm_v_int8 = role == 3
-        V_warm_i8 = tl.load(
-            warm_value_ptr + warm_v_offset,
-            mask=dim_mask[None, :] & tile_mask[:, None] & is_warm_v_int8[:, None],
-            other=0,
-        ).to(tl.float32) * warm_v_scale_raw[:, None]
-        V = V_raw + V_warm_i8
+            warm_k_offset = (
+                physical_slot[None, :] * stride_warm_k_slot
+                + offset_in_page[None, :] * stride_warm_k_tok
+                + kv_head_idx * stride_warm_k_head
+                + offs_d[:, None]
+            )
+            warm_ks_idx = (
+                physical_slot * stride_warm_ks_slot
+                + offset_in_page * stride_warm_ks_tok
+                + kv_head_idx * stride_warm_ks_head
+            )
+            warm_k_scale = tl.load(
+                warm_k_scale_ptr + warm_ks_idx,
+                mask=tile_mask & is_warm,
+                other=1.0,
+            )
+            K_warm = tl.load(
+                warm_key_ptr + warm_k_offset,
+                mask=dim_mask[:, None] & tile_mask[None, :] & is_warm[None, :],
+                other=0,
+            ).to(tl.float32) * warm_k_scale[None, :]
+            K = (K_raw + K_warm).to(Q.dtype)
 
-        if WARM_VALUE_PACKED:
-            is_warm_v_int4 = role == 2
-            packed_offs = offs_d // 2
-            packed_offset = (
+            warm_vs_idx = (
+                physical_slot * stride_warm_vs_slot
+                + offset_in_page * stride_warm_vs_tok
+                + kv_head_idx * stride_warm_vs_head
+            )
+            warm_v_scale_raw = tl.load(
+                warm_v_scale_ptr + warm_vs_idx,
+                mask=tile_mask & is_warm,
+                other=1.0,
+            )
+            warm_v_offset = (
                 physical_slot[:, None] * stride_warm_v_slot
                 + offset_in_page[:, None] * stride_warm_v_tok
                 + kv_head_idx * stride_warm_v_head
-                + packed_offs[None, :]
+                + offs_d[None, :]
             )
-            packed = tl.load(
-                warm_value_ptr + packed_offset,
-                mask=dim_mask[None, :] & tile_mask[:, None] & is_warm_v_int4[:, None],
+            is_warm_v_int8 = role == 3
+            V_warm_i8 = tl.load(
+                warm_value_ptr + warm_v_offset,
+                mask=dim_mask[None, :] & tile_mask[:, None] & is_warm_v_int8[:, None],
                 other=0,
-            )
-            lo, hi = unpack_int4_nibbles(packed)
-            nibble = tl.where((offs_d[None, :] % 2) == 0, lo, hi).to(tl.float32)
-            v4_scale, v4_zp = _unpack_scale_zp(warm_v_scale_raw)
-            V_i4 = (nibble - v4_zp[:, None]) * v4_scale[:, None]
-            V += tl.where(is_warm_v_int4[:, None], V_i4, 0.0)
-        V = V.to(Q.dtype)
+            ).to(tl.float32) * warm_v_scale_raw[:, None]
+            V = V_raw + V_warm_i8
+
+            if WARM_VALUE_PACKED:
+                is_warm_v_int4 = role == 2
+                packed_offs = offs_d // 2
+                packed_offset = (
+                    physical_slot[:, None] * stride_warm_v_slot
+                    + offset_in_page[:, None] * stride_warm_v_tok
+                    + kv_head_idx * stride_warm_v_head
+                    + packed_offs[None, :]
+                )
+                packed = tl.load(
+                    warm_value_ptr + packed_offset,
+                    mask=(
+                        dim_mask[None, :]
+                        & tile_mask[:, None]
+                        & is_warm_v_int4[:, None]
+                    ),
+                    other=0,
+                )
+                lo, hi = unpack_int4_nibbles(packed)
+                nibble = tl.where((offs_d[None, :] % 2) == 0, lo, hi).to(tl.float32)
+                v4_scale, v4_zp = _unpack_scale_zp(warm_v_scale_raw)
+                V_i4 = (nibble - v4_zp[:, None]) * v4_scale[:, None]
+                V += tl.where(is_warm_v_int4[:, None], V_i4, 0.0)
+            V = V.to(Q.dtype)
 
         query_abs_pos = context_len + query_pos[:, None]
         seq_mask = compute_kv_seq_mask(
@@ -766,6 +867,4 @@ def _get_tmh_tile_size(head_size: int, sliding_window: int, element_size: int) -
     del element_size
     if sliding_window > 0:
         return min(64, triton.next_power_of_2(sliding_window))
-    if head_size <= 64:
-        return 64
-    return 32
+    return 16
