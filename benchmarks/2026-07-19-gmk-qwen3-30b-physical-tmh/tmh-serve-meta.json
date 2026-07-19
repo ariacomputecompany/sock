@@ -1,0 +1,14 @@
+{
+  "jit_warnings": 2,
+  "mode": "tmh",
+  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+  "ready_s": 65,
+  "runtime_warmup_lines": [
+    "(EngineCore pid=5821) INFO 07-19 12:33:28 [gpu_worker.py:862] Runtime kernel warmup selecting worker_execution_mode=v1 tmh_kv_policy=physical"
+  ],
+  "suite_plus_ready_s": 1084,
+  "tmh_warmup_shapes": [
+    "(EngineCore pid=5821) INFO 07-19 12:33:28 [tmh_physical_warmup.py:88] Warming physical TMH kernels with num_reqs=1 prompt_len=16 decode_query_len=1 block_size=16.",
+    "(EngineCore pid=5821) INFO 07-19 12:33:31 [tmh_physical_warmup.py:88] Warming physical TMH kernels with num_reqs=4 prompt_len=16 decode_query_len=1 block_size=16."
+  ]
+}
