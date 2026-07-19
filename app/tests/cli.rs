@@ -61,6 +61,57 @@ fn bench_delegates_help_to_vendored_vllm_cli_when_runtime_available() {
 }
 
 #[test]
+fn install_runtime_dry_run_emits_resolved_cuda_plan() {
+    let output = sock_cmd()
+        .args([
+            "install-runtime",
+            "--profile",
+            "cuda",
+            "--build-profile",
+            "minimal-dev",
+            "--dry-run",
+            "--format",
+            "json",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let plan: Value = serde_json::from_slice(&output).expect("parse install plan");
+
+    assert_eq!(plan["runtime_profile"], Value::String("cuda".to_owned()));
+    assert_eq!(plan["target_device"], Value::String("cuda".to_owned()));
+    assert_eq!(
+        plan["build_profile"],
+        Value::String("minimal-dev".to_owned())
+    );
+    assert_eq!(plan["dry_run"], Value::Bool(true));
+    assert!(
+        plan["requirements"]
+            .as_array()
+            .expect("requirements array")
+            .iter()
+            .any(|entry| entry == "vllm/requirements/cuda.txt")
+    );
+    assert!(
+        plan["steps"]
+            .as_array()
+            .expect("steps array")
+            .iter()
+            .any(|step| step["name"] == "install_vendored_vllm_editable")
+    );
+    assert_eq!(
+        plan["environment"]["VLLM_TARGET_DEVICE"],
+        Value::String("cuda".to_owned())
+    );
+    assert_eq!(
+        plan["environment"]["VLLM_BUILD_PROFILE"],
+        Value::String("minimal-dev".to_owned())
+    );
+}
+
+#[test]
 fn explain_includes_trace_and_diagnostics() {
     sock_cmd()
         .arg("explain")

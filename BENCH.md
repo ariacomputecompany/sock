@@ -14,6 +14,23 @@ AMD/ROCm machine. Raw endpoint responses and bulky serve logs may live in
 | Startup latency | Captured as time to `/health` or server-ready bind where available. |
 | Time to first token | Captured in streaming endpoint probes where the benchmark report includes `ttft_s`; older non-streaming runs omit it. |
 
+## Runtime Bring-Up Contract
+
+Fresh AMD/ROCm and NVIDIA/CUDA machines should use `sock install-runtime` as the
+canonical zero-to-runnable path. The command resolves `runtime.buildplan.json`,
+creates the vendored `vllm/.venv`, installs the backend-neutral top-level
+`requirements.txt`, installs the accelerator-specific vendored vLLM requirement
+set, and builds the vendored vLLM editable package with a deterministic runtime
+environment.
+
+Use `--dry-run --format json` to record the exact build profile, environment,
+requirements, and command steps before applying changes:
+
+```bash
+cargo run --bin sock -- install-runtime --profile cuda --build-profile minimal-dev --dry-run --format json
+cargo run --bin sock -- install-runtime --profile rocm --build-profile core --dry-run --format json
+```
+
 ## Testbed
 
 | Field | Value |
@@ -25,6 +42,25 @@ AMD/ROCm machine. Raw endpoint responses and bulky serve logs may live in
 | Python ABI | `cp312` |
 | sock runtime | vendored vLLM `0.25.1`, torch `2.11.0+gitd0c8b1f`, HIP `7.2.53211` |
 | Upstream vLLM ROCm baseline | official ROCm wheel `vllm 0.25.1+rocm723`, torch `2.11.0+gitd0c8b1f`, HIP `7.2.53211` |
+
+## NVIDIA/CUDA Bring-Up: RTX 4090
+
+| Field | Value |
+| --- | --- |
+| Machine | Vast.ai RTX 4090 rental |
+| GPU | NVIDIA GeForce RTX 4090 |
+| Compute capability | `8.9` |
+| Driver | `580.119.02` |
+| CUDA reported by torch | `13.0` |
+| Build profile | `minimal-dev` |
+| Torch | `2.11.0+cu130` |
+| Vendored vLLM import | `0.0.0+sock.cu128` metadata, `0.0.0+sock` package version |
+| Canonical CLI validation | `sock serve --help` reached vendored `vllm serve` |
+
+Production fix validated on this host: optional model-family fused CUDA kernels
+and their torch library registrations are now controlled by the same
+`VLLM_BUILD_FAMILY_MODEL_FUSED_OPS` build flag, so slim CUDA builds do not
+produce unresolved symbols while full builds still register the fused ops.
 
 ## Supported sock vs Upstream vLLM Comparison: Qwen3-4B
 

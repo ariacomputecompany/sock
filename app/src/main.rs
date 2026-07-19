@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 use std::time::Instant;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use sock_app::{
     default_host_snapshot, default_request_with_optimization, diagnostics_for, replay_bundle,
@@ -97,6 +97,17 @@ enum Command {
         #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
         format: OutputMode,
     },
+    #[command(name = "install-runtime")]
+    InstallRuntime {
+        #[arg(long, value_enum, default_value_t = RuntimeProfileArg::Auto)]
+        profile: RuntimeProfileArg,
+        #[arg(long, default_value = "auto")]
+        build_profile: String,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, value_enum, default_value_t = OutputMode::Summary)]
+        format: OutputMode,
+    },
     #[command(trailing_var_arg = true, disable_help_flag = true)]
     Serve {
         #[arg(
@@ -179,6 +190,32 @@ enum Command {
 enum OutputMode {
     Summary,
     Json,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum RuntimeProfileArg {
+    Auto,
+    Cuda,
+    Rocm,
+}
+
+impl RuntimeProfileArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Cuda => "cuda",
+            Self::Rocm => "rocm",
+        }
+    }
+}
+
+impl OutputMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Summary => "summary",
+            Self::Json => "json",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Parser, Default)]
@@ -365,6 +402,12 @@ fn main() -> Result<()> {
             emit_replay(&ReplayBundle::load_from(&bundle)?, format)?;
         }
         Command::Doctor { format } => emit_doctor(&default_host_snapshot(), format)?,
+        Command::InstallRuntime {
+            profile,
+            build_profile,
+            dry_run,
+            format,
+        } => run_install_runtime(profile, &build_profile, dry_run, format)?,
         Command::Serve { args } => run_vendored_vllm_subcommand("serve", args)?,
         Command::Chat { args } => run_vendored_vllm_subcommand("chat", args)?,
         Command::Complete { args } => run_vendored_vllm_subcommand("complete", args)?,
@@ -826,6 +869,39 @@ fn run_vendored_vllm_subcommand(name: &str, args: Vec<OsString>) -> Result<()> {
     let mut vllm_args = vec![OsString::from(name)];
     vllm_args.extend(args);
     run_vendored_vllm_cli(vllm_args)
+}
+
+fn run_install_runtime(
+    profile: RuntimeProfileArg,
+    build_profile: &str,
+    dry_run: bool,
+    format: OutputMode,
+) -> Result<()> {
+    let repo_root = repo_root()?;
+    let script = repo_root.join("scripts").join("sock_install_runtime.py");
+    let python = std::env::var_os("PYTHON")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("python3"));
+
+    let mut command = ProcessCommand::new(python);
+    command
+        .arg(script)
+        .arg("--profile")
+        .arg(profile.as_str())
+        .arg("--build-profile")
+        .arg(build_profile)
+        .arg("--format")
+        .arg(format.as_str())
+        .current_dir(&repo_root);
+    if dry_run {
+        command.arg("--dry-run");
+    }
+
+    let status = command.status().context("run sock runtime installer")?;
+    if !status.success() {
+        bail!("sock runtime installer exited with {status}");
+    }
+    Ok(())
 }
 
 fn repo_root() -> Result<PathBuf> {

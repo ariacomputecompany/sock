@@ -439,6 +439,7 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
     "csrc/libtorch_stable/custom_all_reduce.cu")
 
   if(VLLM_BUILD_FAMILY_MODEL_FUSED_OPS)
+    list(APPEND VLLM_GPU_FLAGS "-DVLLM_BUILD_FAMILY_MODEL_FUSED_OPS=1")
     list(APPEND VLLM_STABLE_EXT_SRC
       "csrc/libtorch_stable/fused_minimax_m3_qknorm_rope_kv_insert_kernel.cu"
       "csrc/libtorch_stable/fused_deepseek_v4_qnorm_rope_kv_insert_kernel.cu")
@@ -1193,6 +1194,11 @@ if(VLLM_GPU_LANG STREQUAL "CUDA" OR VLLM_GPU_LANG STREQUAL "HIP")
   # which is currently set to 2.11.
   target_compile_definitions(_C_stable_libtorch PRIVATE
     TORCH_TARGET_VERSION=0x020B000000000000ULL)
+
+  if(VLLM_BUILD_FAMILY_MODEL_FUSED_OPS)
+    target_compile_definitions(_C_stable_libtorch PRIVATE
+      VLLM_BUILD_FAMILY_MODEL_FUSED_OPS=1)
+  endif()
 
   # Needed to use cuda/hip APIs from C-shim
   if(VLLM_GPU_LANG STREQUAL "CUDA")

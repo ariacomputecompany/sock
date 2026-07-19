@@ -427,6 +427,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
       "bool is_neox, Tensor position_ids, "
       "int forced_token_heads_per_warp=-1) -> ()");
 
+#ifdef VLLM_BUILD_FAMILY_MODEL_FUSED_OPS
   ops.def(
       "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert("
       "Tensor q_in, Tensor kv, Tensor! k_cache, "
@@ -467,6 +468,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(_C, ops) {
       "Tensor!? kv_cache, Tensor!? index_cache, "
       "int block_size, Tensor!? q_out, Tensor!? index_q_out, "
       "str kv_cache_dtype) -> ()");
+#endif
 
   // Apply repetition penalties to logits in-place.
   ops.def(
@@ -664,6 +666,7 @@ STABLE_TORCH_LIBRARY_IMPL(_C, CUDA, ops) {
   // Positional encoding kernels (shared CUDA/ROCm)
   ops.impl("rotary_embedding", TORCH_BOX(&rotary_embedding));
   ops.impl("fused_qk_norm_rope", TORCH_BOX(&fused_qk_norm_rope));
+#ifdef VLLM_BUILD_FAMILY_MODEL_FUSED_OPS
   ops.impl("fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
            TORCH_BOX(&fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert));
   ops.impl(
@@ -677,6 +680,7 @@ STABLE_TORCH_LIBRARY_IMPL(_C, CUDA, ops) {
 #endif
   ops.impl("fused_minimax_m3_qknorm_rope_kv_insert",
            TORCH_BOX(&fused_minimax_m3_qknorm_rope_kv_insert));
+#endif
 
   // Sampler kernels (shared CUDA/ROCm)
   ops.impl("apply_repetition_penalties_",

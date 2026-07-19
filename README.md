@@ -78,7 +78,7 @@ sock goes deep before it goes broad.
 V1 is:
 
 - engine: `vLLM`
-- hardware: NVIDIA
+- hardware: AMD/ROCm and NVIDIA/CUDA
 - platform: Linux
 
 This is not a shallow abstraction layer over many engines.
@@ -147,6 +147,8 @@ This is what lets sock compile parts of the engine intentionally instead of trea
 
 The CLI surface is:
 
+- `cargo run --bin sock -- install-runtime --profile auto`
+- `cargo run --bin sock -- install-runtime --profile cuda --build-profile minimal-dev --dry-run --format json`
 - `cargo run --bin sock -- prepare prefill-path --out /tmp/sock-bundle`
 - `cargo run --bin sock -- prepare replay-safe-closure --out /tmp/sock-bundle`
 - `cargo run --bin sock -- measure prefill-path --out /tmp/sock-measure`
@@ -157,14 +159,24 @@ The CLI surface is:
 - `cargo run --bin sock -- replay --bundle /tmp/sock-bundle`
 - `cargo run --bin sock -- doctor`
 
+Runtime installation is resolved from `runtime.buildplan.json` and the
+backend-neutral top-level `requirements.txt`. The build plan then selects the
+single valid accelerator dependency set for the host, because CUDA and ROCm
+torch/runtime wheels are mutually exclusive install universes:
+
+- CUDA installs `requirements.txt`, `vllm/requirements/build/cuda.txt`, and `vllm/requirements/cuda.txt`.
+- ROCm installs `requirements.txt`, `vllm/requirements/build/rocm.txt`, and `vllm/requirements/rocm.txt`.
+- The installer emits the resolved environment, native build profile, CMake defines, requirements, and exact command steps in JSON before doing work when run with `--dry-run --format json`.
+
 The workflow is:
 
-1. describe the serving intent
-2. inspect the requested scope, expanded closure, and estimated work
-3. measure the scoped closure against a broad build on the live executor path
-4. build the required subset
-5. verify the emitted bundle
-6. replay the result without new compile work
+1. install the deterministic accelerator runtime with `sock install-runtime`
+2. describe the serving intent
+3. inspect the requested scope, expanded closure, and estimated work
+4. measure the scoped closure against a broad build on the live executor path
+5. build the required subset
+6. verify the emitted bundle
+7. replay the result without new compile work
 
 `measure` records three concrete executions:
 

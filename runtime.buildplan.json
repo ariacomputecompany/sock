@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "venv_path": "vllm/.venv",
+  "editable_path": "vllm",
+  "pretend_version": "0.0.0+sock",
+  "pip_bootstrap": [
+    "pip",
+    "setuptools",
+    "wheel",
+    "packaging"
+  ],
+  "profiles": {
+    "cuda": {
+      "target_device": "cuda",
+      "system_packages": [
+        "build-essential",
+        "cmake",
+        "git",
+        "ninja-build",
+        "python3-dev"
+      ],
+      "requirements": [
+        "requirements.txt",
+        "vllm/requirements/build/cuda.txt",
+        "vllm/requirements/cuda.txt"
+      ],
+      "default_build_profile": "minimal-dev",
+      "build_profile_by_compute_capability": [
+        {
+          "prefix": "10.",
+          "build_profile": "blackwell-fa3"
+        },
+        {
+          "prefix": "9.",
+          "build_profile": "hopper-flashinfer"
+        },
+        {
+          "prefix": "8.",
+          "build_profile": "minimal-dev"
+        }
+      ],
+      "env": {
+        "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+        "CUDA_MODULE_LOADING": "LAZY",
+        "VLLM_TARGET_DEVICE": "cuda",
+        "VLLM_USE_V1": "1",
+        "VLLM_USE_V2_MODEL_RUNNER": "1",
+        "VLLM_WORKER_MULTIPROC_METHOD": "spawn"
+      }
+    },
+    "rocm": {
+      "target_device": "rocm",
+      "system_packages": [
+        "build-essential",
+        "cmake",
+        "git",
+        "ninja-build",
+        "python3-dev"
+      ],
+      "requirements": [
+        "requirements.txt",
+        "vllm/requirements/build/rocm.txt",
+        "vllm/requirements/rocm.txt"
+      ],
+      "default_build_profile": "core",
+      "build_profile_by_compute_capability": [],
+      "env": {
+        "VLLM_TARGET_DEVICE": "rocm",
+        "VLLM_USE_V2_MODEL_RUNNER": "0",
+        "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
+        "VLLM_WSL2_ENABLE_PIN_MEMORY": "0"
+      }
+    }
+  }
+}

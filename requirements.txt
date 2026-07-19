@@ -1,0 +1,16 @@
+# Canonical sock bootstrap requirements.
+#
+# This file is intentionally backend-neutral. `sock install-runtime` resolves the
+# mutually exclusive accelerator requirements from `runtime.buildplan.json`
+# (`cuda` or `rocm`) and installs the matching vendored vLLM requirement files.
+build
+cmake>=3.26.1
+jinja2>=3.1.6
+ninja
+packaging>=24.2
+protobuf>=5.29.6,!=6.30.*,!=6.31.*,!=6.32.*,!=6.33.0.*,!=6.33.1.*,!=6.33.2.*,!=6.33.3.*,!=6.33.4.*
+regex
+setuptools>=77.0.3,<81.0.0
+setuptools-rust>=1.9.0
+setuptools-scm>=8
+wheel
