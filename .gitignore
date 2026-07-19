@@ -12,6 +12,7 @@ __pycache__/
 *.rendered.json
 artifacts/
 dist/
+tmp/
 .venv/
 .venv-codex/
 **/.venv/
