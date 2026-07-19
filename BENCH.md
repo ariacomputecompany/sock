@@ -197,6 +197,61 @@ versus 53.30 tok/s for TMH (-11.6%), with suite wall clock +13.5%. Do not market
 CUDA TMH as a throughput win from this run; the verified win is first-class
 large-model CUDA support through the hermetic `gptq-marlin` build profile.
 
+### CUDA TMH Accounting Probe: Qwen3-8B
+
+This run isolates the CUDA TMH accounting behavior on a smaller dense model using
+the same canonical `sock serve` path and the same prompt/concurrency suite shape
+as the 30B run. The first TMH launch attempt was discarded because the previous
+standard server still owned the GPU; the retained TMH artifact was rerun after
+verifying the 4090 was at 0 MiB used and that `/v1/models` was served by the TMH
+process.
+
+| Field | Value |
+| --- | --- |
+| Model | `Qwen/Qwen3-8B` |
+| Endpoint | `/v1/completions` |
+| Runtime | RTX 4090, CUDA 13.0, `sock serve` |
+| Build profile | `gptq-marlin` runtime already present from 30B validation |
+| `max_model_len` | `1024` |
+| `gpu_memory_utilization` | `0.80` |
+| `max_num_batched_tokens` | `1024` |
+| `max_num_seqs` | `4` |
+| `enforce_eager` | `true` |
+| Standard suite wall clock | 367.83 s |
+| TMH accounting suite wall clock | 383.62 s |
+| Suite wall delta | +4.29% |
+| Mean completion throughput | 124.17 tok/s standard, 118.10 tok/s TMH |
+| Geomean completion throughput delta | -3.51% |
+| Raw summaries | `benchmarks/2026-07-19-rtx4090-qwen3-8b/` |
+
+| Case | Concurrency | Standard completion tok/s | TMH completion tok/s | TMH delta | Standard wall s | TMH wall s | Wall delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `tiny_fact_64` | 1 | 55.62 | 55.62 | +0.0% | 1.15 | 1.15 | -0.0% |
+| `tiny_fact_64` | 2 | 105.68 | 106.10 | +0.4% | 1.21 | 1.21 | -0.4% |
+| `tiny_fact_64` | 4 | 209.40 | 209.01 | -0.2% | 1.22 | 1.22 | +0.2% |
+| `short_codegen_128` | 1 | 55.80 | 55.73 | -0.1% | 2.29 | 2.30 | +0.1% |
+| `short_codegen_128` | 2 | 107.21 | 106.79 | -0.4% | 2.39 | 2.40 | +0.4% |
+| `short_codegen_128` | 4 | 211.61 | 211.34 | -0.1% | 2.42 | 2.42 | +0.1% |
+| `medium_architecture_256` | 1 | 55.68 | 55.67 | -0.0% | 4.60 | 4.60 | +0.0% |
+| `medium_architecture_256` | 2 | 106.66 | 106.53 | -0.1% | 4.80 | 4.81 | +0.1% |
+| `medium_architecture_256` | 4 | 211.63 | 211.53 | -0.0% | 4.84 | 4.84 | +0.0% |
+| `long_cosmology_512` | 1 | 55.62 | 55.58 | -0.1% | 9.20 | 9.21 | +0.1% |
+| `long_cosmology_512` | 2 | 106.66 | 106.61 | -0.0% | 9.60 | 9.60 | +0.0% |
+| `long_cosmology_512` | 4 | 211.01 | 199.84 | -5.3% | 9.71 | 10.25 | +5.6% |
+| `long_context_summary_256` | 1 | 55.23 | 55.21 | -0.0% | 4.63 | 4.64 | +0.0% |
+| `long_context_summary_256` | 2 | 105.73 | 96.00 | -9.2% | 4.84 | 5.33 | +10.1% |
+| `long_context_summary_256` | 4 | 209.52 | 148.84 | -29.0% | 4.89 | 6.88 | +40.8% |
+| `extended_generation_768` | 1 | 55.52 | 55.52 | -0.0% | 13.83 | 13.83 | +0.0% |
+| `extended_generation_768` | 2 | 106.41 | 104.92 | -1.4% | 14.43 | 14.64 | +1.4% |
+| `extended_generation_768` | 4 | 210.15 | 185.00 | -12.0% | 14.62 | 16.61 | +13.6% |
+
+Production readout: CUDA TMH accounting does not impose a broad fixed overhead on
+the 8B eager path. It is effectively at parity for short prompts and concurrency
+1/2, but it regresses under concurrency-4 pressure when the request mix is
+prompt-heavy or long-context. This supports a narrower hypothesis than the 30B
+result alone: the CUDA issue appears tied to high-concurrency accounting/cache
+pressure rather than ordinary single-stream decode.
+
 ## Supported sock vs Upstream vLLM Comparison: Qwen3-4B
 
 This is the current apples-to-apples comparison where both sock and an upstream
