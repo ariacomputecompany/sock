@@ -1,0 +1,2791 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "cases": [
+    {
+      "batches_by_concurrency": {
+        "1": [
+          {
+            "concurrency": 1,
+            "requests": [
+              {
+                "completion_tok_per_s": 53.5487,
+                "completion_tokens": 64,
+                "elapsed_s": 1.1952,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+, C, D, E, F, G,",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504894,
+                  "id": "cmpl-a6c4c96a42a2b0e1",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+, C, D, E, F, G,",
+                "run_index": 1,
+                "total_tok_per_s": 62.7524,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 53.5251,
+              "aggregate_total_tok_per_s": 62.7248,
+              "completion_tokens": 64,
+              "per_request_completion_tok_per_s": {
+                "max": 53.5487,
+                "mean": 53.5487,
+                "median": 53.5487,
+                "min": 53.5487,
+                "p90": 53.5487
+              },
+              "per_request_elapsed_s": {
+                "max": 1.1952,
+                "mean": 1.1952,
+                "median": 1.1952,
+                "min": 1.1952,
+                "p90": 1.1952
+              },
+              "total_tokens": 75,
+              "wall_s": 1.1957
+            },
+            "wall_s": 1.1957
+          },
+          {
+            "concurrency": 1,
+            "requests": [
+              {
+                "completion_tok_per_s": 53.575,
+                "completion_tokens": 64,
+                "elapsed_s": 1.1946,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Be sure to include the following terms: Rayleigh scattering, shorter wavelengths, visible light, and molecules in the area of the triangle is 100, then the area of the quadrs = [0, 0, 0, 0, 00000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504895,
+                  "id": "cmpl-b7a4c932fafa2df7",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Be sure to include the following terms: Rayleigh scattering, shorter wavelengths, visible light, and molecules in the area of the triangle is 100, then the area of the quadrs = [0, 0, 0, 0, 00000000000",
+                "run_index": 2,
+                "total_tok_per_s": 62.7832,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 53.5565,
+              "aggregate_total_tok_per_s": 62.7615,
+              "completion_tokens": 64,
+              "per_request_completion_tok_per_s": {
+                "max": 53.575,
+                "mean": 53.575,
+                "median": 53.575,
+                "min": 53.575,
+                "p90": 53.575
+              },
+              "per_request_elapsed_s": {
+                "max": 1.1946,
+                "mean": 1.1946,
+                "median": 1.1946,
+                "min": 1.1946,
+                "p90": 1.1946
+              },
+              "total_tokens": 75,
+              "wall_s": 1.195
+            },
+            "wall_s": 1.195
+          }
+        ],
+        "2": [
+          {
+            "concurrency": 2,
+            "requests": [
+              {
+                "completion_tok_per_s": 49.0245,
+                "completion_tokens": 64,
+                "elapsed_s": 1.3055,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to mention Rayleigh scattering and the role of the atmosphere. Also, include the fact that the suns, and the moon, and the stars, and the planets, and the area of the triangle formed by the points (0, 0), (a\n$\n$\n$\n$\n$\n$\n$\n$\n$\n",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504896,
+                  "id": "cmpl-8893cdfa94423f30",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Make sure to mention Rayleigh scattering and the role of the atmosphere. Also, include the fact that the suns, and the moon, and the stars, and the planets, and the area of the triangle formed by the points (0, 0), (a\n$\n$\n$\n$\n$\n$\n$\n$\n$\n",
+                "run_index": 1,
+                "total_tok_per_s": 57.4506,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 49.0369,
+                "completion_tokens": 64,
+                "elapsed_s": 1.3051,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to include the role of Rayleigh scattering and the difference between Rayleigh scattering and Mie scattering. A. B. C. D. E. F. G. H. The **s** is the **subject** of the sentence, and the **s** **s** **s** **s",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504896,
+                  "id": "cmpl-9e0fa66d366a08a4",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 2,
+                "response_text": " Make sure to include the role of Rayleigh scattering and the difference between Rayleigh scattering and Mie scattering. A. B. C. D. E. F. G. H. The **s** is the **subject** of the sentence, and the **s** **s** **s** **s",
+                "run_index": 1,
+                "total_tok_per_s": 57.4651,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 98.0092,
+              "aggregate_total_tok_per_s": 114.8545,
+              "completion_tokens": 128,
+              "per_request_completion_tok_per_s": {
+                "max": 49.0369,
+                "mean": 49.0307,
+                "median": 49.0307,
+                "min": 49.0245,
+                "p90": 49.0369
+              },
+              "per_request_elapsed_s": {
+                "max": 1.3055,
+                "mean": 1.3053,
+                "median": 1.3053,
+                "min": 1.3051,
+                "p90": 1.3055
+              },
+              "total_tokens": 150,
+              "wall_s": 1.306
+            },
+            "wall_s": 1.306
+          },
+          {
+            "concurrency": 2,
+            "requests": [
+              {
+                "completion_tok_per_s": 49.3791,
+                "completion_tokens": 64,
+                "elapsed_s": 1.2961,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to mention Rayleigh scattering, the wavelength of light, and the role of the atmosphere. Also,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504897,
+                  "id": "cmpl-9cdf5f519897003b",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Make sure to mention Rayleigh scattering, the wavelength of light, and the role of the atmosphere. Also,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,",
+                "run_index": 2,
+                "total_tok_per_s": 57.8661,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 49.3896,
+                "completion_tokens": 64,
+                "elapsed_s": 1.2958,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504897,
+                  "id": "cmpl-b9c7b46aaacf27ed",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 2,
+                "response_text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n+\n",
+                "run_index": 2,
+                "total_tok_per_s": 57.8785,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 98.7197,
+              "aggregate_total_tok_per_s": 115.6872,
+              "completion_tokens": 128,
+              "per_request_completion_tok_per_s": {
+                "max": 49.3896,
+                "mean": 49.3843,
+                "median": 49.3843,
+                "min": 49.3791,
+                "p90": 49.3896
+              },
+              "per_request_elapsed_s": {
+                "max": 1.2961,
+                "mean": 1.2959,
+                "median": 1.2959,
+                "min": 1.2958,
+                "p90": 1.2961
+              },
+              "total_tokens": 150,
+              "wall_s": 1.2966
+            },
+            "wall_s": 1.2966
+          }
+        ],
+        "4": [
+          {
+            "concurrency": 4,
+            "requests": [
+              {
+                "completion_tok_per_s": 43.0073,
+                "completion_tokens": 64,
+                "elapsed_s": 1.4881,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to include the role of Rayleigh scattering and the difference between Rayleigh scattering and Mie scattering. Square root of 16 is 4. So, the square root of fractions. Let me try to simplify the expression step by step.\n\nFirst, lets see, the problem is to find the value",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504899,
+                  "id": "cmpl-8c21ee7f2dc64068",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Make sure to include the role of Rayleigh scattering and the difference between Rayleigh scattering and Mie scattering. Square root of 16 is 4. So, the square root of fractions. Let me try to simplify the expression step by step.\n\nFirst, lets see, the problem is to find the value",
+                "run_index": 1,
+                "total_tok_per_s": 50.3992,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 43.0141,
+                "completion_tokens": 64,
+                "elapsed_s": 1.4879,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to mention Rayleigh scattering and the role of the atmosphere in this phenomenon. The first paragraph should focus, and the ability to handle complex tasks. These skills are crucial for success in: 1.0000000000000000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504899,
+                  "id": "cmpl-a0b9a6238b4c8e21",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 2,
+                "response_text": " Make sure to mention Rayleigh scattering and the role of the atmosphere in this phenomenon. The first paragraph should focus, and the ability to handle complex tasks. These skills are crucial for success in: 1.0000000000000000000000",
+                "run_index": 1,
+                "total_tok_per_s": 50.4072,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 43.0238,
+                "completion_tokens": 64,
+                "elapsed_s": 1.4876,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504899,
+                  "id": "cmpl-a6af42db49c9af91",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 3,
+                "response_text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,",
+                "run_index": 1,
+                "total_tok_per_s": 50.4185,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 42.2656,
+                "completion_tokens": 55,
+                "elapsed_s": 1.3013,
+                "finish_reason": "stop",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "stop",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": 151643,
+                      "text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+, 1, 1, 1, 1, 1, ",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504899,
+                  "id": "cmpl-af75990a28c69bf5",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 55,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 66
+                  }
+                },
+                "request_index": 4,
+                "response_text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+,+, 1, 1, 1, 1, 1, ",
+                "run_index": 1,
+                "total_tok_per_s": 50.7187,
+                "total_tokens": 66
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 165.8943,
+              "aggregate_total_tok_per_s": 195.4463,
+              "completion_tokens": 247,
+              "per_request_completion_tok_per_s": {
+                "max": 43.0238,
+                "mean": 42.8277,
+                "median": 43.0107,
+                "min": 42.2656,
+                "p90": 43.0238
+              },
+              "per_request_elapsed_s": {
+                "max": 1.4881,
+                "mean": 1.4412,
+                "median": 1.4878,
+                "min": 1.3013,
+                "p90": 1.4881
+              },
+              "total_tokens": 291,
+              "wall_s": 1.4889
+            },
+            "wall_s": 1.4889
+          },
+          {
+            "concurrency": 4,
+            "requests": [
+              {
+                "completion_tok_per_s": 42.9725,
+                "completion_tokens": 64,
+                "elapsed_s": 1.4893,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Be sure to include the role of Rayleigh scattering and the difference between Rayleigh and Mie scattering. Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504900,
+                  "id": "cmpl-8e4f7f6964b9fdb9",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Be sure to include the role of Rayleigh scattering and the difference between Rayleigh and Mie scattering. Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also",
+                "run_index": 2,
+                "total_tok_per_s": 50.3584,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 42.9774,
+                "completion_tokens": 64,
+                "elapsed_s": 1.4892,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to include the role of Rayleigh scattering and the difference between Rayleigh scattering and Mie scattering. Simplify the expression:\n\n$$\n\\frac{1}{2} \\cdot, \\cdot) $ is a symmetric bilinear form on $ \\mathbbbbbbbbbbbbbbbbbbbbbb",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504900,
+                  "id": "cmpl-8eeb384dd0ec2605",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 2,
+                "response_text": " Make sure to include the role of Rayleigh scattering and the difference between Rayleigh scattering and Mie scattering. Simplify the expression:\n\n$$\n\\frac{1}{2} \\cdot, \\cdot) $ is a symmetric bilinear form on $ \\mathbbbbbbbbbbbbbbbbbbbbbb",
+                "run_index": 2,
+                "total_tok_per_s": 50.3642,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 42.9842,
+                "completion_tokens": 64,
+                "elapsed_s": 1.4889,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504900,
+                  "id": "cmpl-b9ffc3b31f5a1937",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 3,
+                "response_text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the wavelength of light. Also,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,",
+                "run_index": 2,
+                "total_tok_per_s": 50.3721,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 42.9826,
+                "completion_tokens": 64,
+                "elapsed_s": 1.489,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Be sure to mention Rayleigh scattering, the role of the atmosphere, and the effect of particle size. Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504900,
+                  "id": "cmpl-81726f1e8be7e7cd",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 4,
+                "response_text": " Be sure to mention Rayleigh scattering, the role of the atmosphere, and the effect of particle size. Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also",
+                "run_index": 2,
+                "total_tok_per_s": 50.3702,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 171.789,
+              "aggregate_total_tok_per_s": 201.3153,
+              "completion_tokens": 256,
+              "per_request_completion_tok_per_s": {
+                "max": 42.9842,
+                "mean": 42.9792,
+                "median": 42.98,
+                "min": 42.9725,
+                "p90": 42.9842
+              },
+              "per_request_elapsed_s": {
+                "max": 1.4893,
+                "mean": 1.4891,
+                "median": 1.4891,
+                "min": 1.4889,
+                "p90": 1.4893
+              },
+              "total_tokens": 300,
+              "wall_s": 1.4902
+            },
+            "wall_s": 1.4902
+          }
+        ]
+      },
+      "max_tokens": 64,
+      "name": "tiny_fact_64",
+      "prompt": "In two paragraphs, explain why the sky appears blue.",
+      "summary": {
+        "1": {
+          "aggregate_completion_tok_per_s": {
+            "max": 53.5565,
+            "mean": 53.5408,
+            "median": 53.5408,
+            "min": 53.5251,
+            "p90": 53.5565
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 62.7615,
+            "mean": 62.7431,
+            "median": 62.7431,
+            "min": 62.7248,
+            "p90": 62.7615
+          },
+          "completion_tokens": {
+            "max": 64,
+            "mean": 64.0,
+            "median": 64.0,
+            "min": 64,
+            "p90": 64
+          },
+          "total_tokens": {
+            "max": 75,
+            "mean": 75.0,
+            "median": 75.0,
+            "min": 75,
+            "p90": 75
+          },
+          "wall_s": {
+            "max": 1.1957,
+            "mean": 1.1953,
+            "median": 1.1953,
+            "min": 1.195,
+            "p90": 1.1957
+          }
+        },
+        "2": {
+          "aggregate_completion_tok_per_s": {
+            "max": 98.7197,
+            "mean": 98.3645,
+            "median": 98.3645,
+            "min": 98.0092,
+            "p90": 98.7197
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 115.6872,
+            "mean": 115.2708,
+            "median": 115.2708,
+            "min": 114.8545,
+            "p90": 115.6872
+          },
+          "completion_tokens": {
+            "max": 128,
+            "mean": 128.0,
+            "median": 128.0,
+            "min": 128,
+            "p90": 128
+          },
+          "total_tokens": {
+            "max": 150,
+            "mean": 150.0,
+            "median": 150.0,
+            "min": 150,
+            "p90": 150
+          },
+          "wall_s": {
+            "max": 1.306,
+            "mean": 1.3013,
+            "median": 1.3013,
+            "min": 1.2966,
+            "p90": 1.306
+          }
+        },
+        "4": {
+          "aggregate_completion_tok_per_s": {
+            "max": 171.789,
+            "mean": 168.8416,
+            "median": 168.8416,
+            "min": 165.8943,
+            "p90": 171.789
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 201.3153,
+            "mean": 198.3808,
+            "median": 198.3808,
+            "min": 195.4463,
+            "p90": 201.3153
+          },
+          "completion_tokens": {
+            "max": 256,
+            "mean": 251.5,
+            "median": 251.5,
+            "min": 247,
+            "p90": 256
+          },
+          "total_tokens": {
+            "max": 300,
+            "mean": 295.5,
+            "median": 295.5,
+            "min": 291,
+            "p90": 300
+          },
+          "wall_s": {
+            "max": 1.4902,
+            "mean": 1.4895,
+            "median": 1.4895,
+            "min": 1.4889,
+            "p90": 1.4902
+          }
+        }
+      },
+      "temperature": 0.2,
+      "warmups": [
+        {
+          "concurrency": 1,
+          "requests": [
+            {
+              "completion_tok_per_s": 32.742,
+              "completion_tokens": 64,
+              "elapsed_s": 1.9547,
+              "finish_reason": "length",
+              "prompt_tokens": 11,
+              "raw_response": {
+                "choices": [
+                  {
+                    "finish_reason": "length",
+                    "index": 0,
+                    "logprobs": null,
+                    "prompt_logprobs": null,
+                    "prompt_token_ids": null,
+                    "routed_experts": null,
+                    "stop_reason": null,
+                    "text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the effect of particle size. Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also",
+                    "token_ids": null
+                  }
+                ],
+                "created": 1784504892,
+                "id": "cmpl-95f6a8db2cc1e8c3",
+                "kv_transfer_params": null,
+                "model": "qwen3-8b",
+                "object": "text_completion",
+                "service_tier": null,
+                "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                "usage": {
+                  "completion_tokens": 64,
+                  "prompt_tokens": 11,
+                  "prompt_tokens_details": null,
+                  "total_tokens": 75
+                }
+              },
+              "request_index": 1,
+              "response_text": " Make sure to mention Rayleigh scattering, the role of the atmosphere, and the effect of particle size. Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also Also",
+              "run_index": 1,
+              "total_tok_per_s": 38.3695,
+              "total_tokens": 75
+            }
+          ],
+          "run_index": 1,
+          "summary": {
+            "aggregate_completion_tok_per_s": 32.7215,
+            "aggregate_total_tok_per_s": 38.3455,
+            "completion_tokens": 64,
+            "per_request_completion_tok_per_s": {
+              "max": 32.742,
+              "mean": 32.742,
+              "median": 32.742,
+              "min": 32.742,
+              "p90": 32.742
+            },
+            "per_request_elapsed_s": {
+              "max": 1.9547,
+              "mean": 1.9547,
+              "median": 1.9547,
+              "min": 1.9547,
+              "p90": 1.9547
+            },
+            "total_tokens": 75,
+            "wall_s": 1.9559
+          },
+          "wall_s": 1.9559
+        }
+      ]
+    },
+    {
+      "batches_by_concurrency": {
+        "1": [
+          {
+            "concurrency": 1,
+            "requests": [
+              {
+                "completion_tok_per_s": 34.7299,
+                "completion_tokens": 256,
+                "elapsed_s": 7.3712,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report is prepared by the International Energy Agency (IEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIE",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504909,
+                  "id": "cmpl-bf80aa27840cb4f0",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The report is prepared by the International Energy Agency (IEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIEIE",
+                "run_index": 1,
+                "total_tok_per_s": 128.8804,
+                "total_tokens": 950
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 34.7279,
+              "aggregate_total_tok_per_s": 128.873,
+              "completion_tokens": 256,
+              "per_request_completion_tok_per_s": {
+                "max": 34.7299,
+                "mean": 34.7299,
+                "median": 34.7299,
+                "min": 34.7299,
+                "p90": 34.7299
+              },
+              "per_request_elapsed_s": {
+                "max": 7.3712,
+                "mean": 7.3712,
+                "median": 7.3712,
+                "min": 7.3712,
+                "p90": 7.3712
+              },
+              "total_tokens": 950,
+              "wall_s": 7.3716
+            },
+            "wall_s": 7.3716
+          },
+          {
+            "concurrency": 1,
+            "requests": [
+              {
+                "completion_tok_per_s": 34.5236,
+                "completion_tokens": 256,
+                "elapsed_s": 7.4152,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report also includes a detailed analysis of the current state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state\n\nOkay, so I need to figure out this problem. Let me read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read\n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504916,
+                  "id": "cmpl-9ca16da910b4fc0a",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The report also includes a detailed analysis of the current state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state state\n\nOkay, so I need to figure out this problem. Let me read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read read\n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n",
+                "run_index": 2,
+                "total_tok_per_s": 128.115,
+                "total_tokens": 950
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 34.5214,
+              "aggregate_total_tok_per_s": 128.1066,
+              "completion_tokens": 256,
+              "per_request_completion_tok_per_s": {
+                "max": 34.5236,
+                "mean": 34.5236,
+                "median": 34.5236,
+                "min": 34.5236,
+                "p90": 34.5236
+              },
+              "per_request_elapsed_s": {
+                "max": 7.4152,
+                "mean": 7.4152,
+                "median": 7.4152,
+                "min": 7.4152,
+                "p90": 7.4152
+              },
+              "total_tokens": 950,
+              "wall_s": 7.4157
+            },
+            "wall_s": 7.4157
+          }
+        ],
+        "2": [
+          {
+            "concurrency": 2,
+            "requests": [
+              {
+                "completion_tok_per_s": 23.1718,
+                "completion_tokens": 256,
+                "elapsed_s": 11.0479,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report should be in English and should be structured with the same number of digits. For example, 123 and 44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504924,
+                  "id": "cmpl-8c203fef19b4f4f4",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The report should be in English and should be structured with the same number of digits. For example, 123 and 44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444",
+                "run_index": 1,
+                "total_tok_per_s": 85.9892,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 23.1723,
+                "completion_tokens": 256,
+                "elapsed_s": 11.0477,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report also includes a section on the methodology used to: 1. The problem is to find the number of integer solutions to the area of the triangle is 100, then the area of the square square. The area of the square is $ s^2 $, so thes. The total number of hawks is 30, and the total:\n- 1000 (from 1000)\n-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504924,
+                  "id": "cmpl-a09987b4129cb991",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 2,
+                "response_text": " The report also includes a section on the methodology used to: 1. The problem is to find the number of integer solutions to the area of the triangle is 100, then the area of the square square. The area of the square is $ s^2 $, so thes. The total number of hawks is 30, and the total:\n- 1000 (from 1000)\n-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------",
+                "run_index": 1,
+                "total_tok_per_s": 85.9911,
+                "total_tokens": 950
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 46.3411,
+              "aggregate_total_tok_per_s": 171.969,
+              "completion_tokens": 512,
+              "per_request_completion_tok_per_s": {
+                "max": 23.1723,
+                "mean": 23.172,
+                "median": 23.172,
+                "min": 23.1718,
+                "p90": 23.1723
+              },
+              "per_request_elapsed_s": {
+                "max": 11.0479,
+                "mean": 11.0478,
+                "median": 11.0478,
+                "min": 11.0477,
+                "p90": 11.0479
+              },
+              "total_tokens": 1900,
+              "wall_s": 11.0485
+            },
+            "wall_s": 11.0485
+          },
+          {
+            "concurrency": 2,
+            "requests": [
+              {
+                "completion_tok_per_s": 23.1853,
+                "completion_tokens": 256,
+                "elapsed_s": 11.0415,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report is structured in three parts: the first part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504935,
+                  "id": "cmpl-9ea0431de0159264",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The report is structured in three parts: the first part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part",
+                "run_index": 2,
+                "total_tok_per_s": 86.0391,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 23.1856,
+                "completion_tokens": 256,
+                "elapsed_s": 11.0413,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report is prepared by the World Bank Group, which is the same as the number of elements in the set. So the number of fractions, and the sum of the numerator and denominator of the resulting fraction is 9  9  9  9  9  999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504935,
+                  "id": "cmpl-b779777e42daea1f",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 2,
+                "response_text": " The report is prepared by the World Bank Group, which is the same as the number of elements in the set. So the number of fractions, and the sum of the numerator and denominator of the resulting fraction is 9  9  9  9  9  999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+                "run_index": 2,
+                "total_tok_per_s": 86.0404,
+                "total_tokens": 950
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 46.3688,
+              "aggregate_total_tok_per_s": 172.0718,
+              "completion_tokens": 512,
+              "per_request_completion_tok_per_s": {
+                "max": 23.1856,
+                "mean": 23.1855,
+                "median": 23.1855,
+                "min": 23.1853,
+                "p90": 23.1856
+              },
+              "per_request_elapsed_s": {
+                "max": 11.0415,
+                "mean": 11.0414,
+                "median": 11.0414,
+                "min": 11.0413,
+                "p90": 11.0415
+              },
+              "total_tokens": 1900,
+              "wall_s": 11.0419
+            },
+            "wall_s": 11.0419
+          }
+        ],
+        "4": [
+          {
+            "concurrency": 4,
+            "requests": [
+              {
+                "completion_tok_per_s": 12.9863,
+                "completion_tokens": 256,
+                "elapsed_s": 19.713,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report is a key reference for investors, regulators,\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504946,
+                  "id": "cmpl-98a0efee84140be2",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The report is a key reference for investors, regulators,\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001\u3001",
+                "run_index": 1,
+                "total_tok_per_s": 48.1915,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 12.9869,
+                "completion_tokens": 256,
+                "elapsed_s": 19.7122,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report is a comprehensive analysis of the current state of fractions, and the sum of the numerator and denominator of the resulting fraction is 9  9  9  9  9  9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504946,
+                  "id": "cmpl-a758aab2500519a9",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 2,
+                "response_text": " The report is a comprehensive analysis of the current state of fractions, and the sum of the numerator and denominator of the resulting fraction is 9  9  9  9  9  9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999",
+                "run_index": 1,
+                "total_tok_per_s": 48.1935,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 12.9866,
+                "completion_tokens": 256,
+                "elapsed_s": 19.7126,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report also includes a detailed analysis of the market's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' '",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504946,
+                  "id": "cmpl-9ce92837728e41f8",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 3,
+                "response_text": " The report also includes a detailed analysis of the market's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's's' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' '",
+                "run_index": 1,
+                "total_tok_per_s": 48.1924,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 12.987,
+                "completion_tokens": 256,
+                "elapsed_s": 19.7119,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report also includes a detailed analysis of the methodology used: 1. 2. 3. 4. 5. \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504946,
+                  "id": "cmpl-b75e78b3624d2513",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 4,
+                "response_text": " The report also includes a detailed analysis of the methodology used: 1. 2. 3. 4. 5. \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n \n\n",
+                "run_index": 1,
+                "total_tok_per_s": 48.1941,
+                "total_tokens": 950
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 51.9428,
+              "aggregate_total_tok_per_s": 192.7564,
+              "completion_tokens": 1024,
+              "per_request_completion_tok_per_s": {
+                "max": 12.987,
+                "mean": 12.9867,
+                "median": 12.9868,
+                "min": 12.9863,
+                "p90": 12.987
+              },
+              "per_request_elapsed_s": {
+                "max": 19.713,
+                "mean": 19.7124,
+                "median": 19.7124,
+                "min": 19.7119,
+                "p90": 19.713
+              },
+              "total_tokens": 3800,
+              "wall_s": 19.714
+            },
+            "wall_s": 19.714
+          },
+          {
+            "concurrency": 4,
+            "requests": [
+              {
+                "completion_tok_per_s": 8.2598,
+                "completion_tokens": 12,
+                "elapsed_s": 1.4528,
+                "finish_reason": "stop",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "stop",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": 151643,
+                      "text": " The report is prepared by the World Bank and is a",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504966,
+                  "id": "cmpl-9571c63eae7c6678",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 12,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 706
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The report is prepared by the World Bank and is a",
+                "run_index": 2,
+                "total_tok_per_s": 485.951,
+                "total_tokens": 706
+              },
+              {
+                "completion_tok_per_s": 16.3835,
+                "completion_tokens": 256,
+                "elapsed_s": 15.6255,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report is prepared by the World Bank Group, the area of the triangle is 10, we can set up the equation:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504966,
+                  "id": "cmpl-be53581d073ce551",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 2,
+                "response_text": " The report is prepared by the World Bank Group, the area of the triangle is 10, we can set up the equation:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n:\n\n",
+                "run_index": 2,
+                "total_tok_per_s": 60.798,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 16.3836,
+                "completion_tokens": 256,
+                "elapsed_s": 15.6254,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report is divided into three parts: the first part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504966,
+                  "id": "cmpl-886dbaec34039d7c",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 3,
+                "response_text": " The report is divided into three parts: the first part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part part",
+                "run_index": 2,
+                "total_tok_per_s": 60.7986,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 16.3841,
+                "completion_tokens": 256,
+                "elapsed_s": 15.625,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The report also includes a detailed analysis of the current market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504966,
+                  "id": "cmpl-96a978761f3d0549",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 4,
+                "response_text": " The report also includes a detailed analysis of the current market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market market",
+                "run_index": 2,
+                "total_tok_per_s": 60.8002,
+                "total_tokens": 950
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 49.9136,
+              "aggregate_total_tok_per_s": 227.5549,
+              "completion_tokens": 780,
+              "per_request_completion_tok_per_s": {
+                "max": 16.3841,
+                "mean": 14.3528,
+                "median": 16.3835,
+                "min": 8.2598,
+                "p90": 16.3841
+              },
+              "per_request_elapsed_s": {
+                "max": 15.6255,
+                "mean": 12.0822,
+                "median": 15.6252,
+                "min": 1.4528,
+                "p90": 15.6255
+              },
+              "total_tokens": 3556,
+              "wall_s": 15.627
+            },
+            "wall_s": 15.627
+          }
+        ]
+      },
+      "max_tokens": 256,
+      "name": "long_context_summary_256",
+      "prompt": "We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. Summarize the operational risks and benchmark methodology.",
+      "summary": {
+        "1": {
+          "aggregate_completion_tok_per_s": {
+            "max": 34.7279,
+            "mean": 34.6247,
+            "median": 34.6247,
+            "min": 34.5214,
+            "p90": 34.7279
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 128.873,
+            "mean": 128.4898,
+            "median": 128.4898,
+            "min": 128.1066,
+            "p90": 128.873
+          },
+          "completion_tokens": {
+            "max": 256,
+            "mean": 256.0,
+            "median": 256.0,
+            "min": 256,
+            "p90": 256
+          },
+          "total_tokens": {
+            "max": 950,
+            "mean": 950.0,
+            "median": 950.0,
+            "min": 950,
+            "p90": 950
+          },
+          "wall_s": {
+            "max": 7.4157,
+            "mean": 7.3937,
+            "median": 7.3937,
+            "min": 7.3716,
+            "p90": 7.4157
+          }
+        },
+        "2": {
+          "aggregate_completion_tok_per_s": {
+            "max": 46.3688,
+            "mean": 46.355,
+            "median": 46.355,
+            "min": 46.3411,
+            "p90": 46.3688
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 172.0718,
+            "mean": 172.0204,
+            "median": 172.0204,
+            "min": 171.969,
+            "p90": 172.0718
+          },
+          "completion_tokens": {
+            "max": 512,
+            "mean": 512.0,
+            "median": 512.0,
+            "min": 512,
+            "p90": 512
+          },
+          "total_tokens": {
+            "max": 1900,
+            "mean": 1900.0,
+            "median": 1900.0,
+            "min": 1900,
+            "p90": 1900
+          },
+          "wall_s": {
+            "max": 11.0485,
+            "mean": 11.0452,
+            "median": 11.0452,
+            "min": 11.0419,
+            "p90": 11.0485
+          }
+        },
+        "4": {
+          "aggregate_completion_tok_per_s": {
+            "max": 51.9428,
+            "mean": 50.9282,
+            "median": 50.9282,
+            "min": 49.9136,
+            "p90": 51.9428
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 227.5549,
+            "mean": 210.1557,
+            "median": 210.1557,
+            "min": 192.7564,
+            "p90": 227.5549
+          },
+          "completion_tokens": {
+            "max": 1024,
+            "mean": 902.0,
+            "median": 902.0,
+            "min": 780,
+            "p90": 1024
+          },
+          "total_tokens": {
+            "max": 3800,
+            "mean": 3678.0,
+            "median": 3678.0,
+            "min": 3556,
+            "p90": 3800
+          },
+          "wall_s": {
+            "max": 19.714,
+            "mean": 17.6705,
+            "median": 17.6705,
+            "min": 15.627,
+            "p90": 19.714
+          }
+        }
+      },
+      "temperature": 0.2,
+      "warmups": [
+        {
+          "concurrency": 1,
+          "requests": [
+            {
+              "completion_tok_per_s": 35.0437,
+              "completion_tokens": 256,
+              "elapsed_s": 7.3052,
+              "finish_reason": "length",
+              "prompt_tokens": 694,
+              "raw_response": {
+                "choices": [
+                  {
+                    "finish_reason": "length",
+                    "index": 0,
+                    "logprobs": null,
+                    "prompt_logprobs": null,
+                    "prompt_token_ids": null,
+                    "routed_experts": null,
+                    "stop_reason": null,
+                    "text": " We are evaluating an AMD ROCm inference stack against upstream \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191",
+                    "token_ids": null
+                  }
+                ],
+                "created": 1784504902,
+                "id": "cmpl-96c429c26ea0bd72",
+                "kv_transfer_params": null,
+                "model": "qwen3-8b",
+                "object": "text_completion",
+                "service_tier": null,
+                "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                "usage": {
+                  "completion_tokens": 256,
+                  "prompt_tokens": 694,
+                  "prompt_tokens_details": null,
+                  "total_tokens": 950
+                }
+              },
+              "request_index": 1,
+              "response_text": " We are evaluating an AMD ROCm inference stack against upstream \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191 \u2191",
+              "run_index": 1,
+              "total_tok_per_s": 130.045,
+              "total_tokens": 950
+            }
+          ],
+          "run_index": 1,
+          "summary": {
+            "aggregate_completion_tok_per_s": 35.0416,
+            "aggregate_total_tok_per_s": 130.0372,
+            "completion_tokens": 256,
+            "per_request_completion_tok_per_s": {
+              "max": 35.0437,
+              "mean": 35.0437,
+              "median": 35.0437,
+              "min": 35.0437,
+              "p90": 35.0437
+            },
+            "per_request_elapsed_s": {
+              "max": 7.3052,
+              "mean": 7.3052,
+              "median": 7.3052,
+              "min": 7.3052,
+              "p90": 7.3052
+            },
+            "total_tokens": 950,
+            "wall_s": 7.3056
+          },
+          "wall_s": 7.3056
+        }
+      ]
+    },
+    {
+      "batches_by_concurrency": {
+        "1": [
+          {
+            "concurrency": 1,
+            "requests": [
+              {
+                "completion_tok_per_s": 43.4743,
+                "completion_tokens": 768,
+                "elapsed_s": 17.6656,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " By addressing these challenges, the company has been able to maintain its position as a leader in the industry: 'industry',\n    industryName: 'industryName',\n    industryType Bank is a bank in the game The Sims 4. It is located in the first place. So, the answer is that the person is not responsible for, and what are the key features of the product? What are the benefits of fractions, and the denominator is the number of parts in total. So, if) the function is continuous at the point (x, y) = (00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784504999,
+                  "id": "cmpl-9a444d58670e36c6",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 1,
+                "response_text": " By addressing these challenges, the company has been able to maintain its position as a leader in the industry: 'industry',\n    industryName: 'industryName',\n    industryType Bank is a bank in the game The Sims 4. It is located in the first place. So, the answer is that the person is not responsible for, and what are the key features of the product? What are the benefits of fractions, and the denominator is the number of parts in total. So, if) the function is continuous at the point (x, y) = (00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "run_index": 1,
+                "total_tok_per_s": 46.0216,
+                "total_tokens": 813
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 43.4731,
+              "aggregate_total_tok_per_s": 46.0203,
+              "completion_tokens": 768,
+              "per_request_completion_tok_per_s": {
+                "max": 43.4743,
+                "mean": 43.4743,
+                "median": 43.4743,
+                "min": 43.4743,
+                "p90": 43.4743
+              },
+              "per_request_elapsed_s": {
+                "max": 17.6656,
+                "mean": 17.6656,
+                "median": 17.6656,
+                "min": 17.6656,
+                "p90": 17.6656
+              },
+              "total_tokens": 813,
+              "wall_s": 17.6661
+            },
+            "wall_s": 17.6661
+          },
+          {
+            "concurrency": 1,
+            "requests": [
+              {
+                "completion_tok_per_s": 43.5299,
+                "completion_tokens": 768,
+                "elapsed_s": 17.643,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The results showed that: \n\n$$\n\\begin{align*}\n\\frac{d}{dxdxdxdx0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505017,
+                  "id": "cmpl-aba9c01f57c334c8",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The results showed that: \n\n$$\n\\begin{align*}\n\\frac{d}{dxdxdxdx0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "run_index": 2,
+                "total_tok_per_s": 46.0805,
+                "total_tokens": 813
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 43.5288,
+              "aggregate_total_tok_per_s": 46.0793,
+              "completion_tokens": 768,
+              "per_request_completion_tok_per_s": {
+                "max": 43.5299,
+                "mean": 43.5299,
+                "median": 43.5299,
+                "min": 43.5299,
+                "p90": 43.5299
+              },
+              "per_request_elapsed_s": {
+                "max": 17.643,
+                "mean": 17.643,
+                "median": 17.643,
+                "min": 17.643,
+                "p90": 17.643
+              },
+              "total_tokens": 813,
+              "wall_s": 17.6435
+            },
+            "wall_s": 17.6435
+          }
+        ],
+        "2": [
+          {
+            "concurrency": 2,
+            "requests": [
+              {
+                "completion_tok_per_s": 32.0436,
+                "completion_tokens": 768,
+                "elapsed_s": 23.9674,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " By addressing these challenges, the company has been able to maintain a strong market position and continue to innovate: the idea of the entrepreneur is one of the most important and enduring ideas in the problem, we are to find the value of $ \\frac{1}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505034,
+                  "id": "cmpl-bb61995c82fcd4ff",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 1,
+                "response_text": " By addressing these challenges, the company has been able to maintain a strong market position and continue to innovate: the idea of the entrepreneur is one of the most important and enduring ideas in the problem, we are to find the value of $ \\frac{1}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{",
+                "run_index": 1,
+                "total_tok_per_s": 33.9211,
+                "total_tokens": 813
+              },
+              {
+                "completion_tok_per_s": 32.044,
+                "completion_tokens": 768,
+                "elapsed_s": 23.9671,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The paper also discussess the role of the state in the economy, and the role of the market\n\nHuman: What is the difference between a market and a market economy?\n\nAssistantAssistantAssistantAssistantAssistantAssistantAssistantAssistantAssistantAssistant\nOkay, the user is asking: \"What is the probability that the first player wins the game?\" \n\nOkay: I need to find the value of the expression $ \\frac{1}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505034,
+                  "id": "cmpl-973df61279aeaa04",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 2,
+                "response_text": " The paper also discussess the role of the state in the economy, and the role of the market\n\nHuman: What is the difference between a market and a market economy?\n\nAssistantAssistantAssistantAssistantAssistantAssistantAssistantAssistantAssistantAssistant\nOkay, the user is asking: \"What is the probability that the first player wins the game?\" \n\nOkay: I need to find the value of the expression $ \\frac{1}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{",
+                "run_index": 1,
+                "total_tok_per_s": 33.9216,
+                "total_tokens": 813
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 64.0857,
+              "aggregate_total_tok_per_s": 67.8407,
+              "completion_tokens": 1536,
+              "per_request_completion_tok_per_s": {
+                "max": 32.044,
+                "mean": 32.0438,
+                "median": 32.0438,
+                "min": 32.0436,
+                "p90": 32.044
+              },
+              "per_request_elapsed_s": {
+                "max": 23.9674,
+                "mean": 23.9672,
+                "median": 23.9672,
+                "min": 23.9671,
+                "p90": 23.9674
+              },
+              "total_tokens": 1626,
+              "wall_s": 23.9679
+            },
+            "wall_s": 23.9679
+          },
+          {
+            "concurrency": 2,
+            "requests": [
+              {
+                "completion_tok_per_s": 32.1015,
+                "completion_tokens": 768,
+                "elapsed_s": 23.9241,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The paper also discusses, the idea of the \"soul\" is not a scientific concept, but: 1. The first step is to calculate the total number of possible outcomes, and the probability of each outcome is the same. So, the probability of fractions, and the sum of the numerator and denominator of the resulting fraction is \u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505058,
+                  "id": "cmpl-8718778eb3ce6e42",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The paper also discusses, the idea of the \"soul\" is not a scientific concept, but: 1. The first step is to calculate the total number of possible outcomes, and the probability of each outcome is the same. So, the probability of fractions, and the sum of the numerator and denominator of the resulting fraction is \u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d\u094d",
+                "run_index": 2,
+                "total_tok_per_s": 33.9824,
+                "total_tokens": 813
+              },
+              {
+                "completion_tok_per_s": 32.1019,
+                "completion_tokens": 768,
+                "elapsed_s": 23.9238,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The paper also discusses, the key is to ensure that the data is properly structured and that the query query query query for the current user, and then use the `find()` method method method method method method method method method method method meth meth meth meth meth meth and the other is a 100% ethanol solution. The 11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505058,
+                  "id": "cmpl-94dee0da46f116c1",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 2,
+                "response_text": " The paper also discusses, the key is to ensure that the data is properly structured and that the query query query query for the current user, and then use the `find()` method method method method method method method method method method method meth meth meth meth meth meth and the other is a 100% ethanol solution. The 11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+                "run_index": 2,
+                "total_tok_per_s": 33.9829,
+                "total_tokens": 813
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 64.2014,
+              "aggregate_total_tok_per_s": 67.9632,
+              "completion_tokens": 1536,
+              "per_request_completion_tok_per_s": {
+                "max": 32.1019,
+                "mean": 32.1017,
+                "median": 32.1017,
+                "min": 32.1015,
+                "p90": 32.1019
+              },
+              "per_request_elapsed_s": {
+                "max": 23.9241,
+                "mean": 23.9239,
+                "median": 23.9239,
+                "min": 23.9238,
+                "p90": 23.9241
+              },
+              "total_tokens": 1626,
+              "wall_s": 23.9247
+            },
+            "wall_s": 23.9247
+          }
+        ],
+        "4": [
+          {
+            "concurrency": 4,
+            "requests": [
+              {
+                "completion_tok_per_s": 19.1837,
+                "completion_tokens": 768,
+                "elapsed_s": 40.034,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The results showed that: \n\n$$\n\\begin{align*}\n\\text{Total cost}\n\nexport function useUser() {\n  const [user, setUser] = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505082,
+                  "id": "cmpl-b04f22d314429eaf",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The results showed that: \n\n$$\n\\begin{align*}\n\\text{Total cost}\n\nexport function useUser() {\n  const [user, setUser] = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =",
+                "run_index": 1,
+                "total_tok_per_s": 20.3078,
+                "total_tokens": 813
+              },
+              {
+                "completion_tok_per_s": 19.1837,
+                "completion_tokens": 768,
+                "elapsed_s": 40.0339,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The paper also discussess the role of the state in the economy, the nature of the market,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505082,
+                  "id": "cmpl-aea762561f5275f4",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 2,
+                "response_text": " The paper also discussess the role of the state in the economy, the nature of the market,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,>,",
+                "run_index": 1,
+                "total_tok_per_s": 20.3078,
+                "total_tokens": 813
+              },
+              {
+                "completion_tok_per_s": 19.1839,
+                "completion_tokens": 768,
+                "elapsed_s": 40.0337,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The results show that: \n\n$$\n\\begin{align*}\n\\text{Total cost}frac{1}{2}frac{1}{2}frac{1}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505082,
+                  "id": "cmpl-b2b3fb830b64abb0",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 3,
+                "response_text": " The results show that: \n\n$$\n\\begin{align*}\n\\text{Total cost}frac{1}{2}frac{1}{2}frac{1}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{",
+                "run_index": 1,
+                "total_tok_per_s": 20.3079,
+                "total_tokens": 813
+              },
+              {
+                "completion_tok_per_s": 19.1841,
+                "completion_tokens": 768,
+                "elapsed_s": 40.0331,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The paper also discusses, the role of the state in the economy, the nature of the market,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505082,
+                  "id": "cmpl-a188ab40edfa4c8b",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 4,
+                "response_text": " The paper also discusses, the role of the state in the economy, the nature of the market,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,.,",
+                "run_index": 1,
+                "total_tok_per_s": 20.3082,
+                "total_tokens": 813
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 76.7332,
+              "aggregate_total_tok_per_s": 81.2293,
+              "completion_tokens": 3072,
+              "per_request_completion_tok_per_s": {
+                "max": 19.1841,
+                "mean": 19.1838,
+                "median": 19.1838,
+                "min": 19.1837,
+                "p90": 19.1841
+              },
+              "per_request_elapsed_s": {
+                "max": 40.034,
+                "mean": 40.0337,
+                "median": 40.0338,
+                "min": 40.0331,
+                "p90": 40.034
+              },
+              "total_tokens": 3252,
+              "wall_s": 40.0348
+            },
+            "wall_s": 40.0348
+          },
+          {
+            "concurrency": 4,
+            "requests": [
+              {
+                "completion_tok_per_s": 16.931,
+                "completion_tokens": 21,
+                "elapsed_s": 1.2403,
+                "finish_reason": "stop",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "stop",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": 151643,
+                      "text": " The results show that: 1. The number of students who like both math and science is ",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505122,
+                  "id": "cmpl-a7c66008e19232b0",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 21,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 66
+                  }
+                },
+                "request_index": 1,
+                "response_text": " The results show that: 1. The number of students who like both math and science is ",
+                "run_index": 2,
+                "total_tok_per_s": 53.2116,
+                "total_tokens": 66
+              },
+              {
+                "completion_tok_per_s": 24.0158,
+                "completion_tokens": 768,
+                "elapsed_s": 31.979,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The paper also discussess the role of the state in the economy, and the relationship between the state: 'active',\n    },\n    {\n      id: 2,\n          : 100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505122,
+                  "id": "cmpl-85ceaf51cfdfc7a3",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 2,
+                "response_text": " The paper also discussess the role of the state in the economy, and the relationship between the state: 'active',\n    },\n    {\n      id: 2,\n          : 100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "run_index": 2,
+                "total_tok_per_s": 25.423,
+                "total_tokens": 813
+              },
+              {
+                "completion_tok_per_s": 24.016,
+                "completion_tokens": 768,
+                "elapsed_s": 31.9787,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The paper also discusses, the problem of the \"unreliable narrator\" is a key issue in: 1.1.1.1.1.1.1. A. B. C. D. E. F. G. H. A. B. C. D. E. F. G. H. A. B. C. D. E. F. G. H. The number of ways to choose 3 people from 5 is C(555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505122,
+                  "id": "cmpl-b3f969d2db46c852",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 3,
+                "response_text": " The paper also discusses, the problem of the \"unreliable narrator\" is a key issue in: 1.1.1.1.1.1.1. A. B. C. D. E. F. G. H. A. B. C. D. E. F. G. H. A. B. C. D. E. F. G. H. The number of ways to choose 3 people from 5 is C(555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555",
+                "run_index": 2,
+                "total_tok_per_s": 25.4232,
+                "total_tokens": 813
+              },
+              {
+                "completion_tok_per_s": 24.0166,
+                "completion_tokens": 768,
+                "elapsed_s": 31.9779,
+                "finish_reason": "length",
+                "prompt_tokens": 45,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " The paper also discusses, the question of whether the state should be involved in the economy is a complex: the first is the \"simplified\" version, which is a single, ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( (",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784505122,
+                  "id": "cmpl-bfff611a68d67d61",
+                  "kv_transfer_params": null,
+                  "model": "qwen3-8b",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                  "usage": {
+                    "completion_tokens": 768,
+                    "prompt_tokens": 45,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 813
+                  }
+                },
+                "request_index": 4,
+                "response_text": " The paper also discusses, the question of whether the state should be involved in the economy is a complex: the first is the \"simplified\" version, which is a single, ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( ( (",
+                "run_index": 2,
+                "total_tok_per_s": 25.4238,
+                "total_tokens": 813
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 72.7015,
+              "aggregate_total_tok_per_s": 78.33,
+              "completion_tokens": 2325,
+              "per_request_completion_tok_per_s": {
+                "max": 24.0166,
+                "mean": 22.2448,
+                "median": 24.0159,
+                "min": 16.931,
+                "p90": 24.0166
+              },
+              "per_request_elapsed_s": {
+                "max": 31.979,
+                "mean": 24.294,
+                "median": 31.9783,
+                "min": 1.2403,
+                "p90": 31.979
+              },
+              "total_tokens": 2505,
+              "wall_s": 31.9801
+            },
+            "wall_s": 31.9801
+          }
+        ]
+      },
+      "max_tokens": 768,
+      "name": "extended_generation_768",
+      "prompt": "Write a technical essay on how to build a deterministic, least-dependency LLM serving runtime for heterogeneous GPU fleets. Discuss AMD, NVIDIA, build isolation, wheel selection, runtime feature detection, endpoint compatibility, and benchmark design.",
+      "summary": {
+        "1": {
+          "aggregate_completion_tok_per_s": {
+            "max": 43.5288,
+            "mean": 43.501,
+            "median": 43.501,
+            "min": 43.4731,
+            "p90": 43.5288
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 46.0793,
+            "mean": 46.0498,
+            "median": 46.0498,
+            "min": 46.0203,
+            "p90": 46.0793
+          },
+          "completion_tokens": {
+            "max": 768,
+            "mean": 768.0,
+            "median": 768.0,
+            "min": 768,
+            "p90": 768
+          },
+          "total_tokens": {
+            "max": 813,
+            "mean": 813.0,
+            "median": 813.0,
+            "min": 813,
+            "p90": 813
+          },
+          "wall_s": {
+            "max": 17.6661,
+            "mean": 17.6548,
+            "median": 17.6548,
+            "min": 17.6435,
+            "p90": 17.6661
+          }
+        },
+        "2": {
+          "aggregate_completion_tok_per_s": {
+            "max": 64.2014,
+            "mean": 64.1436,
+            "median": 64.1436,
+            "min": 64.0857,
+            "p90": 64.2014
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 67.9632,
+            "mean": 67.9019,
+            "median": 67.9019,
+            "min": 67.8407,
+            "p90": 67.9632
+          },
+          "completion_tokens": {
+            "max": 1536,
+            "mean": 1536.0,
+            "median": 1536.0,
+            "min": 1536,
+            "p90": 1536
+          },
+          "total_tokens": {
+            "max": 1626,
+            "mean": 1626.0,
+            "median": 1626.0,
+            "min": 1626,
+            "p90": 1626
+          },
+          "wall_s": {
+            "max": 23.9679,
+            "mean": 23.9463,
+            "median": 23.9463,
+            "min": 23.9247,
+            "p90": 23.9679
+          }
+        },
+        "4": {
+          "aggregate_completion_tok_per_s": {
+            "max": 76.7332,
+            "mean": 74.7173,
+            "median": 74.7173,
+            "min": 72.7015,
+            "p90": 76.7332
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 81.2293,
+            "mean": 79.7797,
+            "median": 79.7797,
+            "min": 78.33,
+            "p90": 81.2293
+          },
+          "completion_tokens": {
+            "max": 3072,
+            "mean": 2698.5,
+            "median": 2698.5,
+            "min": 2325,
+            "p90": 3072
+          },
+          "total_tokens": {
+            "max": 3252,
+            "mean": 2878.5,
+            "median": 2878.5,
+            "min": 2505,
+            "p90": 3252
+          },
+          "wall_s": {
+            "max": 40.0348,
+            "mean": 36.0074,
+            "median": 36.0074,
+            "min": 31.9801,
+            "p90": 40.0348
+          }
+        }
+      },
+      "temperature": 0.2,
+      "warmups": [
+        {
+          "concurrency": 1,
+          "requests": [
+            {
+              "completion_tok_per_s": 43.3557,
+              "completion_tokens": 768,
+              "elapsed_s": 17.7139,
+              "finish_reason": "length",
+              "prompt_tokens": 45,
+              "raw_response": {
+                "choices": [
+                  {
+                    "finish_reason": "length",
+                    "index": 0,
+                    "logprobs": null,
+                    "prompt_logprobs": null,
+                    "prompt_token_ids": null,
+                    "routed_experts": null,
+                    "stop_reason": null,
+                    "text": " The essay should be the same as the original. So, the answer is 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                    "token_ids": null
+                  }
+                ],
+                "created": 1784504981,
+                "id": "cmpl-909181400d3fbb27",
+                "kv_transfer_params": null,
+                "model": "qwen3-8b",
+                "object": "text_completion",
+                "service_tier": null,
+                "system_fingerprint": "vllm-0.0.0+sock-nohash",
+                "usage": {
+                  "completion_tokens": 768,
+                  "prompt_tokens": 45,
+                  "prompt_tokens_details": null,
+                  "total_tokens": 813
+                }
+              },
+              "request_index": 1,
+              "response_text": " The essay should be the same as the original. So, the answer is 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+              "run_index": 1,
+              "total_tok_per_s": 45.8961,
+              "total_tokens": 813
+            }
+          ],
+          "run_index": 1,
+          "summary": {
+            "aggregate_completion_tok_per_s": 43.3546,
+            "aggregate_total_tok_per_s": 45.8949,
+            "completion_tokens": 768,
+            "per_request_completion_tok_per_s": {
+              "max": 43.3557,
+              "mean": 43.3557,
+              "median": 43.3557,
+              "min": 43.3557,
+              "p90": 43.3557
+            },
+            "per_request_elapsed_s": {
+              "max": 17.7139,
+              "mean": 17.7139,
+              "median": 17.7139,
+              "min": 17.7139,
+              "p90": 17.7139
+            },
+            "total_tokens": 813,
+            "wall_s": 17.7144
+          },
+          "wall_s": 17.7144
+        }
+      ]
+    }
+  ],
+  "concurrency_levels": [
+    1,
+    2,
+    4
+  ],
+  "elapsed_s": 262.3856,
+  "label": "rtx4090_qwen3_8b_tmh_kernel_fb04dd4",
+  "model": "qwen3-8b",
+  "ok": true,
+  "runs": 2,
+  "warmup_runs": 1
+}

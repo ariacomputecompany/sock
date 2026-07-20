@@ -748,6 +748,25 @@ standard KV on the full endpoint suite. The next target is deeper physical
 attention algorithm and kernel efficiency, not scheduler accounting, CLI wiring,
 or warmup coverage.
 
+### RTX 4090 TMH kernel optimization slice
+
+Follow-up CUDA kernel work used the RTX 4090 Qwen3-8B focused slice that exposed
+the largest physical TMH decode regressions: `tiny_fact_64`,
+`long_context_summary_256`, and `extended_generation_768` at concurrency 1, 2,
+and 4. The baseline for this slice is the physical TMH run in
+`benchmarks/2026-07-19-rtx4090-qwen3-8b-standard-backend-tmh/tmh-suite.json`.
+
+| Run | Attention backend | Production decision | Mean completion tok/s delta vs prior physical TMH slice | Notes |
+| --- | --- | --- | ---: | --- |
+| CUDA tile-shape pass (`fb04dd4`) | FlashInfer metadata, TMH physical 2D fallback | kept | +0.85% | Small net win; improves `extended_generation_768` c2 by +10.99%, mixed elsewhere. |
+| Packed-V split accumulator (`7632647`) | FlashInfer metadata, TMH physical 2D fallback | reverted | n/a | Correct but slower overall; removed from production code. |
+| Segmented decode (`a4b6134`) | Triton attention metadata, TMH physical 3D segment/reduce | gated to long contexts | -4.53% at 1k context | Correct and raises sampled GPU utilization to 83%, but segment/reduce overhead is not amortized at `max_model_len=1024`. |
+
+Production readout: keep the CUDA tile-shape tuning and keep segmented decode
+implemented, tested, and gated for longer contexts (`max_seq_len >= 1025`) where
+additional sequence-parallelism can amortize the segment/reduce overhead. Do not
+enable segmented Triton TMH for the current 1k-context endpoint path.
+
 ## Artifacts
 
 | Artifact | Purpose |
@@ -758,6 +777,9 @@ or warmup coverage.
 | `benchmarks/2026-07-18-gmk-qwen3-32b-4bit-gptq/suite-summary.json` | Qwen3-32B 4-bit compact suite summary |
 | `benchmarks/2026-07-18-gmk-qwen3-30b-a3b-gptq-int4/suite-summary.json` | Qwen3-30B-A3B MoE compact suite summary |
 | `benchmarks/2026-07-19-rtx4090-cuda-qwen3/summary.json` | RTX 4090 CUDA Qwen3-4B/8B eager vs compiled summary |
+| `benchmarks/2026-07-19-rtx4090-qwen3-8b-tmh-kernel-fb04dd4/tmh-suite.json` | RTX 4090 focused TMH CUDA tile-shape optimization slice |
+| `benchmarks/2026-07-19-rtx4090-qwen3-8b-tmh-kernel-7632647/tmh-suite.json` | RTX 4090 focused packed-V accumulator diagnostic slice |
+| `benchmarks/2026-07-20-rtx4090-qwen3-8b-tmh-triton-segmented-a4b6134/tmh-suite.json` | RTX 4090 focused Triton segmented decode diagnostic slice |
 | `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh/suite-summary.json` | Qwen3-30B-A3B standard vs physical TMH full endpoint suite |
 | `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-kernel-opt/suite-summary.json` | Qwen3-30B-A3B optimized physical TMH kernel full endpoint suite |
 | `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-page-desc-opt/suite-summary.json` | Qwen3-30B-A3B page-descriptor physical TMH kernel full endpoint suite |
