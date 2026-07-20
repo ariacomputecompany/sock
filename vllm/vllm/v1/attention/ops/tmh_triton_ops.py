@@ -330,7 +330,6 @@ def _tmh_unified_attention_kernel(
     req_row = tl.load(seq_to_request_row_ptr + seq_idx).to(tl.int64)
     offs_m = tl.arange(0, BLOCK_M)
     offs_d = tl.arange(0, HEAD_SIZE_PADDED)
-    offs_d_half = tl.arange(0, HEAD_SIZE_PADDED // 2)
     offs_t = tl.arange(0, TILE_SIZE)
     query_pos = q_block_local_idx * BLOCK_Q + offs_m // num_queries_per_kv
     query_offset_0 = cur_start + query_pos
@@ -338,10 +337,6 @@ def _tmh_unified_attention_kernel(
     query_mask_0 = tl.where(query_pos < query_len, 1, 0).to(tl.int1)
     query_mask_1 = tl.where(query_offset_1 < num_query_heads, 1, 0).to(tl.int1)
     dim_mask = tl.where(offs_d < HEAD_SIZE, 1, 0).to(tl.int1)
-    even_dim = offs_d_half * 2
-    odd_dim = even_dim + 1
-    even_dim_mask = tl.where(even_dim < HEAD_SIZE, 1, 0).to(tl.int1)
-    odd_dim_mask = tl.where(odd_dim < HEAD_SIZE, 1, 0).to(tl.int1)
 
     query_offset = (
         query_offset_0[:, None] * query_stride_0
@@ -364,11 +359,7 @@ def _tmh_unified_attention_kernel(
         False,
     )
     L = tl.full([BLOCK_M], 1.0, dtype=tl.float32)
-    if WARM_VALUE_PACKED:
-        acc_even = tl.zeros([BLOCK_M, HEAD_SIZE_PADDED // 2], dtype=tl.float32)
-        acc_odd = tl.zeros([BLOCK_M, HEAD_SIZE_PADDED // 2], dtype=tl.float32)
-    else:
-        acc = tl.zeros([BLOCK_M, HEAD_SIZE_PADDED], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, HEAD_SIZE_PADDED], dtype=tl.float32)
     context_len = seq_len - query_len
 
     if USE_ALIBI_SLOPES:
@@ -422,46 +413,22 @@ def _tmh_unified_attention_kernel(
                 + kv_head_idx * stride_raw_k_head
                 + offs_d[:, None]
             )
+            raw_v_offset = (
+                physical_slot * stride_raw_v_slot
+                + offset_in_page[:, None] * stride_raw_v_tok
+                + kv_head_idx * stride_raw_v_head
+                + offs_d[None, :]
+            )
             K = tl.load(
                 raw_key_ptr + raw_k_offset,
                 mask=dim_mask[:, None] & tile_mask[None, :],
                 other=0.0,
             ).to(Q.dtype)
-            if WARM_VALUE_PACKED:
-                raw_v_even_offset = (
-                    physical_slot * stride_raw_v_slot
-                    + offset_in_page[:, None] * stride_raw_v_tok
-                    + kv_head_idx * stride_raw_v_head
-                    + even_dim[None, :]
-                )
-                raw_v_odd_offset = (
-                    physical_slot * stride_raw_v_slot
-                    + offset_in_page[:, None] * stride_raw_v_tok
-                    + kv_head_idx * stride_raw_v_head
-                    + odd_dim[None, :]
-                )
-                V_even = tl.load(
-                    raw_value_ptr + raw_v_even_offset,
-                    mask=even_dim_mask[None, :] & tile_mask[:, None],
-                    other=0.0,
-                ).to(Q.dtype)
-                V_odd = tl.load(
-                    raw_value_ptr + raw_v_odd_offset,
-                    mask=odd_dim_mask[None, :] & tile_mask[:, None],
-                    other=0.0,
-                ).to(Q.dtype)
-            else:
-                raw_v_offset = (
-                    physical_slot * stride_raw_v_slot
-                    + offset_in_page[:, None] * stride_raw_v_tok
-                    + kv_head_idx * stride_raw_v_head
-                    + offs_d[None, :]
-                )
-                V = tl.load(
-                    raw_value_ptr + raw_v_offset,
-                    mask=dim_mask[None, :] & tile_mask[:, None],
-                    other=0.0,
-                ).to(Q.dtype)
+            V = tl.load(
+                raw_value_ptr + raw_v_offset,
+                mask=dim_mask[None, :] & tile_mask[:, None],
+                other=0.0,
+            ).to(Q.dtype)
         elif is_warm:
             warm_k_offset = (
                 physical_slot * stride_warm_k_slot
@@ -499,7 +466,7 @@ def _tmh_unified_attention_kernel(
                 other=1.0,
             )
             if WARM_VALUE_PACKED:
-                packed_offs = offs_d_half
+                packed_offs = offs_d // 2
                 packed_offset = (
                     physical_slot * stride_warm_v_slot
                     + offset_in_page[:, None] * stride_warm_v_tok
@@ -508,19 +475,13 @@ def _tmh_unified_attention_kernel(
                 )
                 packed = tl.load(
                     warm_value_ptr + packed_offset,
-                    mask=even_dim_mask[None, :] & tile_mask[:, None],
+                    mask=dim_mask[None, :] & tile_mask[:, None],
                     other=0,
                 )
                 lo, hi = unpack_int4_nibbles(packed)
+                nibble = tl.where((offs_d[None, :] % 2) == 0, lo, hi).to(tl.float32)
                 v4_scale, v4_zp = _unpack_scale_zp(warm_v_scale)
-                V_even = ((lo.to(tl.float32) - v4_zp[:, None]) * v4_scale[:, None]).to(
-                    Q.dtype
-                )
-                V_odd = ((hi.to(tl.float32) - v4_zp[:, None]) * v4_scale[:, None]).to(
-                    Q.dtype
-                )
-                V_even = tl.where(even_dim_mask[None, :], V_even, 0.0)
-                V_odd = tl.where(odd_dim_mask[None, :], V_odd, 0.0)
+                V = ((nibble - v4_zp[:, None]) * v4_scale[:, None]).to(Q.dtype)
             else:
                 warm_v_offset = (
                     physical_slot * stride_warm_v_slot
@@ -538,17 +499,7 @@ def _tmh_unified_attention_kernel(
                 ).to(Q.dtype)
         else:
             K = tl.zeros([HEAD_SIZE_PADDED, TILE_SIZE], dtype=tl.float32).to(Q.dtype)
-            if WARM_VALUE_PACKED:
-                V_even = tl.zeros(
-                    [TILE_SIZE, HEAD_SIZE_PADDED // 2], dtype=tl.float32
-                ).to(Q.dtype)
-                V_odd = tl.zeros(
-                    [TILE_SIZE, HEAD_SIZE_PADDED // 2], dtype=tl.float32
-                ).to(Q.dtype)
-            else:
-                V = tl.zeros([TILE_SIZE, HEAD_SIZE_PADDED], dtype=tl.float32).to(
-                    Q.dtype
-                )
+            V = tl.zeros([TILE_SIZE, HEAD_SIZE_PADDED], dtype=tl.float32).to(Q.dtype)
 
         query_abs_pos = context_len + query_pos[:, None]
         seq_mask = compute_kv_seq_mask(
@@ -579,65 +530,26 @@ def _tmh_unified_attention_kernel(
             )
 
         M, L, P, alpha = softmax_step(S, M, L)
+        acc = acc * alpha[:, None]
         if SLIDING_WINDOW:
             qpos_lo = q_block_local_idx * BLOCK_Q
             dist = context_len + qpos_lo - seq_offset[:, None]
-            if WARM_VALUE_PACKED:
-                V_even = tl.where(dist < SLIDING_WINDOW, V_even, 0.0)
-                V_odd = tl.where(dist < SLIDING_WINDOW, V_odd, 0.0)
-            else:
-                V = tl.where(dist < SLIDING_WINDOW, V, 0.0)
-        if WARM_VALUE_PACKED:
-            acc_even = acc_even * alpha[:, None]
-            acc_odd = acc_odd * alpha[:, None]
-            acc_even += tl.dot(P.to(V_even.dtype), V_even)
-            acc_odd += tl.dot(P.to(V_odd.dtype), V_odd)
-        else:
-            acc = acc * alpha[:, None]
-            acc += tl.dot(P.to(V.dtype), V)
+            V = tl.where(dist < SLIDING_WINDOW, V, 0.0)
+        acc += tl.dot(P.to(V.dtype), V)
 
-    if WARM_VALUE_PACKED:
-        acc_even = acc_even / L[:, None]
-        acc_odd = acc_odd / L[:, None]
-        if USE_FP8:
-            out_scale_val = tl.load(out_scale)
-            acc_even *= out_scale_val
-            acc_odd *= out_scale_val
-        output_even_offset = (
-            query_offset_0[:, None] * output_stride_0
-            + query_offset_1[:, None] * output_stride_1
-            + even_dim[None, :]
-        )
-        output_odd_offset = (
-            query_offset_0[:, None] * output_stride_0
-            + query_offset_1[:, None] * output_stride_1
-            + odd_dim[None, :]
-        )
-        output_mask = query_mask_0[:, None] & query_mask_1[:, None]
-        tl.store(
-            output_ptr + output_even_offset,
-            acc_even,
-            mask=even_dim_mask[None, :] & output_mask,
-        )
-        tl.store(
-            output_ptr + output_odd_offset,
-            acc_odd,
-            mask=odd_dim_mask[None, :] & output_mask,
-        )
-    else:
-        acc = acc / L[:, None]
-        if USE_FP8:
-            acc *= tl.load(out_scale)
-        output_offset = (
-            query_offset_0[:, None] * output_stride_0
-            + query_offset_1[:, None] * output_stride_1
-            + offs_d[None, :]
-        )
-        tl.store(
-            output_ptr + output_offset,
-            acc,
-            mask=dim_mask[None, :] & query_mask_0[:, None] & query_mask_1[:, None],
-        )
+    acc = acc / L[:, None]
+    if USE_FP8:
+        acc *= tl.load(out_scale)
+    output_offset = (
+        query_offset_0[:, None] * output_stride_0
+        + query_offset_1[:, None] * output_stride_1
+        + offs_d[None, :]
+    )
+    tl.store(
+        output_ptr + output_offset,
+        acc,
+        mask=dim_mask[None, :] & query_mask_0[:, None] & query_mask_1[:, None],
+    )
 
 
 def _seq_to_request_row(
