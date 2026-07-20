@@ -145,7 +145,7 @@ def test_tmh_triton_segmented_decode_reads_raw_and_warm_int4_pages():
         query_start_loc=torch.tensor([0, 1], device=device, dtype=torch.int32),
         seq_lens=torch.tensor([tokens], device=device, dtype=torch.int32),
         max_query_len=1,
-        max_seq_len=tokens,
+        max_seq_len=4096,
         causal=True,
         seq_threshold_3D=16,
         num_par_softmax_segments=4,

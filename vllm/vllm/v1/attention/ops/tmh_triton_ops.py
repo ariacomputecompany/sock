@@ -34,6 +34,7 @@ TMH_ROLE_PINNED_RAW = 0
 TMH_ROLE_HOT_RAW = 1
 TMH_ROLE_WARM_INT8_INT4 = 2
 TMH_ROLE_WARM_INT8_INT8 = 3
+TMH_SEGMENTED_DECODE_MIN_SEQ_LEN = 1025
 
 
 @triton.jit
@@ -823,6 +824,7 @@ def tmh_unified_attention(
         "max_query_len",
         1 if q.shape[0] <= num_seqs else q.shape[0],
     )
+    max_seq_len = getattr(attn_metadata, "max_seq_len", 0)
     use_3d = not (
         seq_threshold_3d is None
         or num_segments is None
@@ -830,6 +832,7 @@ def tmh_unified_attention(
         or segm_max is None
         or segm_expsum is None
         or max_query_len > 1
+        or max_seq_len < TMH_SEGMENTED_DECODE_MIN_SEQ_LEN
         or num_seqs > seq_threshold_3d
     )
     grid: tuple[Any, ...]
