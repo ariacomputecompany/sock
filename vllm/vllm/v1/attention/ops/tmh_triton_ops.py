@@ -18,14 +18,17 @@ from vllm.v1.attention.ops.int4_per_token_head import (
 from vllm.v1.attention.ops.triton_attention_helpers import (
     apply_alibi_to_score,
     apply_softcap,
+    cdiv_fn,
     compute_kv_seq_mask,
     compute_tile_loop_bounds,
     find_seq_idx,
     init_softmax_M,
     load_qq_bias_tile,
     resolve_seq_and_query_len,
+    store_segm_reduce_scalars,
     softmax_step,
 )
+from vllm.v1.attention.ops.triton_unified_attention import reduce_segments
 
 TMH_ROLE_PINNED_RAW = 0
 TMH_ROLE_HOT_RAW = 1
@@ -250,6 +253,9 @@ def _tmh_reshape_and_cache_kernel(
 @triton.jit
 def _tmh_unified_attention_kernel(
     output_ptr,
+    segm_output_ptr,
+    segm_max_ptr,
+    segm_expsum_ptr,
     query_ptr,
     raw_key_ptr,
     raw_value_ptr,
@@ -301,6 +307,7 @@ def _tmh_unified_attention_kernel(
     HEAD_SIZE_PADDED: tl.constexpr,
     BLOCK_Q: tl.constexpr,
     BLOCK_M: tl.constexpr,
+    NUM_SEGMENTS_PER_SEQ: tl.constexpr,
     num_seqs: tl.int32,
     USE_ALIBI_SLOPES: tl.constexpr,
     USE_ALIBI_SQRT: tl.constexpr,
@@ -312,9 +319,11 @@ def _tmh_unified_attention_kernel(
     MAX_MM_RANGES: tl.constexpr,
     USE_FP8: tl.constexpr,
     WARM_VALUE_PACKED: tl.constexpr,
+    IS_3D: tl.constexpr,
 ):
     q_block_global_idx = tl.program_id(0)
     kv_head_idx = tl.program_id(1)
+    segm_idx = tl.program_id(2) if IS_3D else 0
     (
         seq_idx,
         q_block_local_idx,
@@ -326,6 +335,12 @@ def _tmh_unified_attention_kernel(
     )
     if q_block_local_idx * BLOCK_Q >= query_len:
         return
+    if IS_3D:
+        tiles_per_segment = cdiv_fn(seq_len, NUM_SEGMENTS_PER_SEQ * TILE_SIZE)
+        if segm_idx * tiles_per_segment * TILE_SIZE >= seq_len:
+            return
+    else:
+        tiles_per_segment = 0
 
     req_row = tl.load(seq_to_request_row_ptr + seq_idx).to(tl.int64)
     offs_m = tl.arange(0, BLOCK_M)
@@ -353,10 +368,10 @@ def _tmh_unified_attention_kernel(
         sink_ptr,
         query_offset_1,
         query_mask_1,
-        0,
+        segm_idx,
         BLOCK_M,
         USE_SINKS,
-        False,
+        IS_3D,
     )
     L = tl.full([BLOCK_M], 1.0, dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, HEAD_SIZE_PADDED], dtype=tl.float32)
@@ -384,7 +399,7 @@ def _tmh_unified_attention_kernel(
         num_queries_per_kv,
         SLIDING_WINDOW,
         USE_MM_PREFIX,
-        False,
+        IS_3D,
     )
 
     for j in range(loop_lo, loop_hi):
@@ -537,19 +552,46 @@ def _tmh_unified_attention_kernel(
             V = tl.where(dist < SLIDING_WINDOW, V, 0.0)
         acc += tl.dot(P.to(V.dtype), V)
 
-    acc = acc / L[:, None]
-    if USE_FP8:
-        acc *= tl.load(out_scale)
-    output_offset = (
-        query_offset_0[:, None] * output_stride_0
-        + query_offset_1[:, None] * output_stride_1
-        + offs_d[None, :]
-    )
-    tl.store(
-        output_ptr + output_offset,
-        acc,
-        mask=dim_mask[None, :] & query_mask_0[:, None] & query_mask_1[:, None],
-    )
+    if IS_3D:
+        segm_output_offset = (
+            query_offset_0[:, None].to(tl.int64)
+            * (num_query_heads * NUM_SEGMENTS_PER_SEQ * HEAD_SIZE_PADDED)
+            + query_offset_1[:, None] * (NUM_SEGMENTS_PER_SEQ * HEAD_SIZE_PADDED)
+            + segm_idx * HEAD_SIZE_PADDED
+            + offs_d[None, :]
+        )
+        tl.store(
+            segm_output_ptr + segm_output_offset,
+            acc,
+            mask=dim_mask[None, :] & query_mask_0[:, None] & query_mask_1[:, None],
+        )
+        store_segm_reduce_scalars(
+            segm_max_ptr,
+            segm_expsum_ptr,
+            query_offset_0,
+            query_offset_1,
+            segm_idx,
+            M,
+            L,
+            query_mask_0,
+            query_mask_1,
+            num_query_heads,
+            NUM_SEGMENTS_PER_SEQ,
+        )
+    else:
+        acc = acc / L[:, None]
+        if USE_FP8:
+            acc *= tl.load(out_scale)
+        output_offset = (
+            query_offset_0[:, None] * output_stride_0
+            + query_offset_1[:, None] * output_stride_1
+            + offs_d[None, :]
+        )
+        tl.store(
+            output_ptr + output_offset,
+            acc,
+            mask=dim_mask[None, :] & query_mask_0[:, None] & query_mask_1[:, None],
+        )
 
 
 def _seq_to_request_row(
@@ -771,12 +813,43 @@ def tmh_unified_attention(
         device=q.device,
     )
     packed_v = cache.warm_value.shape[-1] * 2 == head_size
+    seq_threshold_3d = getattr(attn_metadata, "seq_threshold_3D", None)
+    num_segments = getattr(attn_metadata, "num_par_softmax_segments", None)
+    segm_output = getattr(attn_metadata, "softmax_segm_output", None)
+    segm_max = getattr(attn_metadata, "softmax_segm_max", None)
+    segm_expsum = getattr(attn_metadata, "softmax_segm_expsum", None)
+    max_query_len = getattr(
+        attn_metadata,
+        "max_query_len",
+        1 if q.shape[0] <= num_seqs else q.shape[0],
+    )
+    use_3d = not (
+        seq_threshold_3d is None
+        or num_segments is None
+        or segm_output is None
+        or segm_max is None
+        or segm_expsum is None
+        or max_query_len > 1
+        or num_seqs > seq_threshold_3d
+    )
+    grid: tuple[Any, ...]
+    if use_3d:
+        grid = (total_num_q_blocks, num_kv_heads, num_segments)
+    else:
+        grid = (total_num_q_blocks, num_kv_heads)
+        num_segments = 1
+        segm_output = out
+        segm_max = out
+        segm_expsum = out
     launch_kwargs = _get_tmh_attention_launch_kwargs(
         block_m=block_m,
         head_size=head_size,
     )
-    _tmh_unified_attention_kernel[(total_num_q_blocks, num_kv_heads)](
+    _tmh_unified_attention_kernel[grid](
         output_ptr=out,
+        segm_output_ptr=segm_output,
+        segm_max_ptr=segm_max,
+        segm_expsum_ptr=segm_expsum,
         query_ptr=q,
         raw_key_ptr=cache.raw_key,
         raw_value_ptr=cache.raw_value,
@@ -828,6 +901,7 @@ def tmh_unified_attention(
         HEAD_SIZE_PADDED=head_size_padded,
         BLOCK_Q=block_q,
         BLOCK_M=block_m,
+        NUM_SEGMENTS_PER_SEQ=num_segments,
         num_seqs=num_seqs,
         USE_ALIBI_SLOPES=alibi_slopes is not None,
         USE_ALIBI_SQRT=use_alibi_sqrt,
@@ -839,8 +913,31 @@ def tmh_unified_attention(
         MAX_MM_RANGES=max_mm_ranges,
         USE_FP8=output_scale is not None,
         WARM_VALUE_PACKED=packed_v,
+        IS_3D=use_3d,
         **launch_kwargs,
     )
+    if use_3d:
+        reduce_segments[(q.shape[0], num_query_heads)](
+            output_ptr=out,
+            segm_output_ptr=segm_output,
+            segm_max_ptr=segm_max,
+            segm_expsum_ptr=segm_expsum,
+            seq_lens_ptr=attn_metadata.seq_lens,
+            num_seqs=num_seqs,
+            num_query_heads=num_query_heads,
+            out_scale_inv=1 / output_scale if output_scale is not None else 1.0,
+            output_stride_0=out.stride(0),
+            output_stride_1=out.stride(1),
+            block_table_stride=0,
+            TILE_SIZE=tile_size,
+            HEAD_SIZE=head_size,
+            HEAD_SIZE_PADDED=head_size_padded,
+            query_start_len_ptr=attn_metadata.query_start_loc,
+            BLOCK_Q=block_q,
+            NUM_SEGMENTS_PER_SEQ=num_segments,
+            USE_FP8=output_scale is not None,
+            **launch_kwargs,
+        )
 
 
 def _get_tmh_query_block_shape(
