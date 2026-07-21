@@ -4,7 +4,7 @@
 """Kernel-selection / gating tests for the ROCm RDNA3 W4A16 GPTQ kernel.
 
 Verifies that ``choose_mp_linear_kernel`` resolves a supported W4A16 GPTQ
-config to ``RDNA3W4A16LinearKernel`` on gfx1100 (it is registered ahead of
+config to ``RDNA3W4A16LinearKernel`` on validated gfx1100 (it is registered ahead of
 ``TritonW4A16LinearKernel`` in the ROCm priority list), and that
 ``RDNA3W4A16LinearKernel.can_implement`` rejects the configs it does not
 support so selection falls through to the next kernel.
@@ -34,7 +34,7 @@ from vllm.scalar_type import scalar_types  # noqa: E402
 
 WEIGHT_TYPE = scalar_types.uint4b8  # symmetric int4, bias = 8
 
-# The kernel is only selectable when running on gfx1100 with the custom op
+# The kernel is only selectable when running on validated gfx1100 with the custom op
 # compiled in; otherwise can_implement rejects and selection falls through.
 gfx1100_only = pytest.mark.skipif(
     not (
@@ -42,14 +42,14 @@ gfx1100_only = pytest.mark.skipif(
         and hasattr(torch.ops, "_rocm_C")
         and hasattr(torch.ops._rocm_C, "gptq_gemm_rdna3")
     ),
-    reason="requires gfx1100 with the _rocm_C.gptq_gemm_rdna3 op built in",
+    reason="requires validated gfx1100 with the _rocm_C.gptq_gemm_rdna3 op built in",
 )
 
 
 @gfx1100_only
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_selection_prefers_rdna3(dtype):
-    """A supported W4A16 GPTQ config resolves to the RDNA3 kernel on gfx1100."""
+    """A supported W4A16 GPTQ config resolves to the RDNA3 kernel on validated gfx1100."""
     config = MPLinearLayerConfig(
         full_weight_shape=(1024, 256),
         partition_weight_shape=(1024, 256),

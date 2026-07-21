@@ -18,6 +18,44 @@ _CONCH_SUPPORTED_WEIGHT_TYPES: Final = [
     scalar_types.uint8b128,
 ]
 _CONCH_SUPPORTED_GROUP_SIZES: Final = [-1, 128]
+_CONCH_DUMMY_ZEROS: dict[torch.device, torch.Tensor] = {}
+_CONCH_GFX1151_TUNING = {
+    "cxpr_block_size_m": 32,
+    "cxpr_block_size_n": 64,
+    "cxpr_block_size_k": 64,
+    "cxpr_group_size_m": 16,
+    "num_warps": 8,
+    "num_stages": 2,
+}
+_CONCH_TUNING_INSTALLED = False
+
+
+def _get_conch_dummy_zeros(device: torch.device) -> torch.Tensor:
+    cached = _CONCH_DUMMY_ZEROS.get(device)
+    if cached is None:
+        cached = torch.empty((0, 0), dtype=torch.int32, device=device)
+        _CONCH_DUMMY_ZEROS[device] = cached
+    return cached
+
+
+def _install_conch_tuning_policy(mixed_precision_gemm_launcher) -> None:
+    global _CONCH_TUNING_INSTALLED
+    if _CONCH_TUNING_INSTALLED:
+        return
+
+    from vllm.platforms import current_platform
+
+    if not current_platform.is_rocm():
+        _CONCH_TUNING_INSTALLED = True
+        return
+
+    from vllm.platforms.rocm import on_gfx1151
+
+    if on_gfx1151():
+        mixed_precision_gemm_launcher.__globals__["_get_tuning_parameters"] = (
+            lambda: _CONCH_GFX1151_TUNING
+        )
+    _CONCH_TUNING_INSTALLED = True
 
 
 class ConchLinearKernel(MPLinearKernel):
@@ -128,7 +166,12 @@ class ConchLinearKernel(MPLinearKernel):
         x: torch.Tensor,
         bias: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        from conch.ops.quantization.gemm import mixed_precision_gemm
+        from conch.ops.quantization.gemm import (
+            create_mixed_precision_metadata,
+            mixed_precision_gemm_launcher,
+        )
+
+        _install_conch_tuning_policy(mixed_precision_gemm_launcher)
 
         w_q, w_s, w_zp, _ = self._get_weight_params(layer)
 
@@ -142,15 +185,31 @@ class ConchLinearKernel(MPLinearKernel):
 
         x_2d = x.reshape(-1, x.shape[-1])
         out_shape = x.shape[:-1] + (self.config.partition_weight_shape[1],)
+        zero_points = w_zp.data if w_zp is not None else None
 
-        output = mixed_precision_gemm(
+        metadata = create_mixed_precision_metadata(
             x=x_2d,
             w_q_packed=w_q.data,
             w_s=w_s.data,
-            w_zp=w_zp.data if w_zp is not None else None,
+            w_zp=zero_points,
             weight_size_bits=self.config.weight_type.size_bits,
             weight_bias=self.config.weight_type.bias,
             group_size=group_size,
+        )
+        output = torch.empty(
+            (metadata.m_dim, metadata.n_dim),
+            device=x_2d.device,
+            dtype=metadata.output_dtype,
+        )
+        mixed_precision_gemm_launcher(
+            output,
+            x_2d,
+            w_q.data,
+            w_s.data,
+            zero_points
+            if zero_points is not None
+            else _get_conch_dummy_zeros(x_2d.device),
+            metadata,
         )
 
         if bias is not None:

@@ -44,7 +44,7 @@ device = "cuda"
 WEIGHT_TYPE = scalar_types.uint4b8  # symmetric int4, bias = 8
 PACK_FACTOR = 8  # 8 x 4-bit nibbles per int32
 
-# Skip everything in this module unless we are on the only architecture the
+# Skip everything in this module unless we are on the validated architecture the
 # kernel is built/registered for.
 gfx1100_only = pytest.mark.skipif(
     not (
@@ -52,7 +52,7 @@ gfx1100_only = pytest.mark.skipif(
         and hasattr(torch.ops, "_rocm_C")
         and hasattr(torch.ops._rocm_C, "gptq_gemm_rdna3")
     ),
-    reason="requires gfx1100 with the _rocm_C.gptq_gemm_rdna3 op built in",
+    reason="requires validated gfx1100 with the _rocm_C.gptq_gemm_rdna3 op built in",
 )
 
 

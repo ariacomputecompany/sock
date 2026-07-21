@@ -26,14 +26,16 @@ def _gptq_w4a16_config() -> MPLinearLayerConfig:
     )
 
 
-def test_rocm_rdna_does_not_auto_select_triton_w4a16(monkeypatch):
+def test_rocm_non_validated_rdna_non_cdna_falls_back_to_conch(monkeypatch):
     import vllm.model_executor.kernels.linear as linear_kernels
+    import vllm.model_executor.kernels.linear.mixed_precision.rdna3_w4a16 as rdna_w4a16
     import vllm.model_executor.kernels.linear.mixed_precision.triton_w4a16 as triton_w4a16
 
     monkeypatch.setattr(linear_kernels.current_platform, "_enum", PlatformEnum.ROCM)
     monkeypatch.setattr(linear_kernels.current_platform, "is_rocm", lambda: True)
     monkeypatch.setattr(linear_kernels.current_platform, "is_cuda", lambda: False)
     monkeypatch.setattr(linear_kernels.current_platform, "get_device_capability", lambda: None)
+    monkeypatch.setattr(rdna_w4a16.current_platform, "is_rocm", lambda: True)
     monkeypatch.setattr(triton_w4a16.current_platform, "is_rocm", lambda: True)
     monkeypatch.setattr(triton_w4a16.current_platform, "is_cuda", lambda: False)
     monkeypatch.setattr("vllm.platforms.rocm.on_gfx1100", lambda: False)
