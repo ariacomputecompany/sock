@@ -1,0 +1,155 @@
+{
+  "hot_floor_delta_vs_standard_pct": -17.3679527615881,
+  "hot_floor_recouped_pct_points": 0.9596361768813075,
+  "hot_floor_tmh_artifact": "benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-hot-floor/tmh-suite.json",
+  "hot_floor_tmh_elapsed_s": 916.2314,
+  "hot_floor_tmh_geomean_completion_tok_s": 30.328858,
+  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+  "previous_page_desc_delta_vs_standard_pct": -18.327588938469408,
+  "previous_page_desc_tmh_artifact": "benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-page-desc-opt/tmh-suite.json",
+  "profile": {
+    "concurrency_levels": [
+      1,
+      2,
+      4
+    ],
+    "enforce_eager": true,
+    "gpu_memory_utilization": 0.35,
+    "max_model_len": 2048,
+    "max_num_batched_tokens": 1024,
+    "max_num_seqs": 4,
+    "runs": 2,
+    "tmh_hot_min_pages": 64,
+    "warmup_runs": 1
+  },
+  "rows": [
+    {
+      "case": "extended_generation_768",
+      "concurrency": 1,
+      "hot_floor_delta_vs_standard_pct": -17.162557356560328,
+      "hot_floor_tmh_completion_tok_s": 23.5955,
+      "standard_completion_tok_s": 28.4841
+    },
+    {
+      "case": "extended_generation_768",
+      "concurrency": 2,
+      "hot_floor_delta_vs_standard_pct": -7.047252373942447,
+      "hot_floor_tmh_completion_tok_s": 28.7303,
+      "standard_completion_tok_s": 30.9085
+    },
+    {
+      "case": "extended_generation_768",
+      "concurrency": 4,
+      "hot_floor_delta_vs_standard_pct": -16.81837479661088,
+      "hot_floor_tmh_completion_tok_s": 40.9489,
+      "standard_completion_tok_s": 49.2283
+    },
+    {
+      "case": "long_context_summary_256",
+      "concurrency": 1,
+      "hot_floor_delta_vs_standard_pct": -27.135838252447776,
+      "hot_floor_tmh_completion_tok_s": 20.614,
+      "standard_completion_tok_s": 28.291
+    },
+    {
+      "case": "long_context_summary_256",
+      "concurrency": 2,
+      "hot_floor_delta_vs_standard_pct": -20.203042483528954,
+      "hot_floor_tmh_completion_tok_s": 27.8327,
+      "standard_completion_tok_s": 34.8794
+    },
+    {
+      "case": "long_context_summary_256",
+      "concurrency": 4,
+      "hot_floor_delta_vs_standard_pct": -42.969263385755355,
+      "hot_floor_tmh_completion_tok_s": 38.3599,
+      "standard_completion_tok_s": 67.2618
+    },
+    {
+      "case": "long_cosmology_512",
+      "concurrency": 1,
+      "hot_floor_delta_vs_standard_pct": -15.85626461165469,
+      "hot_floor_tmh_completion_tok_s": 24.2944,
+      "standard_completion_tok_s": 28.8725
+    },
+    {
+      "case": "long_cosmology_512",
+      "concurrency": 2,
+      "hot_floor_delta_vs_standard_pct": -10.866563172672695,
+      "hot_floor_tmh_completion_tok_s": 29.11,
+      "standard_completion_tok_s": 32.6589
+    },
+    {
+      "case": "long_cosmology_512",
+      "concurrency": 4,
+      "hot_floor_delta_vs_standard_pct": -11.427599851613701,
+      "hot_floor_tmh_completion_tok_s": 42.9771,
+      "standard_completion_tok_s": 48.522
+    },
+    {
+      "case": "medium_architecture_256",
+      "concurrency": 1,
+      "hot_floor_delta_vs_standard_pct": -15.433186794956866,
+      "hot_floor_tmh_completion_tok_s": 24.4689,
+      "standard_completion_tok_s": 28.9344
+    },
+    {
+      "case": "medium_architecture_256",
+      "concurrency": 2,
+      "hot_floor_delta_vs_standard_pct": -10.481864913030869,
+      "hot_floor_tmh_completion_tok_s": 28.6817,
+      "standard_completion_tok_s": 32.0401
+    },
+    {
+      "case": "medium_architecture_256",
+      "concurrency": 4,
+      "hot_floor_delta_vs_standard_pct": -16.11413598380923,
+      "hot_floor_tmh_completion_tok_s": 41.4902,
+      "standard_completion_tok_s": 49.4603
+    },
+    {
+      "case": "short_codegen_128",
+      "concurrency": 1,
+      "hot_floor_delta_vs_standard_pct": -12.094842528232464,
+      "hot_floor_tmh_completion_tok_s": 24.6988,
+      "standard_completion_tok_s": 28.0971
+    },
+    {
+      "case": "short_codegen_128",
+      "concurrency": 2,
+      "hot_floor_delta_vs_standard_pct": -28.480378188035573,
+      "hot_floor_tmh_completion_tok_s": 28.1095,
+      "standard_completion_tok_s": 39.3032
+    },
+    {
+      "case": "short_codegen_128",
+      "concurrency": 4,
+      "hot_floor_delta_vs_standard_pct": -16.460028293086726,
+      "hot_floor_tmh_completion_tok_s": 40.5696,
+      "standard_completion_tok_s": 48.5631
+    },
+    {
+      "case": "tiny_fact_64",
+      "concurrency": 1,
+      "hot_floor_delta_vs_standard_pct": -10.166987842548247,
+      "hot_floor_tmh_completion_tok_s": 25.3595,
+      "standard_completion_tok_s": 28.2296
+    },
+    {
+      "case": "tiny_fact_64",
+      "concurrency": 2,
+      "hot_floor_delta_vs_standard_pct": -9.41524625641601,
+      "hot_floor_tmh_completion_tok_s": 29.0489,
+      "standard_completion_tok_s": 32.0682
+    },
+    {
+      "case": "tiny_fact_64",
+      "concurrency": 4,
+      "hot_floor_delta_vs_standard_pct": -15.751526792552706,
+      "hot_floor_tmh_completion_tok_s": 42.0196,
+      "standard_completion_tok_s": 49.8758
+    }
+  ],
+  "standard_baseline_artifact": "benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh/standard-suite.json",
+  "standard_geomean_completion_tok_s": 36.703505
+}

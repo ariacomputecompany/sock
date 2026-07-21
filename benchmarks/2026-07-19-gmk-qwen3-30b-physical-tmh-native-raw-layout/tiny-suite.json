@@ -1,0 +1,941 @@
+{
+  "base_url": "http://127.0.0.1:8017",
+  "cases": [
+    {
+      "batches_by_concurrency": {
+        "1": [
+          {
+            "concurrency": 1,
+            "requests": [
+              {
+                "completion_tok_per_s": 26.1346,
+                "completion_tokens": 64,
+                "elapsed_s": 2.4489,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Also, mention the role of the) and the other is the (b) and the other is the (c) 2018, 2019, 200000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509161,
+                  "id": "cmpl-886f46128fc362d9",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Also, mention the role of the) and the other is the (b) and the other is the (c) 2018, 2019, 200000000000",
+                "run_index": 1,
+                "total_tok_per_s": 30.6264,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 26.1288,
+              "aggregate_total_tok_per_s": 30.6197,
+              "completion_tokens": 64,
+              "per_request_completion_tok_per_s": {
+                "max": 26.1346,
+                "mean": 26.1346,
+                "median": 26.1346,
+                "min": 26.1346,
+                "p90": 26.1346
+              },
+              "per_request_elapsed_s": {
+                "max": 2.4489,
+                "mean": 2.4489,
+                "median": 2.4489,
+                "min": 2.4489,
+                "p90": 2.4489
+              },
+              "total_tokens": 75,
+              "wall_s": 2.4494
+            },
+            "wall_s": 2.4494
+          },
+          {
+            "concurrency": 1,
+            "requests": [
+              {
+                "completion_tok_per_s": 24.159,
+                "completion_tokens": 64,
+                "elapsed_s": 2.6491,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Also, make sure to explain the) 1.00000000000000000000000000000000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509164,
+                  "id": "cmpl-bb7175c4b07d439b",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Also, make sure to explain the) 1.00000000000000000000000000000000000000",
+                "run_index": 2,
+                "total_tok_per_s": 28.3113,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 24.1528,
+              "aggregate_total_tok_per_s": 28.304,
+              "completion_tokens": 64,
+              "per_request_completion_tok_per_s": {
+                "max": 24.159,
+                "mean": 24.159,
+                "median": 24.159,
+                "min": 24.159,
+                "p90": 24.159
+              },
+              "per_request_elapsed_s": {
+                "max": 2.6491,
+                "mean": 2.6491,
+                "median": 2.6491,
+                "min": 2.6491,
+                "p90": 2.6491
+              },
+              "total_tokens": 75,
+              "wall_s": 2.6498
+            },
+            "wall_s": 2.6498
+          }
+        ],
+        "2": [
+          {
+            "concurrency": 2,
+            "requests": [
+              {
+                "completion_tok_per_s": 14.2404,
+                "completion_tokens": 64,
+                "elapsed_s": 4.4943,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Include the following terms: Rayleigh scattering, shorter wavelengths, longer wavelengths, and the human eye's sensitivity to, and the other is the other. So, the total number of ways to), and the other is the **object** (the thing being acted upon).ziej\n\nOkay, I need to solve this problem",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509167,
+                  "id": "cmpl-8b6f7e55ad8be13a",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Include the following terms: Rayleigh scattering, shorter wavelengths, longer wavelengths, and the human eye's sensitivity to, and the other is the other. So, the total number of ways to), and the other is the **object** (the thing being acted upon).ziej\n\nOkay, I need to solve this problem",
+                "run_index": 1,
+                "total_tok_per_s": 16.6879,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 14.2416,
+                "completion_tokens": 64,
+                "elapsed_s": 4.4939,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Also, mention the role of the) 1.5.1.1.1.1.1.) 1. 2. 3. 4. 5.) 1. 2. 3.",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509167,
+                  "id": "cmpl-8e74047e3f45c1ac",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 2,
+                "response_text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Also, mention the role of the) 1.5.1.1.1.1.1.) 1. 2. 3. 4. 5.) 1. 2. 3.",
+                "run_index": 1,
+                "total_tok_per_s": 16.6893,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 28.4755,
+              "aggregate_total_tok_per_s": 33.3697,
+              "completion_tokens": 128,
+              "per_request_completion_tok_per_s": {
+                "max": 14.2416,
+                "mean": 14.241,
+                "median": 14.241,
+                "min": 14.2404,
+                "p90": 14.2416
+              },
+              "per_request_elapsed_s": {
+                "max": 4.4943,
+                "mean": 4.4941,
+                "median": 4.4941,
+                "min": 4.4939,
+                "p90": 4.4943
+              },
+              "total_tokens": 150,
+              "wall_s": 4.4951
+            },
+            "wall_s": 4.4951
+          },
+          {
+            "concurrency": 2,
+            "requests": [
+              {
+                "completion_tok_per_s": 14.6388,
+                "completion_tokens": 64,
+                "elapsed_s": 4.372,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Use the following words: Rayleigh scattering, wavelength, nitrogen, oxygen, shorter, longer, blue, red) and the other is a red ball (the other red ball). So,) 1.1.1.1.1.1.1.) \n\nThe problem is to find the number of",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509171,
+                  "id": "cmpl-a6fdd72efbc896c2",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Use the following words: Rayleigh scattering, wavelength, nitrogen, oxygen, shorter, longer, blue, red) and the other is a red ball (the other red ball). So,) 1.1.1.1.1.1.1.) \n\nThe problem is to find the number of",
+                "run_index": 2,
+                "total_tok_per_s": 17.1548,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 14.6398,
+                "completion_tokens": 64,
+                "elapsed_s": 4.3716,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Also, mention the role of the) 1.2.3.4.5.6.7.), and the other is the **somatic nervous system**, which controls **vol expansion,, but the question is about the expansion",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509171,
+                  "id": "cmpl-b8540a7412f43b28",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 2,
+                "response_text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Also, mention the role of the) 1.2.3.4.5.6.7.), and the other is the **somatic nervous system**, which controls **vol expansion,, but the question is about the expansion",
+                "run_index": 2,
+                "total_tok_per_s": 17.156,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 29.2725,
+              "aggregate_total_tok_per_s": 34.3037,
+              "completion_tokens": 128,
+              "per_request_completion_tok_per_s": {
+                "max": 14.6398,
+                "mean": 14.6393,
+                "median": 14.6393,
+                "min": 14.6388,
+                "p90": 14.6398
+              },
+              "per_request_elapsed_s": {
+                "max": 4.372,
+                "mean": 4.3718,
+                "median": 4.3718,
+                "min": 4.3716,
+                "p90": 4.372
+              },
+              "total_tokens": 150,
+              "wall_s": 4.3727
+            },
+            "wall_s": 4.3727
+          }
+        ],
+        "4": [
+          {
+            "concurrency": 4,
+            "requests": [
+              {
+                "completion_tok_per_s": 9.9829,
+                "completion_tokens": 64,
+                "elapsed_s": 6.4109,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Additionally, explain the phenomenon of the) 1. The first step is to find the total number of possible outcomes) is a key factor in determining the outcome of the game. The game is) {\n        this.is = is;\n    }\n\n",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509175,
+                  "id": "cmpl-b68b90d7803401fc",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Include the following terms: Rayleigh scattering, wavelength, and visible spectrum. Additionally, explain the phenomenon of the) 1. The first step is to find the total number of possible outcomes) is a key factor in determining the outcome of the game. The game is) {\n        this.is = is;\n    }\n\n",
+                "run_index": 1,
+                "total_tok_per_s": 11.6988,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 9.9836,
+                "completion_tokens": 64,
+                "elapsed_s": 6.4105,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to include the role of Rayleigh scattering and the human eye's sensitivity to different wavelengths of light.\n\n.\n\n conduct conductanime anime anime anime anime anime anime anime anime anime anime anime anime anime data data,, and the other is the data from the other side.) \n\nThe user is asking for the answer to",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509175,
+                  "id": "cmpl-9e588b24fcd95dae",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 2,
+                "response_text": " Make sure to include the role of Rayleigh scattering and the human eye's sensitivity to different wavelengths of light.\n\n.\n\n conduct conductanime anime anime anime anime anime anime anime anime anime anime anime anime anime data data,, and the other is the data from the other side.) \n\nThe user is asking for the answer to",
+                "run_index": 1,
+                "total_tok_per_s": 11.6995,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 9.9847,
+                "completion_tokens": 64,
+                "elapsed_s": 6.4098,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to include the role of Rayleigh scattering and the human eye's sensitivity to different wavelengths of light.), 2009, 2010, 2000000000000000000000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509175,
+                  "id": "cmpl-b49486b51dc7bd94",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 3,
+                "response_text": " Make sure to include the role of Rayleigh scattering and the human eye's sensitivity to different wavelengths of light.), 2009, 2010, 2000000000000000000000000000",
+                "run_index": 1,
+                "total_tok_per_s": 11.7008,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 9.9852,
+                "completion_tokens": 64,
+                "elapsed_s": 6.4095,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Use simple language and avoid technical terms. Make sure to include the role of the sun and the atmosphere in your) to the (1) (2) (3) (4) ( ( CT CT CT CT CT CT CT CT CT CT CT CT CT CT CT) and the other is the CT scan (CT",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509175,
+                  "id": "cmpl-aad457c4214d40e1",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 4,
+                "response_text": " Use simple language and avoid technical terms. Make sure to include the role of the sun and the atmosphere in your) to the (1) (2) (3) (4) ( ( CT CT CT CT CT CT CT CT CT CT CT CT CT CT CT) and the other is the CT scan (CT",
+                "run_index": 1,
+                "total_tok_per_s": 11.7014,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 39.9239,
+              "aggregate_total_tok_per_s": 46.7858,
+              "completion_tokens": 256,
+              "per_request_completion_tok_per_s": {
+                "max": 9.9852,
+                "mean": 9.9841,
+                "median": 9.9841,
+                "min": 9.9829,
+                "p90": 9.9852
+              },
+              "per_request_elapsed_s": {
+                "max": 6.4109,
+                "mean": 6.4102,
+                "median": 6.4101,
+                "min": 6.4095,
+                "p90": 6.4109
+              },
+              "total_tokens": 300,
+              "wall_s": 6.4122
+            },
+            "wall_s": 6.4122
+          },
+          {
+            "concurrency": 4,
+            "requests": [
+              {
+                "completion_tok_per_s": 10.4828,
+                "completion_tokens": 64,
+                "elapsed_s": 6.1052,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Include the following terms: Rayleigh scattering, shorter wavelengths, longer wavelengths, and the human eye's sensitivity to, for example, the 2000s, the 2000000000000000000000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509182,
+                  "id": "cmpl-a675b89ae9d693e7",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Include the following terms: Rayleigh scattering, shorter wavelengths, longer wavelengths, and the human eye's sensitivity to, for example, the 2000s, the 2000000000000000000000000000",
+                "run_index": 2,
+                "total_tok_per_s": 12.2846,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 10.483,
+                "completion_tokens": 64,
+                "elapsed_s": 6.1051,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Include the following terms: Rayleigh scattering, shorter wavelengths, longer wavelengths, nitrogen, oxygen, and the human\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509182,
+                  "id": "cmpl-86316fab39e57a02",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 2,
+                "response_text": " Include the following terms: Rayleigh scattering, shorter wavelengths, longer wavelengths, nitrogen, oxygen, and the human\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f\u664f",
+                "run_index": 2,
+                "total_tok_per_s": 12.2847,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 10.4838,
+                "completion_tokens": 64,
+                "elapsed_s": 6.1047,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Make sure to include the role of Rayleigh scattering and the human eye's sensitivity to blue light. Also,), (, (, (, (, (, (, (, ( ( CT CT CT CT CT CT CT CT CT CT CT CT CT CT CT) and the other is the CT scan (CT",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509182,
+                  "id": "cmpl-9dfeb922066017fe",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 3,
+                "response_text": " Make sure to include the role of Rayleigh scattering and the human eye's sensitivity to blue light. Also,), (, (, (, (, (, (, (, ( ( CT CT CT CT CT CT CT CT CT CT CT CT CT CT CT) and the other is the CT scan (CT",
+                "run_index": 2,
+                "total_tok_per_s": 12.2857,
+                "total_tokens": 75
+              },
+              {
+                "completion_tok_per_s": 10.4848,
+                "completion_tokens": 64,
+                "elapsed_s": 6.1041,
+                "finish_reason": "length",
+                "prompt_tokens": 11,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Use the following terms: Rayleigh scattering, wavelength, nitrogen, oxygen, human eye, atmosphere, sunlight,), and the other is the 2017 version. The 2222222222222 lead way way\u7684\u5730\u65b9)\u3002\u5728\u67d0\u4e9b\u60c5\u51b5\u4e0b\uff0c\u53ef\u80fd\u9700\u8981\u4f7f\u7528\u66f4",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1784509182,
+                  "id": "cmpl-a39f7f1ae3c050e1",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.25.1-4682a013",
+                  "usage": {
+                    "completion_tokens": 64,
+                    "prompt_tokens": 11,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 75
+                  }
+                },
+                "request_index": 4,
+                "response_text": " Use the following terms: Rayleigh scattering, wavelength, nitrogen, oxygen, human eye, atmosphere, sunlight,), and the other is the 2017 version. The 2222222222222 lead way way\u7684\u5730\u65b9)\u3002\u5728\u67d0\u4e9b\u60c5\u51b5\u4e0b\uff0c\u53ef\u80fd\u9700\u8981\u4f7f\u7528\u66f4",
+                "run_index": 2,
+                "total_tok_per_s": 12.2869,
+                "total_tokens": 75
+              }
+            ],
+            "run_index": 2,
+            "summary": {
+              "aggregate_completion_tok_per_s": 41.9232,
+              "aggregate_total_tok_per_s": 49.1288,
+              "completion_tokens": 256,
+              "per_request_completion_tok_per_s": {
+                "max": 10.4848,
+                "mean": 10.4836,
+                "median": 10.4834,
+                "min": 10.4828,
+                "p90": 10.4848
+              },
+              "per_request_elapsed_s": {
+                "max": 6.1052,
+                "mean": 6.1048,
+                "median": 6.1049,
+                "min": 6.1041,
+                "p90": 6.1052
+              },
+              "total_tokens": 300,
+              "wall_s": 6.1064
+            },
+            "wall_s": 6.1064
+          }
+        ]
+      },
+      "max_tokens": 64,
+      "name": "tiny_fact_64",
+      "prompt": "In two paragraphs, explain why the sky appears blue.",
+      "summary": {
+        "1": {
+          "aggregate_completion_tok_per_s": {
+            "max": 26.1288,
+            "mean": 25.1408,
+            "median": 25.1408,
+            "min": 24.1528,
+            "p90": 26.1288
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 30.6197,
+            "mean": 29.4618,
+            "median": 29.4618,
+            "min": 28.304,
+            "p90": 30.6197
+          },
+          "completion_tokens": {
+            "max": 64,
+            "mean": 64.0,
+            "median": 64.0,
+            "min": 64,
+            "p90": 64
+          },
+          "total_tokens": {
+            "max": 75,
+            "mean": 75.0,
+            "median": 75.0,
+            "min": 75,
+            "p90": 75
+          },
+          "wall_s": {
+            "max": 2.6498,
+            "mean": 2.5496,
+            "median": 2.5496,
+            "min": 2.4494,
+            "p90": 2.6498
+          }
+        },
+        "2": {
+          "aggregate_completion_tok_per_s": {
+            "max": 29.2725,
+            "mean": 28.874,
+            "median": 28.874,
+            "min": 28.4755,
+            "p90": 29.2725
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 34.3037,
+            "mean": 33.8367,
+            "median": 33.8367,
+            "min": 33.3697,
+            "p90": 34.3037
+          },
+          "completion_tokens": {
+            "max": 128,
+            "mean": 128.0,
+            "median": 128.0,
+            "min": 128,
+            "p90": 128
+          },
+          "total_tokens": {
+            "max": 150,
+            "mean": 150.0,
+            "median": 150.0,
+            "min": 150,
+            "p90": 150
+          },
+          "wall_s": {
+            "max": 4.4951,
+            "mean": 4.4339,
+            "median": 4.4339,
+            "min": 4.3727,
+            "p90": 4.4951
+          }
+        },
+        "4": {
+          "aggregate_completion_tok_per_s": {
+            "max": 41.9232,
+            "mean": 40.9236,
+            "median": 40.9236,
+            "min": 39.9239,
+            "p90": 41.9232
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 49.1288,
+            "mean": 47.9573,
+            "median": 47.9573,
+            "min": 46.7858,
+            "p90": 49.1288
+          },
+          "completion_tokens": {
+            "max": 256,
+            "mean": 256.0,
+            "median": 256.0,
+            "min": 256,
+            "p90": 256
+          },
+          "total_tokens": {
+            "max": 300,
+            "mean": 300.0,
+            "median": 300.0,
+            "min": 300,
+            "p90": 300
+          },
+          "wall_s": {
+            "max": 6.4122,
+            "mean": 6.2593,
+            "median": 6.2593,
+            "min": 6.1064,
+            "p90": 6.4122
+          }
+        }
+      },
+      "temperature": 0.2,
+      "warmups": [
+        {
+          "concurrency": 1,
+          "requests": [
+            {
+              "completion_tok_per_s": 27.4322,
+              "completion_tokens": 64,
+              "elapsed_s": 2.333,
+              "finish_reason": "length",
+              "prompt_tokens": 11,
+              "raw_response": {
+                "choices": [
+                  {
+                    "finish_reason": "length",
+                    "index": 0,
+                    "logprobs": null,
+                    "prompt_logprobs": null,
+                    "prompt_token_ids": null,
+                    "routed_experts": null,
+                    "stop_reason": null,
+                    "text": " Be sure to include the role of Rayleigh scattering, the wavelength of light, and the human eye's sensitivity to the analysis of the data. The results of the analysis are presented in the) to the other. So, the total number of ways is 2 * *, 2019, 1",
+                    "token_ids": null
+                  }
+                ],
+                "created": 1784509160,
+                "id": "cmpl-b272d7aa79c1de85",
+                "kv_transfer_params": null,
+                "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+                "object": "text_completion",
+                "service_tier": null,
+                "system_fingerprint": "vllm-0.25.1-4682a013",
+                "usage": {
+                  "completion_tokens": 64,
+                  "prompt_tokens": 11,
+                  "prompt_tokens_details": null,
+                  "total_tokens": 75
+                }
+              },
+              "request_index": 1,
+              "response_text": " Be sure to include the role of Rayleigh scattering, the wavelength of light, and the human eye's sensitivity to the analysis of the data. The results of the analysis are presented in the) to the other. So, the total number of ways is 2 * *, 2019, 1",
+              "run_index": 1,
+              "total_tok_per_s": 32.1472,
+              "total_tokens": 75
+            }
+          ],
+          "run_index": 1,
+          "summary": {
+            "aggregate_completion_tok_per_s": 27.4149,
+            "aggregate_total_tok_per_s": 32.1268,
+            "completion_tokens": 64,
+            "per_request_completion_tok_per_s": {
+              "max": 27.4322,
+              "mean": 27.4322,
+              "median": 27.4322,
+              "min": 27.4322,
+              "p90": 27.4322
+            },
+            "per_request_elapsed_s": {
+              "max": 2.333,
+              "mean": 2.333,
+              "median": 2.333,
+              "min": 2.333,
+              "p90": 2.333
+            },
+            "total_tokens": 75,
+            "wall_s": 2.3345
+          },
+          "wall_s": 2.3345
+        }
+      ]
+    }
+  ],
+  "concurrency_levels": [
+    1,
+    2,
+    4
+  ],
+  "elapsed_s": 28.8204,
+  "label": "tmh-native-raw-layout-tiny",
+  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+  "ok": true,
+  "runs": 2,
+  "warmup_runs": 1
+}
