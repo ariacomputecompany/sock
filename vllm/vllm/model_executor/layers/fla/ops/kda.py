@@ -23,7 +23,7 @@ from .index import prepare_chunk_indices
 from .l2norm import l2norm_fwd
 from .op import exp2, log
 from .solve_tril import solve_tril
-from .utils import FLA_CHUNK_SIZE, is_amd
+from .utils import FLA_CHUNK_SIZE, is_amd, platform_autotune_configs
 
 BT_LIST_AUTOTUNE = [32, 64, 128]
 NUM_WARPS_AUTOTUNE = [2, 4, 8, 16] if is_amd else [4, 8, 16, 32]
@@ -509,12 +509,15 @@ class FusedRMSNormGated(CustomOp):
 
 @triton.heuristics({"IS_VARLEN": lambda args: args["cu_seqlens"] is not None})
 @triton.autotune(
-    configs=[
-        triton.Config({"BK": BK}, num_warps=num_warps, num_stages=num_stages)
-        for BK in [32, 64]
-        for num_warps in [1, 2, 4, 8]
-        for num_stages in [2, 3, 4]
-    ],
+    configs=platform_autotune_configs(
+        [
+            triton.Config({"BK": BK}, num_warps=num_warps, num_stages=num_stages)
+            for BK in [32, 64]
+            for num_warps in [1, 2, 4, 8]
+            for num_stages in [2, 3, 4]
+        ],
+        rocm=[triton.Config({"BK": 64}, num_warps=4, num_stages=3)],
+    ),
     key=["BC"],
 )
 @triton.jit(do_not_specialize=["T"])
@@ -620,7 +623,10 @@ def chunk_kda_scaled_dot_kkt_fwd_kernel_intra_sub_inter(
 
 @triton.heuristics({"IS_VARLEN": lambda args: args["cu_seqlens"] is not None})
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=num_warps) for num_warps in [1, 2, 4, 8]],
+    configs=platform_autotune_configs(
+        [triton.Config({}, num_warps=num_warps) for num_warps in [1, 2, 4, 8]],
+        rocm=[triton.Config({}, num_warps=4)],
+    ),
     key=["BK", "BT"],
 )
 @triton.jit(do_not_specialize=["T"])
@@ -806,11 +812,14 @@ def chunk_kda_scaled_dot_kkt_fwd(
     }
 )
 @triton.autotune(
-    configs=[
-        triton.Config({}, num_warps=num_warps, num_stages=num_stages)
-        for num_warps in [2, 4, 8]
-        for num_stages in [2, 3, 4]
-    ],
+    configs=platform_autotune_configs(
+        [
+            triton.Config({}, num_warps=num_warps, num_stages=num_stages)
+            for num_warps in [2, 4, 8]
+            for num_stages in [2, 3, 4]
+        ],
+        rocm=[triton.Config({}, num_warps=4, num_stages=3)],
+    ),
     key=["H", "K", "V", "BT", "BK", "BV", "IS_VARLEN"],
 )
 @triton.jit(do_not_specialize=["T"])
@@ -1006,13 +1015,18 @@ def recompute_w_u_fwd(
 
 @triton.heuristics({"IS_VARLEN": lambda args: args["cu_seqlens"] is not None})
 @triton.autotune(
-    configs=[
-        triton.Config({"BK": BK, "BV": BV}, num_warps=num_warps, num_stages=num_stages)
-        for BK in [32, 64]
-        for BV in [64, 128]
-        for num_warps in [2, 4, 8]
-        for num_stages in [2, 3, 4]
-    ],
+    configs=platform_autotune_configs(
+        [
+            triton.Config(
+                {"BK": BK, "BV": BV}, num_warps=num_warps, num_stages=num_stages
+            )
+            for BK in [32, 64]
+            for BV in [64, 128]
+            for num_warps in [2, 4, 8]
+            for num_stages in [2, 3, 4]
+        ],
+        rocm=[triton.Config({"BK": 64, "BV": 64}, num_warps=4, num_stages=3)],
+    ),
     key=["BT"],
 )
 @triton.jit(do_not_specialize=["T"])
@@ -1171,11 +1185,14 @@ def chunk_gla_fwd_o_gk(
     }
 )
 @triton.autotune(
-    configs=[
-        triton.Config({"BD": BD}, num_warps=num_warps)
-        for BD in [32, 64]
-        for num_warps in [2, 4, 8]
-    ],
+    configs=platform_autotune_configs(
+        [
+            triton.Config({"BD": BD}, num_warps=num_warps)
+            for BD in [32, 64]
+            for num_warps in [2, 4, 8]
+        ],
+        rocm=[triton.Config({"BD": 64}, num_warps=4)],
+    ),
     key=["H", "D", "BT", "IS_VARLEN"],
 )
 @triton.jit(do_not_specialize=["T"])
@@ -1529,12 +1546,15 @@ def chunk_kda_with_fused_gate(
 
 
 @triton.autotune(
-    configs=[
-        triton.Config({"BT": bt}, num_warps=nw, num_stages=ns)
-        for bt in BT_LIST_AUTOTUNE
-        for nw in NUM_WARPS_AUTOTUNE
-        for ns in [2, 3]
-    ],
+    configs=platform_autotune_configs(
+        [
+            triton.Config({"BT": bt}, num_warps=nw, num_stages=ns)
+            for bt in BT_LIST_AUTOTUNE
+            for nw in NUM_WARPS_AUTOTUNE
+            for ns in [2, 3]
+        ],
+        rocm=[triton.Config({"BT": 64}, num_warps=4, num_stages=3)],
+    ),
     key=["H", "D"],
 )
 @triton.jit

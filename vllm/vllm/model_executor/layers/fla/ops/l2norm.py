@@ -13,15 +13,21 @@ import torch
 
 from vllm.triton_utils import tl, triton
 
+from .utils import platform_autotune_configs
+
 BT_LIST = [8, 16, 32, 64, 128]
 
 USE_DEFAULT_FLA_NORM = int(os.getenv("USE_DEFAULT_FLA_NORM", "0"))
 
 
 @triton.autotune(
-    configs=[
-        triton.Config({}, num_warps=num_warps) for num_warps in [1, 2, 4, 8, 16, 32]
-    ],
+    configs=platform_autotune_configs(
+        [
+            triton.Config({}, num_warps=num_warps)
+            for num_warps in [1, 2, 4, 8, 16, 32]
+        ],
+        rocm=[triton.Config({}, num_warps=4)],
+    ),
     key=["D"],
 )
 @triton.jit
@@ -48,11 +54,14 @@ def l2norm_fwd_kernel1(
 
 
 @triton.autotune(
-    configs=[
-        triton.Config({"BT": BT}, num_warps=num_warps)
-        for num_warps in [1, 2, 4, 8, 16]
-        for BT in BT_LIST
-    ],
+    configs=platform_autotune_configs(
+        [
+            triton.Config({"BT": BT}, num_warps=num_warps)
+            for num_warps in [1, 2, 4, 8, 16]
+            for BT in BT_LIST
+        ],
+        rocm=[triton.Config({"BT": 64}, num_warps=4)],
+    ),
     key=["D"],
 )
 @triton.jit(do_not_specialize=["NB"])

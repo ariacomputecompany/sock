@@ -13,7 +13,7 @@ import logging
 import os
 from collections.abc import Callable
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 import torch
 
@@ -29,6 +29,10 @@ SUPPRESS_LEVEL = int(os.getenv("GDN_RECOMPUTE_SUPPRESS_LEVEL", "0"))
 
 # Default chunk size used across FLA triton kernels (kda, chunk, chunk_o, etc.)
 FLA_CHUNK_SIZE = 64
+
+_ConfigT = TypeVar("_ConfigT")
+
+FLA_AUTOTUNE_POLICY = os.getenv("VLLM_FLA_AUTOTUNE_POLICY", "platform").strip().lower()
 
 
 def tensor_cache(fn: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
@@ -162,6 +166,42 @@ is_tma_supported = (
         or hasattr(triton.language, "make_tensor_descriptor")
     )
 )
+
+
+def _uses_bounded_fla_autotune() -> bool:
+    if FLA_AUTOTUNE_POLICY in {"full", "exhaustive"}:
+        return False
+    if FLA_AUTOTUNE_POLICY in {"bounded", "deterministic"}:
+        return True
+    if FLA_AUTOTUNE_POLICY == "platform":
+        return is_amd
+    raise ValueError(
+        "VLLM_FLA_AUTOTUNE_POLICY must be one of: platform, bounded, "
+        f"deterministic, full, exhaustive; got {FLA_AUTOTUNE_POLICY!r}"
+    )
+
+
+def platform_autotune_configs(
+    configs: list[_ConfigT],
+    *,
+    rocm: list[_ConfigT] | None = None,
+) -> list[_ConfigT]:
+    """Return the production autotune search space for FLA kernels.
+
+    FLA kernels are shared by multiple hybrid-attention models. On CUDA the
+    full autotune sweep is usually acceptable and often valuable. On ROCm,
+    Triton/LLVM compilation can dominate startup and turn a deterministic
+    warmup into minutes of compiler benchmarking. The ROCm production policy
+    therefore uses a small, known-good kernel set by default while retaining an
+    explicit full-search mode for offline tuning.
+    """
+    if not configs:
+        raise ValueError("FLA autotune config list must not be empty")
+    if not _uses_bounded_fla_autotune():
+        return configs
+    if is_amd and rocm:
+        return rocm
+    return configs[:1]
 
 
 def get_all_max_shared_mem():

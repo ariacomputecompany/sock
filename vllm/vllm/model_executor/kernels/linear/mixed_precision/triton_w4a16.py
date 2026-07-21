@@ -315,6 +315,17 @@ class TritonW4A16LinearKernel(MPLinearKernel):
         if not (current_platform.is_rocm() or current_platform.is_cuda()):
             return False, "TritonW4A16LinearKernel requires CUDA or ROCm"
 
+        if current_platform.is_rocm():
+            from vllm.platforms.rocm import on_mi3xx
+
+            if not on_mi3xx():
+                return (
+                    False,
+                    "TritonW4A16LinearKernel is only enabled for ROCm CDNA "
+                    "MI3xx targets; RDNA targets must use a native RDNA or "
+                    "Conch W4A16 backend",
+                )
+
         if c.weight_type not in cls.SUPPORTED_QUANT_TYPES:
             return (
                 False,

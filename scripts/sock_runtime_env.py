@@ -47,6 +47,7 @@ def apply_python_runtime_contract() -> None:
 
 def apply_rocm_wsl_runtime_defaults() -> None:
     apply_python_runtime_contract()
+    set_default_env("VLLM_FLA_AUTOTUNE_POLICY", "platform")
     set_default_env("VLLM_TARGET_DEVICE", "rocm")
     set_default_env("VLLM_USE_V2_MODEL_RUNNER", "0")
     set_default_env("VLLM_WSL2_ENABLE_PIN_MEMORY", "0")
