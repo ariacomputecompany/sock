@@ -35,6 +35,12 @@ class TorchFP8ScaledMMLinearKernel(FP8ScaledMMLinearKernel):
         if not (current_platform.is_cuda_alike() or current_platform.is_cpu()):
             return False, "requires ROCm, CUDA or CPU."
 
+        if current_platform.is_rocm():
+            from vllm.platforms.rocm import on_mi3xx
+
+            if not on_mi3xx():
+                return False, "requires MI300+ for torch._scaled_mm on ROCm."
+
         if compute_capability is not None and compute_capability < 89:
             return False, "requires compute capability 89 and above."
 

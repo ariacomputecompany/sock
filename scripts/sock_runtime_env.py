@@ -52,6 +52,8 @@ def apply_rocm_wsl_runtime_defaults() -> None:
     set_default_env("VLLM_USE_V2_MODEL_RUNNER", "0")
     set_default_env("VLLM_WSL2_ENABLE_PIN_MEMORY", "0")
     set_default_env("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
+    set_default_env("VLLM_ROCM_FP8_PADDING", "1")
+    set_default_env("VLLM_ROCM_MOE_PADDING", "1")
 
 
 def apply_cuda_runtime_defaults() -> None:

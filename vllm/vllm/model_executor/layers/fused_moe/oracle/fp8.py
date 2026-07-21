@@ -31,7 +31,9 @@ from vllm.model_executor.layers.quantization.utils.marlin_utils_fp8 import (
 from vllm.model_executor.layers.quantization.utils.quant_utils import (
     QuantKey,
     kFp8Dynamic128Sym,
+    kFp8DynamicTokenSym,
     kFp8Static128BlockSym,
+    kFp8StaticChannelSym,
 )
 from vllm.platforms import current_platform
 
@@ -82,6 +84,7 @@ def _get_priority_backends(
         Fp8MoeBackend.DEEPGEMM,
         Fp8MoeBackend.VLLM_CUTLASS,
         Fp8MoeBackend.TRITON,
+        Fp8MoeBackend.EMULATION,
         Fp8MoeBackend.MARLIN,
         Fp8MoeBackend.BATCHED_DEEPGEMM,
         Fp8MoeBackend.BATCHED_VLLM_CUTLASS,
@@ -176,6 +179,13 @@ def backend_to_kernel_cls(
 
         return [TritonExperts]
 
+    elif backend == Fp8MoeBackend.EMULATION:
+        from vllm.model_executor.layers.fused_moe.experts.fp8_emulation_moe import (
+            Fp8QuantizationEmulationTritonExperts,
+        )
+
+        return [Fp8QuantizationEmulationTritonExperts]
+
     elif backend == Fp8MoeBackend.BATCHED_TRITON:
         from vllm.model_executor.layers.fused_moe.experts.fused_batched_moe import (
             BatchedTritonExperts,
@@ -241,6 +251,7 @@ def map_fp8_backend(runner_backend: MoEBackend) -> Fp8MoeBackend:
         "flashinfer_cutlass": Fp8MoeBackend.FLASHINFER_CUTLASS,
         "marlin": Fp8MoeBackend.MARLIN,
         "aiter": Fp8MoeBackend.AITER,
+        "emulation": Fp8MoeBackend.EMULATION,
         "hpc": Fp8MoeBackend.HPC,
     }
     if backend := mapping.get(runner_backend):

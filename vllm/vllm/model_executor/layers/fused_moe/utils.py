@@ -204,8 +204,11 @@ def _mxfp4_quantize(
 def _fp8_quantize_dequantize(
     A: torch.Tensor,
     A_scale: torch.Tensor,
+    per_act_token_quant: bool = False,
 ):
-    qA, qA_scale = ops.scaled_fp8_quant(A, A_scale, use_per_token_if_dynamic=False)
+    qA, qA_scale = ops.scaled_fp8_quant(
+        A, A_scale, use_per_token_if_dynamic=per_act_token_quant
+    )
     A = per_tensor_dequantize(qA, qA_scale).to(A.dtype)
 
     return A, None
@@ -281,13 +284,13 @@ def moe_kernel_quantize_input(
             # non-emulation ops.
             # TODO: Remove this `ocp_mx_scheme is not None` block and rely solely
             # on `quantization_emulation`.
-            return _fp8_quantize_dequantize(A, A_scale)
+            return _fp8_quantize_dequantize(A, A_scale, per_act_token_quant)
         # else: For other schemes (e.g., *_a_mxfp6_e3m2, *_a_mxfp6_e2m3),
         # weights are already dequantized, and we proceed with normal
         # activation quantization below.
     if quant_dtype == current_platform.fp8_dtype():
         if quantization_emulation:
-            return _fp8_quantize_dequantize(A, A_scale)
+            return _fp8_quantize_dequantize(A, A_scale, per_act_token_quant)
         else:
             return _fp8_quantize(A, A_scale, per_act_token_quant, block_shape)
     elif quant_dtype == torch.int8:

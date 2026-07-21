@@ -150,6 +150,9 @@ from vllm.model_executor.kernels.linear.scaled_mm.cutlass import (
 from vllm.model_executor.kernels.linear.scaled_mm.deep_gemm import (
     DeepGemmFp8BlockScaledMMKernel,
 )
+from vllm.model_executor.kernels.linear.scaled_mm.emulation import (
+    EmulationFP8ScaledMMLinearKernel,
+)
 from vllm.model_executor.kernels.linear.scaled_mm.flashinfer import (
     FlashInferFp8DeepGEMMDynamicBlockScaledKernel,
     FlashInferFP8ScaledMMLinearKernel,
@@ -263,6 +266,7 @@ _LINEAR_BACKEND_KERNEL_MAP: dict[str, set[type]] = {
         ExllamaLinearKernel,
     },
     "emulation": {
+        EmulationFP8ScaledMMLinearKernel,
         EmulationMxfp8LinearKernel,
         EmulationNvFp4LinearKernel,
     },
@@ -305,6 +309,7 @@ _POSSIBLE_FP8_KERNELS: dict[PlatformEnum, list[type[FP8ScaledMMLinearKernel]]] =
         PerTensorTorchFP8ScaledMMLinearKernel,
         RowWiseTorchFP8ScaledMMLinearKernel,
         ChannelWiseTorchFP8ScaledMMLinearKernel,
+        EmulationFP8ScaledMMLinearKernel,
     ],
     PlatformEnum.CPU: [
         PerTensorTorchFP8ScaledMMLinearKernel,
