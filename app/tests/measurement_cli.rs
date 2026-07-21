@@ -7,8 +7,8 @@ use tempfile::tempdir;
 fn measure_prefill_path_proves_scoped_and_warm_reuse_reduction() {
     let dir = tempdir().expect("tempdir");
 
-    Command::cargo_bin("sock")
-        .expect("sock binary")
+    let mut cmd = Command::cargo_bin("sock").expect("sock binary");
+    cmd.env("SOCK_TEST_HOST_PROFILE", "nvidia-sm90")
         .args([
             "measure",
             "prefill-path",

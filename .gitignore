@@ -17,3 +17,5 @@ tmp/
 .venv-codex/
 **/.venv/
 **/.venv-codex/
+__pycache__/
+**/__pycache__/

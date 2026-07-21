@@ -3,6 +3,18 @@
   "name": "rocm-runtime-env",
   "steps": [
     {
+      "type": "proc_when",
+      "cmd": "sh",
+      "args": [
+        "-c",
+        "set -eu\npython3 - <<'PY'\nimport os\nfrom scripts.sock_runtime_env import apply_runtime_profile\n\nfor key in (\n    'VLLM_TARGET_DEVICE',\n    'VLLM_USE_V2_MODEL_RUNNER',\n    'VLLM_WSL2_ENABLE_PIN_MEMORY',\n    'VLLM_WORKER_MULTIPROC_METHOD',\n    'VLLM_ROCM_USE_AITER',\n    'VLLM_ROCM_USE_AITER_MOE',\n    'VLLM_ROCM_FP8_PADDING',\n    'VLLM_ROCM_MOE_PADDING',\n):\n    os.environ.pop(key, None)\n\napply_runtime_profile('rocm-wsl')\n\nassert os.environ['VLLM_TARGET_DEVICE'] == 'rocm'\nassert os.environ['VLLM_USE_V2_MODEL_RUNNER'] == '0'\nassert os.environ['VLLM_WSL2_ENABLE_PIN_MEMORY'] == '0'\nassert os.environ['VLLM_WORKER_MULTIPROC_METHOD'] == 'spawn'\nassert 'VLLM_ROCM_USE_AITER' not in os.environ\nassert 'VLLM_ROCM_USE_AITER_MOE' not in os.environ\nassert os.environ['VLLM_ROCM_FP8_PADDING'] == '1'\nassert os.environ['VLLM_ROCM_MOE_PADDING'] == '1'\n\nos.environ['VLLM_ROCM_USE_AITER'] = '0'\nos.environ['VLLM_ROCM_USE_AITER_MOE'] = '0'\napply_runtime_profile('amd')\nassert os.environ['VLLM_ROCM_USE_AITER'] == '0'\nassert os.environ['VLLM_ROCM_USE_AITER_MOE'] == '0'\nPY\nprintf 'rocm-runtime-env\\n'"
+      ],
+      "exit_code": 0,
+      "stdout": "rocm-runtime-env\n",
+      "stderr": "",
+      "times": 1
+    },
+    {
       "type": "proc_spawn",
       "cmd": "sh",
       "args": [
