@@ -70,10 +70,11 @@ standard KV:
 | Physical TMH, first physical kernel | 1075.15 | 65 | 26.44 | -27.96% | 0 |
 | Physical TMH, optimized kernel | 945.04 | 75 | 29.76 | -18.92% | 0 |
 | Physical TMH, page-descriptor kernel | 935.04 | 76 | 29.98 | -18.33% | 0 |
+| Physical TMH, scoped warmup rerun | 993.69 | 58 | 28.49 | -18.08% vs same-day standard | 0 |
 
-The headline bad number is:
+The headline bad number remains:
 
-`Page-descriptor physical TMH geomean delta vs standard: -18.33%`
+`Physical TMH scoped-warmup rerun geomean delta vs same-day standard: -18.08%`
 
 That is too large to accept. It means the physical TMH layout is functional, but
 the physical attention path is not yet performance-competitive on this AMD 30B
@@ -98,6 +99,7 @@ The raw benchmark artifacts are:
 - `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh/`
 - `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-kernel-opt/`
 - `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-page-desc-opt/`
+- `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-native-rerun/`
 
 ## Current Optimization Pass
 
@@ -128,10 +130,14 @@ Verification for this pass:
 - `./vllm/.venv/bin/python -m pytest -q vllm/tests/v1/core/test_tmh_physical.py vllm/tests/v1/core/test_tmh_triton_ops.py`
 - Result: `9 passed`
 
-Benchmark status: this pass is source-verified but not yet endpoint-benchmarked
-against the GMK/AMD Qwen3-30B suite because the GPU is currently occupied by a
-long ZipML training run. The next honest proof point is rerunning the same
-standard-vs-TMH endpoint suite after the GPU is free.
+Benchmark status: this pass has now been endpoint-benchmarked against the
+GMK/AMD Qwen3-30B suite. The scoped warmup fixed startup reliability: TMH reached
+`/health` in 58s and the direct warmup no longer wedges in synthetic MoE decode.
+The throughput problem did not move enough: same-day standard geomean was
+`34.78` completion tok/s, physical TMH geomean was `28.49` completion tok/s, for
+`-18.08%` geomean completion throughput and `+22.13%` geomean wall-clock
+latency. This confirms startup coupling was a real production bug, but it was
+not the root cause of the physical attention throughput gap.
 
 ## What Has Worked
 

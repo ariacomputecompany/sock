@@ -644,24 +644,31 @@ six-case endpoint suite.
 | Physical TMH suite wall clock, first physical kernel | 1075.15 s |
 | Physical TMH suite wall clock, optimized kernel | 945.04 s |
 | Physical TMH suite wall clock, page-descriptor kernel | 935.04 s |
+| Physical TMH suite wall clock, scoped warmup rerun | 993.69 s |
 | Standard ready time | 73 s |
 | Physical TMH ready time, first physical kernel | 65 s |
 | Physical TMH ready time, optimized kernel | 75 s |
 | Physical TMH ready time, page-descriptor kernel | 76 s |
+| Physical TMH ready time, scoped warmup rerun | 58 s |
 | Standard request-time JIT warnings | 3, non-TMH kernels (`_fwd_kernel`, MoE/GPTQ) |
 | Physical TMH request-time JIT warnings, first physical kernel | 2, MoE/GPTQ kernels; zero TMH kernel JIT warnings |
 | Physical TMH request-time JIT warnings, optimized kernel | 2, MoE/GPTQ kernels; zero TMH kernel JIT warnings |
 | Physical TMH request-time JIT warnings, page-descriptor kernel | 2, MoE/GPTQ kernels; zero TMH kernel JIT warnings |
+| Physical TMH request-time JIT warnings, scoped warmup rerun | zero TMH kernel JIT warnings |
 | Standard geomean completion throughput | 36.70 tok/s |
 | Physical TMH geomean completion throughput, first physical kernel | 26.44 tok/s |
 | Physical TMH geomean completion throughput, optimized kernel | 29.76 tok/s |
 | Physical TMH geomean completion throughput, page-descriptor kernel | 29.98 tok/s |
+| Same-day standard geomean completion throughput, scoped warmup rerun | 34.78 tok/s |
+| Physical TMH geomean completion throughput, scoped warmup rerun | 28.49 tok/s |
 | First physical TMH geomean delta vs standard | -27.96% |
 | Optimized physical TMH geomean delta vs first physical TMH | +12.56% |
 | Optimized physical TMH geomean delta vs standard | -18.92% |
 | Page-descriptor physical TMH geomean delta vs optimized physical TMH | +0.73% |
 | Page-descriptor physical TMH geomean delta vs standard | -18.33% |
-| Raw summaries | `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh/`, `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-kernel-opt/`, `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-page-desc-opt/` |
+| Scoped-warmup physical TMH geomean delta vs same-day standard | -18.08% |
+| Scoped-warmup physical TMH wall-clock delta vs same-day standard | +22.13% |
+| Raw summaries | `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh/`, `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-kernel-opt/`, `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-page-desc-opt/`, `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-native-rerun/` |
 
 | Runtime | Suite wall s | Ready s | Geomean completion tok/s | Delta vs standard | TMH JIT warnings |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -669,6 +676,7 @@ six-case endpoint suite.
 | Physical TMH, first physical kernel | 1075.15 | 65 | 26.44 | -27.96% | 0 |
 | Physical TMH, optimized kernel | 945.04 | 75 | 29.76 | -18.92% | 0 |
 | Physical TMH, page-descriptor kernel | 935.04 | 76 | 29.98 | -18.33% | 0 |
+| Physical TMH, scoped warmup rerun | 993.69 | 58 | 28.49 | -18.08% vs same-day standard | 0 |
 
 | Case | Concurrency | Standard completion tok/s | Physical TMH completion tok/s | TMH delta | Standard wall s | TMH wall s | Wall delta |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

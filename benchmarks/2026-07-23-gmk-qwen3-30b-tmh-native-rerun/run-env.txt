@@ -1,0 +1,4 @@
+run_id=2026-07-23-gmk-qwen3-30b-tmh-native-rerun
+model=Qwen/Qwen3-30B-A3B-GPTQ-Int4
+started_at=2026-07-23T13:32:57-07:00
+git_commit=beb7a98be3adcd7809062211d287715f1c5ffd70

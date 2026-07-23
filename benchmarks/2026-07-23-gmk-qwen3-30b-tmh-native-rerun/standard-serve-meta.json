@@ -1,0 +1,12 @@
+{
+  "jit_warnings": 7,
+  "mode": "standard",
+  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+  "port": 8020,
+  "ready_s": 69,
+  "runtime_warmup_lines": [
+    "(EngineCore pid=528037) INFO 07-23 13:34:04 [gpu_worker.py:862] Runtime kernel warmup selecting worker_execution_mode=v1 tmh_kv_policy=off"
+  ],
+  "tmh_jit_warnings": 0,
+  "tmh_warmup_shapes": []
+}

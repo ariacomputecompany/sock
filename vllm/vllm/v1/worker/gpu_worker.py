@@ -877,11 +877,7 @@ class Worker(WorkerBase):
                 }
             )
         elif runtime_kv_policy == "physical":
-            warmup_tmh_physical_kernels(
-                self.model_runner,
-                self.execute_model,
-                self.sample_tokens,
-            )
+            warmup_tmh_physical_kernels(self.model_runner)
             warmup_stages.append(
                 {
                     "stage_kind": "runtime_kernel_materialization",

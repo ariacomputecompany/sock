@@ -161,9 +161,18 @@ def tmh_rocm_native_raw_attention_args(
     cache: TMHPhysicalKVCache,
     attn_metadata,
 ) -> tuple[torch.Tensor, torch.Tensor] | None:
-    """Return ROCm-native raw KV/block-table views when TMH has no warm pages."""
+    """Return ROCm-native raw KV/block-table views for all-raw decode.
+
+    The ROCm native handoff is a decode specialization: it lets physical TMH
+    avoid the layout-aware Triton attention kernel when the active window is
+    fully raw/full-fidelity. Prefill still goes through the canonical TMH path
+    because prompt attention also materializes fresh K/V and exercises different
+    cache-update semantics.
+    """
     max_seq_len = int(getattr(attn_metadata, "max_seq_len", 0) or 0)
     if max_seq_len <= 0:
+        return None
+    if int(getattr(attn_metadata, "max_query_len", 0) or 0) > 1:
         return None
     block_size = cache.spec.block_size
     max_pages = math.ceil(max_seq_len / block_size)
