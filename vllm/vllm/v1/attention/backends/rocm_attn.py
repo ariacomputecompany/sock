@@ -439,26 +439,33 @@ class RocmAttentionImpl(AttentionImpl):
                 layer,
             )
 
-        from vllm.v1.tmh_physical import TMHPhysicalKVCache
+        tmh_block_table = None
+        from vllm.v1.tmh_physical import (
+            TMHPhysicalKVCache,
+            tmh_rocm_native_raw_attention_args,
+        )
 
         if isinstance(kv_cache, TMHPhysicalKVCache):
-            from vllm.v1.attention.ops.tmh_triton_ops import (
-                tmh_backend_paged_attention,
-            )
+            native_args = tmh_rocm_native_raw_attention_args(kv_cache, attn_metadata)
+            if native_args is None:
+                from vllm.v1.attention.ops.tmh_triton_ops import (
+                    tmh_backend_paged_attention,
+                )
 
-            return tmh_backend_paged_attention(
-                query=query,
-                cache=kv_cache,
-                attn_metadata=attn_metadata,
-                output=output,
-                softmax_scale=self.scale,
-                causal=attn_metadata.causal,
-                window_size=self.sliding_window,
-                softcap=self.logits_soft_cap,
-                alibi_slopes=self.alibi_slopes,
-                output_scale=output_scale,
-                sinks=self.sinks,
-            )
+                return tmh_backend_paged_attention(
+                    query=query,
+                    cache=kv_cache,
+                    attn_metadata=attn_metadata,
+                    output=output,
+                    softmax_scale=self.scale,
+                    causal=attn_metadata.causal,
+                    window_size=self.sliding_window,
+                    softcap=self.logits_soft_cap,
+                    alibi_slopes=self.alibi_slopes,
+                    output_scale=output_scale,
+                    sinks=self.sinks,
+                )
+            kv_cache, tmh_block_table = native_args
 
         key_cache, value_cache = PagedAttention.split_kv_cache(
             kv_cache, self.num_kv_heads, self.head_size
@@ -484,7 +491,11 @@ class RocmAttentionImpl(AttentionImpl):
         seqused_k = attn_metadata.seq_lens
         max_seqlen_q = attn_metadata.max_query_len
         max_seqlen_k = attn_metadata.max_seq_len
-        block_table = attn_metadata.block_table
+        block_table = (
+            tmh_block_table
+            if tmh_block_table is not None
+            else attn_metadata.block_table
+        )
 
         # Compute attention and update output up to `num_actual_tokens`.
         chunked_prefill_paged_decode(

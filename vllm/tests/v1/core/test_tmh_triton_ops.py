@@ -29,7 +29,7 @@ def test_tmh_triton_attention_reads_raw_and_warm_int4_pages():
         tmh_hot_budget_pct=25.0,
         tmh_late_layer=False,
         tmh_max_num_seqs=1,
-        tmh_max_model_pages=2,
+        tmh_max_model_pages=3,
     )
     num_logical_blocks = 8
     backing = torch.empty(
@@ -42,12 +42,11 @@ def test_tmh_triton_attention_reads_raw_and_warm_int4_pages():
         spec,
         num_logical_blocks=num_logical_blocks,
     )
-    cache.request_role_by_row_page[0, 0] = 0
     cache.request_slot_by_row_page[0, 0] = 0
-    cache.request_role_by_row_page[0, 1] = 2
     cache.request_slot_by_row_page[0, 1] = 0
+    cache.request_slot_by_row_page[0, 2] = 1
 
-    tokens = 20
+    tokens = 48
     heads = 1
     q = torch.randn(tokens, heads, 32, device=device, dtype=dtype)
     k = torch.randn(tokens, heads, 32, device=device, dtype=dtype)
@@ -106,7 +105,7 @@ def test_tmh_triton_segmented_decode_reads_raw_and_warm_int4_pages():
         tmh_hot_budget_pct=25.0,
         tmh_late_layer=False,
         tmh_max_num_seqs=1,
-        tmh_max_model_pages=2,
+        tmh_max_model_pages=3,
     )
     num_logical_blocks = 8
     backing = torch.empty(
@@ -119,12 +118,11 @@ def test_tmh_triton_segmented_decode_reads_raw_and_warm_int4_pages():
         spec,
         num_logical_blocks=num_logical_blocks,
     )
-    cache.request_role_by_row_page[0, 0] = 0
     cache.request_slot_by_row_page[0, 0] = 0
-    cache.request_role_by_row_page[0, 1] = 2
     cache.request_slot_by_row_page[0, 1] = 0
+    cache.request_slot_by_row_page[0, 2] = 1
 
-    tokens = 20
+    tokens = 48
     heads = 1
     q = torch.randn(1, heads, 32, device=device, dtype=dtype)
     k = torch.randn(tokens, heads, 32, device=device, dtype=dtype)

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 import torch
 
@@ -22,6 +23,7 @@ class TMHPhysicalKVCache:
 
     spec: TMHFullAttentionSpec
     num_logical_blocks: int
+    raw_kv_cache: torch.Tensor
     raw_key: torch.Tensor
     raw_value: torch.Tensor
     warm_key: torch.Tensor
@@ -30,9 +32,6 @@ class TMHPhysicalKVCache:
     warm_v_scale: torch.Tensor
     canonical_role_by_logical_block: torch.Tensor
     canonical_slot_by_logical_block: torch.Tensor
-    request_block_by_row_page: torch.Tensor
-    request_role_by_row_page: torch.Tensor
-    request_storage_by_row_page: torch.Tensor
     request_slot_by_row_page: torch.Tensor
 
     @property
@@ -76,23 +75,28 @@ def reshape_tmh_physical_kv_cache(
         offset = end
         return tensor
 
-    raw_k_shape = (raw_pages, spec.block_size, spec.num_kv_heads, spec.head_size)
-    raw_v_shape = (raw_pages, spec.block_size, spec.num_kv_heads, spec.head_size_v)
+    if spec.head_size_v != spec.head_size:
+        raise ValueError(
+            "TMH physical raw-native cache requires head_size_v == head_size"
+        )
+    raw_kv_shape = (2, raw_pages, spec.block_size, spec.num_kv_heads, spec.head_size)
     warm_v_head = spec.head_size_v if spec.tmh_late_layer else (spec.head_size_v + 1) // 2
     warm_k_shape = (warm_pages, spec.block_size, spec.num_kv_heads, spec.head_size)
     warm_v_shape = (warm_pages, spec.block_size, spec.num_kv_heads, warm_v_head)
     warm_scale_shape = (warm_pages, spec.block_size, spec.num_kv_heads)
 
     raw_dtype_size = torch.empty((), dtype=spec.dtype).element_size()
-    raw_key = take(
-        raw_pages * spec.block_size * spec.num_kv_heads * spec.head_size * raw_dtype_size,
+    raw_kv_cache = take(
+        2 * raw_pages * spec.block_size * spec.num_kv_heads * spec.head_size * raw_dtype_size,
         spec.dtype,
-        raw_k_shape,
+        raw_kv_shape,
     )
-    raw_value = take(
-        raw_pages * spec.block_size * spec.num_kv_heads * spec.head_size_v * raw_dtype_size,
-        spec.dtype,
-        raw_v_shape,
+    x = 16 // raw_kv_cache.element_size()
+    raw_key = raw_kv_cache[0].view(
+        raw_pages, spec.num_kv_heads, spec.head_size // x, spec.block_size, x
+    )
+    raw_value = raw_kv_cache[1].view(
+        raw_pages, spec.num_kv_heads, spec.head_size, spec.block_size
     )
     warm_key = take(
         warm_pages * spec.block_size * spec.num_kv_heads * spec.head_size,
@@ -121,24 +125,6 @@ def reshape_tmh_physical_kv_cache(
         device=kv_raw_tensor.device,
     )
     request_shape = (spec.tmh_max_num_seqs, spec.tmh_max_model_pages)
-    request_block_by_row_page = torch.full(
-        request_shape,
-        fill_value=-1,
-        dtype=torch.int32,
-        device=kv_raw_tensor.device,
-    )
-    request_role_by_row_page = torch.full(
-        request_shape,
-        fill_value=-1,
-        dtype=torch.int16,
-        device=kv_raw_tensor.device,
-    )
-    request_storage_by_row_page = torch.full(
-        request_shape,
-        fill_value=-1,
-        dtype=torch.int16,
-        device=kv_raw_tensor.device,
-    )
     request_slot_by_row_page = torch.full(
         request_shape,
         fill_value=-1,
@@ -148,6 +134,7 @@ def reshape_tmh_physical_kv_cache(
     return TMHPhysicalKVCache(
         spec=spec,
         num_logical_blocks=num_logical_blocks,
+        raw_kv_cache=raw_kv_cache,
         raw_key=raw_key,
         raw_value=raw_value,
         warm_key=warm_key,
@@ -156,11 +143,39 @@ def reshape_tmh_physical_kv_cache(
         warm_v_scale=warm_v_scale,
         canonical_role_by_logical_block=canonical_role_by_logical_block,
         canonical_slot_by_logical_block=canonical_slot_by_logical_block,
-        request_block_by_row_page=request_block_by_row_page,
-        request_role_by_row_page=request_role_by_row_page,
-        request_storage_by_row_page=request_storage_by_row_page,
         request_slot_by_row_page=request_slot_by_row_page,
     )
+
+
+def _recent_start_page(total_pages: int, hot_budget_pct: float) -> int:
+    hot_ratio = max(0.0, min(1.0, hot_budget_pct / 100.0))
+    hot_pages = (
+        0
+        if hot_ratio <= 0.0
+        else min(total_pages, math.ceil(total_pages * hot_ratio))
+    )
+    return total_pages if hot_pages <= 0 else max(0, total_pages - hot_pages)
+
+
+def tmh_rocm_native_raw_attention_args(
+    cache: TMHPhysicalKVCache,
+    attn_metadata,
+) -> tuple[torch.Tensor, torch.Tensor] | None:
+    """Return ROCm-native raw KV/block-table views when TMH has no warm pages."""
+    max_seq_len = int(getattr(attn_metadata, "max_seq_len", 0) or 0)
+    if max_seq_len <= 0:
+        return None
+    block_size = cache.spec.block_size
+    max_pages = math.ceil(max_seq_len / block_size)
+    if max_pages > cache.request_slot_by_row_page.shape[1]:
+        return None
+    if _recent_start_page(max_pages, cache.spec.tmh_hot_budget_pct) > 1:
+        return None
+    num_seqs = len(attn_metadata.seq_lens)
+    block_table = cache.request_slot_by_row_page[
+        :num_seqs, : attn_metadata.block_table.shape[1]
+    ]
+    return cache.raw_kv_cache, block_table
 
 
 class TMHPhysicalRuntime:
@@ -304,9 +319,6 @@ class TMHPhysicalRuntime:
                     f"{descriptor.layer_name!r}, but the worker has no "
                     "registered TMH physical cache for that layer."
                 )
-            cache.request_block_by_row_page[req_index].fill_(-1)
-            cache.request_role_by_row_page[req_index].fill_(-1)
-            cache.request_storage_by_row_page[req_index].fill_(-1)
             cache.request_slot_by_row_page[req_index].fill_(-1)
             cleared.add(key)
 
@@ -317,22 +329,17 @@ class TMHPhysicalRuntime:
                 f"TMH logical block id {logical_block_id} is outside the "
                 f"allocated descriptor table ({cache.num_logical_blocks})."
             )
-        new_role = int(descriptor.role)
-        storage = int(descriptor.storage)
         if descriptor.storage == TMHStorageKind.REQUEST_OVERLAY:
             slot = self._overlay_slot(layer_name, descriptor.request_id, descriptor.page_index)
         else:
             slot = self._canonical_slot(layer_name, logical_block_id, descriptor.role)
 
         page_index = descriptor.page_index
-        if page_index >= cache.request_role_by_row_page.shape[1]:
+        if page_index >= cache.request_slot_by_row_page.shape[1]:
             raise RuntimeError(
                 f"TMH page index {page_index} exceeds descriptor row width "
-                f"{cache.request_role_by_row_page.shape[1]} for layer {layer_name!r}."
+                f"{cache.request_slot_by_row_page.shape[1]} for layer {layer_name!r}."
             )
-        cache.request_block_by_row_page[req_index, page_index] = logical_block_id
-        cache.request_role_by_row_page[req_index, page_index] = new_role
-        cache.request_storage_by_row_page[req_index, page_index] = storage
         cache.request_slot_by_row_page[req_index, page_index] = slot
 
     def _canonical_slot(
@@ -374,17 +381,7 @@ class TMHPhysicalRuntime:
                 f"layer {layer_name!r} is exhausted. Increase the hot budget "
                 "reserve or reduce concurrency/max context."
             )
-        slot = free_slots.pop()
-        cache = self._caches[layer_name]
-        if wants_raw:
-            cache.raw_key[slot].zero_()
-            cache.raw_value[slot].zero_()
-        else:
-            cache.warm_key[slot].zero_()
-            cache.warm_value[slot].zero_()
-            cache.warm_k_scale[slot].fill_(1.0)
-            cache.warm_v_scale[slot].fill_(1.0)
-        return slot
+        return free_slots.pop()
 
 
 def build_tmh_physical_runtime(

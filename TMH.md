@@ -18,10 +18,13 @@ The production-shaped TMH path currently includes:
 - Scheduler/runtime propagation of TMH policy and hot-page budget.
 - Physical TMH cache allocation with separate raw pinned/hot pages and warm
   compressed pages.
-- Per-request physical page descriptors for role, storage kind, quantization
-  mode, prefix-cache awareness, and logical-to-physical slot mapping.
+- Per-request physical page descriptors for scheduler-side role, storage kind,
+  quantization mode, prefix-cache awareness, and logical-to-physical slot
+  assignment. Runtime kernels consume only the physical slot table; page role is
+  derived deterministically from sequence geometry and the hot-page budget.
 - Physical cache materialization and reclamation through the real vLLM worker
-  path.
+  path. Raw TMH pages are exposed as a zero-copy ROCm-native KV view so eligible
+  raw-only batches can use the standard ROCm paged-attention backend.
 - TMH cache update kernels that write raw pages and warm compressed pages.
 - TMH attention kernels that read raw, warm int8/int4, and warm int8/int8 pages.
 - Prefix-cache-aware descriptor handling.
@@ -95,6 +98,40 @@ The raw benchmark artifacts are:
 - `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh/`
 - `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-kernel-opt/`
 - `benchmarks/2026-07-19-gmk-qwen3-30b-physical-tmh-page-desc-opt/`
+
+## Current Optimization Pass
+
+The latest source pass targets self-inflicted overhead identified by comparing
+TMH against the ROCm/vLLM fast path and AMD's current ROCm guidance. The
+official ROCm tuning guidance says MHA workloads should use the optimized ROCm
+attention backend where possible and notes that backend-specific KV layout can
+materially affect decode throughput. TMH therefore should not replace the
+backend-native attention path unless compressed pages are actually present.
+
+Implemented changes:
+
+- Raw TMH pages now have a zero-copy `[2, raw_pages, block, heads, head]`
+  ROCm-native KV view alongside the existing raw key/value views.
+- ROCm attention now routes TMH batches through standard
+  `chunked_prefill_paged_decode` when the batch has only pinned/hot raw pages.
+- The TMH Triton cache-update and attention kernels no longer load per-page role
+  descriptors from global memory. They derive raw/warm role from `seq_len`,
+  `block_size`, and `tmh_hot_budget_pct`, matching the scheduler policy.
+- Dead GPU request descriptor tables for block id, role, and storage kind were
+  removed. The kernels retain only the live physical slot table.
+- Slot allocation no longer zero-fills whole raw/warm pages before use; live
+  tokens are overwritten by the cache writer and attention masks exclude
+  unwritten page tail values.
+
+Verification for this pass:
+
+- `./vllm/.venv/bin/python -m pytest -q vllm/tests/v1/core/test_tmh_physical.py vllm/tests/v1/core/test_tmh_triton_ops.py`
+- Result: `9 passed`
+
+Benchmark status: this pass is source-verified but not yet endpoint-benchmarked
+against the GMK/AMD Qwen3-30B suite because the GPU is currently occupied by a
+long ZipML training run. The next honest proof point is rerunning the same
+standard-vs-TMH endpoint suite after the GPU is free.
 
 ## What Has Worked
 

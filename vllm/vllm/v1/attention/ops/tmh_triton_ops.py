@@ -62,7 +62,6 @@ def _tmh_reshape_and_cache_kernel(
     warm_value_ptr,
     warm_k_scale_ptr,
     warm_v_scale_ptr,
-    request_role_ptr,
     request_slot_ptr,
     seq_to_request_row_ptr,
     query_start_len_ptr,
@@ -73,11 +72,14 @@ def _tmh_reshape_and_cache_kernel(
     stride_val_tok: tl.int64,
     stride_val_head: tl.int64,
     stride_raw_k_slot: tl.int64,
-    stride_raw_k_tok: tl.int64,
     stride_raw_k_head: tl.int64,
+    stride_raw_k_dim_block: tl.int64,
+    stride_raw_k_tok: tl.int64,
+    stride_raw_k_x: tl.int64,
     stride_raw_v_slot: tl.int64,
-    stride_raw_v_tok: tl.int64,
     stride_raw_v_head: tl.int64,
+    stride_raw_v_dim: tl.int64,
+    stride_raw_v_tok: tl.int64,
     stride_warm_k_slot: tl.int64,
     stride_warm_k_tok: tl.int64,
     stride_warm_k_head: tl.int64,
@@ -93,6 +95,8 @@ def _tmh_reshape_and_cache_kernel(
     request_stride: tl.int64,
     num_seqs: tl.int32,
     block_size: tl.constexpr,
+    HOT_BUDGET_BPS: tl.constexpr,
+    RAW_X: tl.constexpr,
     head_size: tl.constexpr,
     head_size_v: tl.constexpr,
     HEAD_SIZE_PADDED: tl.constexpr,
@@ -116,7 +120,6 @@ def _tmh_reshape_and_cache_kernel(
     offset_in_page = abs_pos % block_size
 
     desc_idx = req_row * request_stride + page_index
-    role = tl.load(request_role_ptr + desc_idx).to(tl.int32)
     physical_slot = tl.load(request_slot_ptr + desc_idx).to(tl.int64)
     if physical_slot < 0:
         return
@@ -129,19 +132,20 @@ def _tmh_reshape_and_cache_kernel(
     key_vals = tl.load(key_base + offs, mask=k_mask, other=0.0).to(tl.float32)
     val_vals = tl.load(val_base + offs, mask=v_mask, other=0.0).to(tl.float32)
 
-    is_raw = (role == 0) | (role == 1)
+    is_raw = _tmh_page_is_raw(page_index, seq_len, block_size, HOT_BUDGET_BPS)
     if is_raw:
         raw_k_offset = (
             physical_slot * stride_raw_k_slot
-            + offset_in_page * stride_raw_k_tok
             + head * stride_raw_k_head
-            + offs
+            + (offs // RAW_X) * stride_raw_k_dim_block
+            + offset_in_page * stride_raw_k_tok
+            + (offs % RAW_X) * stride_raw_k_x
         )
         raw_v_offset = (
             physical_slot * stride_raw_v_slot
-            + offset_in_page * stride_raw_v_tok
             + head * stride_raw_v_head
-            + offs
+            + offs * stride_raw_v_dim
+            + offset_in_page * stride_raw_v_tok
         )
         tl.store(raw_key_ptr + raw_k_offset, key_vals, mask=k_mask)
         tl.store(raw_value_ptr + raw_v_offset, val_vals, mask=v_mask)
@@ -176,7 +180,7 @@ def _tmh_reshape_and_cache_kernel(
             + offset_in_page * stride_warm_vs_tok
             + head * stride_warm_vs_head
         )
-        if role == 3:
+        if not WARM_VALUE_PACKED:
             v_absmax = tl.max(tl.abs(tl.where(v_mask, val_vals, 0.0)))
             v_scale = tl.maximum(v_absmax / 127.0, 1e-6)
             v_q = val_vals * (1.0 / v_scale)
@@ -184,7 +188,7 @@ def _tmh_reshape_and_cache_kernel(
             v_q = tl.clamp(v_q, -128.0, 127.0)
             tl.store(warm_value_ptr + warm_v_offset, v_q, mask=v_mask)
             tl.store(warm_v_scale_ptr + v_scale_offset, v_scale)
-        elif WARM_VALUE_PACKED:
+        else:
             packed_offs = tl.arange(0, HEAD_SIZE_PADDED // 2)
             even_offs = packed_offs * 2
             odd_offs = even_offs + 1
@@ -252,6 +256,25 @@ def _tmh_reshape_and_cache_kernel(
 
 
 @triton.jit
+def _tmh_page_is_raw(
+    page_index,
+    seq_len,
+    block_size: tl.constexpr,
+    hot_budget_bps: tl.constexpr,
+):
+    total_pages = cdiv_fn(seq_len, block_size)
+    hot_pages = cdiv_fn(total_pages * hot_budget_bps, 10000)
+    hot_pages = tl.minimum(total_pages, hot_pages)
+    recent_start_page = tl.where(hot_pages <= 0, total_pages, total_pages - hot_pages)
+    return (page_index == 0) | (page_index >= recent_start_page)
+
+
+def _tmh_hot_budget_bps(cache) -> int:
+    pct = max(0.0, min(100.0, float(cache.spec.tmh_hot_budget_pct)))
+    return int(round(pct * 100.0))
+
+
+@triton.jit
 def _tmh_unified_attention_kernel(
     output_ptr,
     segm_output_ptr,
@@ -264,7 +287,6 @@ def _tmh_unified_attention_kernel(
     warm_value_ptr,
     warm_k_scale_ptr,
     warm_v_scale_ptr,
-    request_role_ptr,
     request_slot_ptr,
     seq_to_request_row_ptr,
     seq_lens_ptr,
@@ -285,11 +307,14 @@ def _tmh_unified_attention_kernel(
     output_stride_1: tl.int64,
     qq_bias_stride_0: tl.int64,
     stride_raw_k_slot: tl.int64,
-    stride_raw_k_tok: tl.int64,
     stride_raw_k_head: tl.int64,
+    stride_raw_k_dim_block: tl.int64,
+    stride_raw_k_tok: tl.int64,
+    stride_raw_k_x: tl.int64,
     stride_raw_v_slot: tl.int64,
-    stride_raw_v_tok: tl.int64,
     stride_raw_v_head: tl.int64,
+    stride_raw_v_dim: tl.int64,
+    stride_raw_v_tok: tl.int64,
     stride_warm_k_slot: tl.int64,
     stride_warm_k_tok: tl.int64,
     stride_warm_k_head: tl.int64,
@@ -320,6 +345,8 @@ def _tmh_unified_attention_kernel(
     MAX_MM_RANGES: tl.constexpr,
     USE_FP8: tl.constexpr,
     WARM_VALUE_PACKED: tl.constexpr,
+    HOT_BUDGET_BPS: tl.constexpr,
+    RAW_X: tl.constexpr,
     IS_3D: tl.constexpr,
 ):
     q_block_global_idx = tl.program_id(0)
@@ -409,43 +436,40 @@ def _tmh_unified_attention_kernel(
         page_index = (j * TILE_SIZE) // BLOCK_SIZE
         offset_in_page = offs_t
         desc_idx = req_row * request_stride + page_index
-        role = tl.load(
-            request_role_ptr + desc_idx,
-            mask=(j * TILE_SIZE) < max_seq_prefix_len,
-            other=-1,
-        ).to(tl.int32)
         physical_slot = tl.load(
             request_slot_ptr + desc_idx,
             mask=(j * TILE_SIZE) < max_seq_prefix_len,
             other=-1,
         ).to(tl.int64)
-        is_raw = (role == 0) | (role == 1)
-        is_warm = (role == 2) | (role == 3)
+        is_raw = _tmh_page_is_raw(page_index, seq_len, BLOCK_SIZE, HOT_BUDGET_BPS)
 
         if is_raw:
             raw_k_offset = (
                 physical_slot * stride_raw_k_slot
-                + offset_in_page[None, :] * stride_raw_k_tok
                 + kv_head_idx * stride_raw_k_head
-                + offs_d[:, None]
+                + (offs_d[:, None] // RAW_X) * stride_raw_k_dim_block
+                + offset_in_page[None, :] * stride_raw_k_tok
+                + (offs_d[:, None] % RAW_X) * stride_raw_k_x
             )
             raw_v_offset = (
                 physical_slot * stride_raw_v_slot
-                + offset_in_page[:, None] * stride_raw_v_tok
                 + kv_head_idx * stride_raw_v_head
-                + offs_d[None, :]
+                + offs_d[:, None] * stride_raw_v_dim
+                + offset_in_page[None, :] * stride_raw_v_tok
             )
             K = tl.load(
                 raw_key_ptr + raw_k_offset,
                 mask=dim_mask[:, None] & tile_mask[None, :],
                 other=0.0,
             ).to(Q.dtype)
-            V = tl.load(
-                raw_value_ptr + raw_v_offset,
-                mask=dim_mask[None, :] & tile_mask[:, None],
-                other=0.0,
+            V = tl.trans(
+                tl.load(
+                    raw_value_ptr + raw_v_offset,
+                    mask=dim_mask[:, None] & tile_mask[None, :],
+                    other=0.0,
+                )
             ).to(Q.dtype)
-        elif is_warm:
+        else:
             warm_k_offset = (
                 physical_slot * stride_warm_k_slot
                 + offset_in_page[None, :] * stride_warm_k_tok
@@ -513,9 +537,6 @@ def _tmh_unified_attention_kernel(
                     ).to(tl.float32)
                     * warm_v_scale[:, None]
                 ).to(Q.dtype)
-        else:
-            K = tl.zeros([HEAD_SIZE_PADDED, TILE_SIZE], dtype=tl.float32).to(Q.dtype)
-            V = tl.zeros([TILE_SIZE, HEAD_SIZE_PADDED], dtype=tl.float32).to(Q.dtype)
 
         query_abs_pos = context_len + query_pos[:, None]
         seq_mask = compute_kv_seq_mask(
@@ -639,7 +660,6 @@ def tmh_reshape_and_cache(
         warm_value_ptr=cache.warm_value,
         warm_k_scale_ptr=cache.warm_k_scale,
         warm_v_scale_ptr=cache.warm_v_scale,
-        request_role_ptr=cache.request_role_by_row_page,
         request_slot_ptr=cache.request_slot_by_row_page,
         seq_to_request_row_ptr=seq_rows,
         query_start_len_ptr=attn_metadata.query_start_loc,
@@ -650,11 +670,14 @@ def tmh_reshape_and_cache(
         stride_val_tok=value.stride(0),
         stride_val_head=value.stride(1),
         stride_raw_k_slot=cache.raw_key.stride(0),
-        stride_raw_k_tok=cache.raw_key.stride(1),
-        stride_raw_k_head=cache.raw_key.stride(2),
+        stride_raw_k_head=cache.raw_key.stride(1),
+        stride_raw_k_dim_block=cache.raw_key.stride(2),
+        stride_raw_k_tok=cache.raw_key.stride(3),
+        stride_raw_k_x=cache.raw_key.stride(4),
         stride_raw_v_slot=cache.raw_value.stride(0),
-        stride_raw_v_tok=cache.raw_value.stride(1),
-        stride_raw_v_head=cache.raw_value.stride(2),
+        stride_raw_v_head=cache.raw_value.stride(1),
+        stride_raw_v_dim=cache.raw_value.stride(2),
+        stride_raw_v_tok=cache.raw_value.stride(3),
         stride_warm_k_slot=cache.warm_key.stride(0),
         stride_warm_k_tok=cache.warm_key.stride(1),
         stride_warm_k_head=cache.warm_key.stride(2),
@@ -667,9 +690,11 @@ def tmh_reshape_and_cache(
         stride_warm_vs_slot=cache.warm_v_scale.stride(0),
         stride_warm_vs_tok=cache.warm_v_scale.stride(1),
         stride_warm_vs_head=cache.warm_v_scale.stride(2),
-        request_stride=cache.request_role_by_row_page.stride(0),
+        request_stride=cache.request_slot_by_row_page.stride(0),
         num_seqs=num_seqs,
         block_size=block_size,
+        HOT_BUDGET_BPS=_tmh_hot_budget_bps(cache),
+        RAW_X=16 // key.element_size(),
         head_size=head_size,
         head_size_v=head_size_v,
         HEAD_SIZE_PADDED=head_size_padded,
@@ -785,10 +810,10 @@ def tmh_unified_attention(
 
     num_seqs = len(attn_metadata.seq_lens)
     num_query_heads = q.shape[1]
-    num_kv_heads = cache.raw_key.shape[2]
+    num_kv_heads = cache.raw_key.shape[1]
     num_queries_per_kv = num_query_heads // num_kv_heads
     head_size = q.shape[2]
-    if cache.raw_value.shape[3] != head_size:
+    if cache.raw_value.shape[2] != head_size:
         raise ValueError(
             "TMH physical attention currently requires head_size_v == head_size"
         )
@@ -860,7 +885,6 @@ def tmh_unified_attention(
         warm_value_ptr=cache.warm_value,
         warm_k_scale_ptr=cache.warm_k_scale,
         warm_v_scale_ptr=cache.warm_v_scale,
-        request_role_ptr=cache.request_role_by_row_page,
         request_slot_ptr=cache.request_slot_by_row_page,
         seq_to_request_row_ptr=seq_rows,
         seq_lens_ptr=attn_metadata.seq_lens,
@@ -874,18 +898,21 @@ def tmh_unified_attention(
         softcap=softcap,
         num_query_heads=num_query_heads,
         num_queries_per_kv=num_queries_per_kv,
-        request_stride=cache.request_role_by_row_page.stride(0),
+        request_stride=cache.request_slot_by_row_page.stride(0),
         query_stride_0=q.stride(0),
         query_stride_1=q.stride(1),
         output_stride_0=out.stride(0),
         output_stride_1=out.stride(1),
         qq_bias_stride_0=qq_bias.stride(0) if qq_bias is not None else 0,
         stride_raw_k_slot=cache.raw_key.stride(0),
-        stride_raw_k_tok=cache.raw_key.stride(1),
-        stride_raw_k_head=cache.raw_key.stride(2),
+        stride_raw_k_head=cache.raw_key.stride(1),
+        stride_raw_k_dim_block=cache.raw_key.stride(2),
+        stride_raw_k_tok=cache.raw_key.stride(3),
+        stride_raw_k_x=cache.raw_key.stride(4),
         stride_raw_v_slot=cache.raw_value.stride(0),
-        stride_raw_v_tok=cache.raw_value.stride(1),
-        stride_raw_v_head=cache.raw_value.stride(2),
+        stride_raw_v_head=cache.raw_value.stride(1),
+        stride_raw_v_dim=cache.raw_value.stride(2),
+        stride_raw_v_tok=cache.raw_value.stride(3),
         stride_warm_k_slot=cache.warm_key.stride(0),
         stride_warm_k_tok=cache.warm_key.stride(1),
         stride_warm_k_head=cache.warm_key.stride(2),
@@ -916,6 +943,8 @@ def tmh_unified_attention(
         MAX_MM_RANGES=max_mm_ranges,
         USE_FP8=output_scale is not None,
         WARM_VALUE_PACKED=packed_v,
+        HOT_BUDGET_BPS=_tmh_hot_budget_bps(cache),
+        RAW_X=16 // q.element_size(),
         IS_3D=use_3d,
         **launch_kwargs,
     )

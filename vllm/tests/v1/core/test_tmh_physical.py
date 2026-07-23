@@ -3,6 +3,7 @@
 
 import torch
 
+from vllm.v1.attention.ops.paged_attn import PagedAttention
 from vllm.v1.core.tmh_policy import (
     TMHKVRuntimePolicy,
     TMHLayerShape,
@@ -15,6 +16,7 @@ from vllm.v1.kv_cache_interface import TMHFullAttentionSpec
 from vllm.v1.tmh_physical import (
     TMHPhysicalRuntime,
     reshape_tmh_physical_kv_cache,
+    tmh_rocm_native_raw_attention_args,
 )
 
 
@@ -22,8 +24,8 @@ def make_physical_cache():
     spec = TMHFullAttentionSpec(
         block_size=16,
         num_kv_heads=2,
-        head_size=4,
-        head_size_v=4,
+        head_size=16,
+        head_size_v=16,
         dtype=torch.float16,
         tmh_hot_budget_pct=25.0,
         tmh_max_num_seqs=2,
@@ -37,8 +39,8 @@ def test_tmh_pool_planning_preserves_warm_capacity_with_high_scheduler_concurren
     spec = TMHFullAttentionSpec(
         block_size=16,
         num_kv_heads=2,
-        head_size=4,
-        head_size_v=4,
+        head_size=16,
+        head_size_v=16,
         dtype=torch.float16,
         tmh_hot_budget_pct=25.0,
         tmh_max_num_seqs=1024,
@@ -56,8 +58,8 @@ def test_tmh_request_descriptor_tables_are_bounded_by_request_pages():
     spec = TMHFullAttentionSpec(
         block_size=16,
         num_kv_heads=2,
-        head_size=4,
-        head_size_v=4,
+        head_size=16,
+        head_size_v=16,
         dtype=torch.float16,
         tmh_hot_budget_pct=25.0,
         tmh_max_num_seqs=3,
@@ -72,7 +74,11 @@ def test_tmh_request_descriptor_tables_are_bounded_by_request_pages():
     )
 
     assert cache.canonical_role_by_logical_block.shape == (4096,)
-    assert cache.request_block_by_row_page.shape == (3, 11)
+    raw_pages, _ = spec.physical_pool_page_counts(4096)
+    assert cache.raw_kv_cache.shape == (2, raw_pages, 16, 2, 16)
+    assert cache.raw_key.data_ptr() == cache.raw_kv_cache[0].data_ptr()
+    assert cache.raw_value.data_ptr() == cache.raw_kv_cache[1].data_ptr()
+    assert cache.request_slot_by_row_page.shape == (3, 11)
 
 
 def descriptor(
@@ -127,17 +133,11 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
         {"req-1": 0},
     )
 
-    assert cache.request_block_by_row_page[0, 1].item() == 1
-    assert cache.request_role_by_row_page[0, 1].item() == int(TMHPageRole.WARM_INT8_INT8)
-    assert cache.request_storage_by_row_page[0, 1].item() == int(TMHStorageKind.CANONICAL)
+    assert cache.request_slot_by_row_page[0, 1].item() == 0
     assert cache.canonical_role_by_logical_block[1].item() == int(
         TMHPageRole.WARM_INT8_INT8
     )
-    assert cache.request_block_by_row_page[0, 3].item() == 3
-    assert cache.request_role_by_row_page[0, 3].item() == int(TMHPageRole.HOT_RAW)
-    assert cache.request_storage_by_row_page[0, 3].item() == int(
-        TMHStorageKind.REQUEST_OVERLAY
-    )
+    assert cache.request_slot_by_row_page[0, 3].item() == 0
 
     runtime.apply_events(
         [
@@ -173,7 +173,7 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
         ],
         {"req-2": 1},
     )
-    assert cache.request_block_by_row_page[1, 3].item() == 3
+    assert cache.request_slot_by_row_page[1, 3].item() == 0
 
 
 def test_tmh_policy_emits_release_descriptors_for_forgotten_canonical_pages():
@@ -186,8 +186,8 @@ def test_tmh_policy_emits_release_descriptors_for_forgotten_canonical_pages():
                 layer_name="model.layers.0.self_attn",
                 layer_index=0,
                 num_kv_heads=2,
-                head_size=4,
-                head_size_v=4,
+                head_size=16,
+                head_size_v=16,
                 raw_dtype_bytes=2.0,
             )
         ],
@@ -276,4 +276,66 @@ def test_tmh_physical_runtime_reuses_released_canonical_raw_slots():
         {"req-2": 1},
     )
 
-    assert cache.request_block_by_row_page[1, 0].item() == raw_capacity
+    assert cache.request_slot_by_row_page[1, 0].item() in range(raw_capacity)
+
+
+def test_tmh_rocm_native_raw_attention_args_only_for_batches_without_warm_pages():
+    cache = make_physical_cache()
+    runtime = TMHPhysicalRuntime()
+    runtime.register_cache("model.layers.0.self_attn", cache)
+    runtime.apply_events(
+        [
+            TMHPhysicalEvent(
+                request_id="req-1",
+                descriptors=(
+                    descriptor(
+                        page_index=0,
+                        logical_block_id=0,
+                        role=TMHPageRole.PINNED_RAW,
+                        storage=TMHStorageKind.CANONICAL,
+                    ),
+                    descriptor(
+                        page_index=1,
+                        logical_block_id=1,
+                        role=TMHPageRole.HOT_RAW,
+                        storage=TMHStorageKind.CANONICAL,
+                    ),
+                ),
+                total_pages=2,
+                recent_start_page=1,
+                hot_pages=1,
+            )
+        ],
+        {"req-1": 0},
+    )
+
+    class Meta:
+        max_seq_len = 32
+        seq_lens = [32]
+        block_table = torch.empty((1, 2), dtype=torch.int32)
+
+    native = tmh_rocm_native_raw_attention_args(cache, Meta())
+    assert native is not None
+    raw_kv_cache, block_table = native
+    assert raw_kv_cache.data_ptr() == cache.raw_kv_cache.data_ptr()
+    assert block_table.tolist() == [[0, 1]]
+
+    Meta.max_seq_len = 33
+    assert tmh_rocm_native_raw_attention_args(cache, Meta()) is None
+
+
+def test_tmh_raw_cache_matches_rocm_paged_attention_split_views():
+    cache = make_physical_cache()
+
+    key_cache, value_cache = PagedAttention.split_kv_cache(
+        cache.raw_kv_cache,
+        cache.spec.num_kv_heads,
+        cache.spec.head_size,
+    )
+
+    assert key_cache.shape == cache.raw_key.shape
+    assert value_cache.shape == cache.raw_value.shape
+    assert key_cache.stride() == cache.raw_key.stride()
+    assert value_cache.stride() == cache.raw_value.stride()
+    assert key_cache.data_ptr() == cache.raw_key.data_ptr()
+    assert value_cache.data_ptr() == cache.raw_value.data_ptr()
