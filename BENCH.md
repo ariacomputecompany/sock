@@ -799,3 +799,32 @@ enable segmented Triton TMH for the current 1k-context endpoint path.
 | `tmp/bench-suite-sock-qwen3-32b-2bit-gptq-full.json` | Raw sock Qwen3-32B 2-bit suite |
 | `tmp/bench-suite-sock-qwen3-32b-4bit-gptq-full.json` | Raw sock Qwen3-32B 4-bit suite |
 | `tmp/bench-suite-sock-qwen3-30b-a3b-gptq-int4-small.json` | Raw sock Qwen3-30B-A3B MoE suite |
+
+## AMD Physical TMH Adaptive Raw Placement: Qwen3-30B
+
+This run tested pressure-adaptive physical TMH on the GMK AMD/ROCm host. The
+implementation keeps low-pressure requests entirely raw when the raw pool can
+hold the configured scheduler concurrency, and only compresses warm pages after
+raw capacity would be oversubscribed.
+
+| Runtime | Suite wall s | Geomean completion tok/s | Geomean total tok/s | Delta vs standard | Wall delta vs standard |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Standard KV same-day baseline | 809.0 | 34.78 | 47.48 | baseline | baseline |
+| Physical TMH scoped warmup | 993.7 | 28.49 | 38.89 | -18.08% | +22.13% |
+| Physical TMH adaptive raw placement | 976.1 | 29.10 | 39.72 | -16.35% | +19.55% |
+
+Adaptive raw placement improved physical TMH by `+2.12%` geomean completion
+throughput and reduced wall overhead by `-2.11%` versus the prior physical TMH
+run. It did not remove the regression against standard KV.
+
+Native ROCm paged-attention handoff was tested and rejected for production in
+this pass. Both the initial upper-bound sequence-length handoff and an exact
+active-sequence-length handoff wedged the live endpoint during tiny-smoke
+inference. The committed path therefore keeps ROCm physical TMH on the TMH-owned
+backend path only.
+
+Raw artifacts:
+
+- `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-native-rerun/standard-suite.json`
+- `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-native-rerun/tmh-suite.json`
+- `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-adaptive-custom/tmh-suite.json`

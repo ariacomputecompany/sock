@@ -3,9 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import math
-
+from dataclasses import dataclass, replace
 import torch
 
 from vllm.v1.core.tmh_policy import (
@@ -147,44 +145,61 @@ def reshape_tmh_physical_kv_cache(
     )
 
 
-def _recent_start_page(total_pages: int, hot_budget_pct: float) -> int:
-    hot_ratio = max(0.0, min(1.0, hot_budget_pct / 100.0))
-    hot_pages = (
-        0
-        if hot_ratio <= 0.0
-        else min(total_pages, math.ceil(total_pages * hot_ratio))
-    )
-    return total_pages if hot_pages <= 0 else max(0, total_pages - hot_pages)
+def _raw_capacity_pages_per_request(cache: TMHPhysicalKVCache) -> int:
+    """Return the all-raw page count supported at configured concurrency.
 
-
-def tmh_rocm_native_raw_attention_args(
-    cache: TMHPhysicalKVCache,
-    attn_metadata,
-) -> tuple[torch.Tensor, torch.Tensor] | None:
-    """Return ROCm-native raw KV/block-table views for all-raw decode.
-
-    The ROCm native handoff is a decode specialization: it lets physical TMH
-    avoid the layout-aware Triton attention kernel when the active window is
-    fully raw/full-fidelity. Prefill still goes through the canonical TMH path
-    because prompt attention also materializes fresh K/V and exercises different
-    cache-update semantics.
+    TMH is a pressure-adaptive memory layout. If the physical raw pool can hold
+    every active request at a given page count, storing those pages compressed is
+    pure overhead. Compression starts only beyond the raw capacity implied by
+    the allocated raw pool and scheduler concurrency.
     """
-    max_seq_len = int(getattr(attn_metadata, "max_seq_len", 0) or 0)
-    if max_seq_len <= 0:
-        return None
-    if int(getattr(attn_metadata, "max_query_len", 0) or 0) > 1:
-        return None
-    block_size = cache.spec.block_size
-    max_pages = math.ceil(max_seq_len / block_size)
-    if max_pages > cache.request_slot_by_row_page.shape[1]:
-        return None
-    if _recent_start_page(max_pages, cache.spec.tmh_hot_budget_pct) > 1:
-        return None
-    num_seqs = len(attn_metadata.seq_lens)
-    block_table = cache.request_slot_by_row_page[
-        :num_seqs, : attn_metadata.block_table.shape[1]
-    ]
-    return cache.raw_kv_cache, block_table
+
+    max_reqs = max(1, cache.spec.tmh_max_num_seqs)
+    return max(
+        1,
+        min(
+            cache.spec.tmh_max_model_pages,
+            cache.raw_key.shape[0] // max_reqs,
+        ),
+    )
+
+
+
+def _storage_kind_for_role(
+    role: TMHPageRole,
+    prefix_cached: bool,
+) -> TMHStorageKind:
+    if role in (TMHPageRole.WARM_INT8_INT4, TMHPageRole.WARM_INT8_INT8):
+        return TMHStorageKind.CANONICAL
+    if role == TMHPageRole.PINNED_RAW:
+        return TMHStorageKind.CANONICAL
+    if prefix_cached:
+        return TMHStorageKind.REQUEST_OVERLAY
+    return TMHStorageKind.CANONICAL
+
+
+def _descriptor_with_role(
+    descriptor: TMHPhysicalPageDescriptor,
+    role: TMHPageRole,
+) -> TMHPhysicalPageDescriptor:
+    if role in (TMHPageRole.PINNED_RAW, TMHPageRole.HOT_RAW):
+        k_quant_mode = "raw"
+        v_quant_mode = "raw"
+    elif role == TMHPageRole.WARM_INT8_INT4:
+        k_quant_mode = "int8_per_token_head"
+        v_quant_mode = "int4_per_token_head"
+    elif role == TMHPageRole.WARM_INT8_INT8:
+        k_quant_mode = "int8_per_token_head"
+        v_quant_mode = "int8_per_token_head"
+    else:
+        raise ValueError(f"unknown TMH physical role: {role!r}")
+    return replace(
+        descriptor,
+        role=role,
+        storage=_storage_kind_for_role(role, descriptor.prefix_cached),
+        k_quant_mode=k_quant_mode,
+        v_quant_mode=v_quant_mode,
+    )
 
 
 class TMHPhysicalRuntime:
@@ -236,12 +251,34 @@ class TMHPhysicalRuntime:
                         f"{descriptor.request_id!r}, but the worker has no "
                         "active request row for it."
                     )
+                physical_descriptor = self._effective_descriptor(
+                    cache,
+                    descriptor,
+                    event.total_pages,
+                )
                 self._apply_descriptor(
                     cache,
                     descriptor.layer_name,
-                    descriptor,
+                    physical_descriptor,
                     req_index,
                 )
+
+    def _effective_descriptor(
+        self,
+        cache: TMHPhysicalKVCache,
+        descriptor: TMHPhysicalPageDescriptor,
+        total_pages: int,
+    ) -> TMHPhysicalPageDescriptor:
+        if total_pages > _raw_capacity_pages_per_request(cache):
+            return descriptor
+        role = (
+            TMHPageRole.PINNED_RAW
+            if descriptor.page_index == 0
+            else TMHPageRole.HOT_RAW
+        )
+        if descriptor.role == role:
+            return descriptor
+        return _descriptor_with_role(descriptor, role)
 
     def release_request(self, request_id: str) -> None:
         released = [

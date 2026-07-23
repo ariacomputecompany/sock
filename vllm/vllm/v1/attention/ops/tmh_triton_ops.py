@@ -96,6 +96,7 @@ def _tmh_reshape_and_cache_kernel(
     num_seqs: tl.int32,
     block_size: tl.constexpr,
     HOT_BUDGET_BPS: tl.constexpr,
+    RAW_ONLY_PAGES: tl.constexpr,
     RAW_X: tl.constexpr,
     head_size: tl.constexpr,
     head_size_v: tl.constexpr,
@@ -132,7 +133,10 @@ def _tmh_reshape_and_cache_kernel(
     key_vals = tl.load(key_base + offs, mask=k_mask, other=0.0).to(tl.float32)
     val_vals = tl.load(val_base + offs, mask=v_mask, other=0.0).to(tl.float32)
 
-    is_raw = _tmh_page_is_raw(page_index, seq_len, block_size, HOT_BUDGET_BPS)
+    total_pages = cdiv_fn(seq_len, block_size)
+    is_raw = (total_pages <= RAW_ONLY_PAGES) | _tmh_page_is_raw(
+        page_index, seq_len, block_size, HOT_BUDGET_BPS
+    )
     if is_raw:
         raw_k_offset = (
             physical_slot * stride_raw_k_slot
@@ -274,6 +278,17 @@ def _tmh_hot_budget_bps(cache) -> int:
     return int(round(pct * 100.0))
 
 
+def _tmh_raw_only_pages(cache) -> int:
+    max_reqs = max(1, int(cache.spec.tmh_max_num_seqs))
+    return max(
+        1,
+        min(
+            int(cache.spec.tmh_max_model_pages),
+            int(cache.raw_key.shape[0]) // max_reqs,
+        ),
+    )
+
+
 @triton.jit
 def _tmh_unified_attention_kernel(
     output_ptr,
@@ -346,6 +361,7 @@ def _tmh_unified_attention_kernel(
     USE_FP8: tl.constexpr,
     WARM_VALUE_PACKED: tl.constexpr,
     HOT_BUDGET_BPS: tl.constexpr,
+    RAW_ONLY_PAGES: tl.constexpr,
     RAW_X: tl.constexpr,
     IS_3D: tl.constexpr,
 ):
@@ -441,7 +457,10 @@ def _tmh_unified_attention_kernel(
             mask=(j * TILE_SIZE) < max_seq_prefix_len,
             other=-1,
         ).to(tl.int64)
-        is_raw = _tmh_page_is_raw(page_index, seq_len, BLOCK_SIZE, HOT_BUDGET_BPS)
+        total_pages = cdiv_fn(seq_len, BLOCK_SIZE)
+        is_raw = (total_pages <= RAW_ONLY_PAGES) | _tmh_page_is_raw(
+            page_index, seq_len, BLOCK_SIZE, HOT_BUDGET_BPS
+        )
 
         if is_raw:
             raw_k_offset = (
@@ -694,6 +713,7 @@ def tmh_reshape_and_cache(
         num_seqs=num_seqs,
         block_size=block_size,
         HOT_BUDGET_BPS=_tmh_hot_budget_bps(cache),
+        RAW_ONLY_PAGES=_tmh_raw_only_pages(cache),
         RAW_X=16 // key.element_size(),
         head_size=head_size,
         head_size_v=head_size_v,
@@ -944,6 +964,7 @@ def tmh_unified_attention(
         USE_FP8=output_scale is not None,
         WARM_VALUE_PACKED=packed_v,
         HOT_BUDGET_BPS=_tmh_hot_budget_bps(cache),
+        RAW_ONLY_PAGES=_tmh_raw_only_pages(cache),
         RAW_X=16 // q.element_size(),
         IS_3D=use_3d,
         **launch_kwargs,

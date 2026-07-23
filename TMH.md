@@ -23,8 +23,10 @@ The production-shaped TMH path currently includes:
   assignment. Runtime kernels consume only the physical slot table; page role is
   derived deterministically from sequence geometry and the hot-page budget.
 - Physical cache materialization and reclamation through the real vLLM worker
-  path. Raw TMH pages are exposed as a zero-copy ROCm-native KV view so eligible
-  raw-only batches can use the standard ROCm paged-attention backend.
+  path. Raw TMH pages retain a zero-copy native-shaped KV view internally, but
+  the live ROCm backend does not substitute that view into standard paged
+  attention because endpoint smoke tests showed that handoff can wedge the
+  engine. Physical TMH currently uses the TMH-owned backend path for correctness.
 - TMH cache update kernels that write raw pages and warm compressed pages.
 - TMH attention kernels that read raw, warm int8/int4, and warm int8/int8 pages.
 - Prefix-cache-aware descriptor handling.
@@ -71,14 +73,17 @@ standard KV:
 | Physical TMH, optimized kernel | 945.04 | 75 | 29.76 | -18.92% | 0 |
 | Physical TMH, page-descriptor kernel | 935.04 | 76 | 29.98 | -18.33% | 0 |
 | Physical TMH, scoped warmup rerun | 993.69 | 58 | 28.49 | -18.08% vs same-day standard | 0 |
+| Physical TMH, adaptive raw placement | 976.15 | 58 | 29.10 | -16.35% vs same-day standard | 0 |
 
-The headline bad number remains:
+The headline bad number is improved but not fixed:
 
-`Physical TMH scoped-warmup rerun geomean delta vs same-day standard: -18.08%`
+`Physical TMH adaptive-raw geomean delta vs same-day standard: -16.35%`
 
 That is too large to accept. It means the physical TMH layout is functional, but
 the physical attention path is not yet performance-competitive on this AMD 30B
-profile.
+profile. The latest adaptive raw-placement pass recouped only `+2.12%` over the
+old physical TMH run and reduced geomean wall overhead from `+22.13%` to
+`+19.55%`.
 
 Benchmark profile for this number:
 
@@ -112,18 +117,21 @@ backend-native attention path unless compressed pages are actually present.
 
 Implemented changes:
 
-- Raw TMH pages now have a zero-copy `[2, raw_pages, block, heads, head]`
-  ROCm-native KV view alongside the existing raw key/value views.
-- ROCm attention now routes TMH batches through standard
-  `chunked_prefill_paged_decode` when the batch has only pinned/hot raw pages.
-- The TMH Triton cache-update and attention kernels no longer load per-page role
-  descriptors from global memory. They derive raw/warm role from `seq_len`,
-  `block_size`, and `tmh_hot_budget_pct`, matching the scheduler policy.
-- Dead GPU request descriptor tables for block id, role, and storage kind were
+- Raw TMH pages have a zero-copy `[2, raw_pages, block, heads, head]`
+  native-shaped KV view alongside the existing raw key/value views.
+- Physical TMH now uses pressure-adaptive placement: when the configured raw
+  pool can hold every active request at the current page count, scheduler warm
+  descriptors are promoted to real raw slots instead of storing those pages in
+  compressed warm storage.
+- The TMH Triton cache-update and attention kernels use the same raw-only
+  threshold, so low-pressure requests write/read all pages as raw and only enter
+  compressed warm storage when the raw pool would be oversubscribed.
+- Dead GPU request descriptor tables for block id, role, and storage kind remain
   removed. The kernels retain only the live physical slot table.
-- Slot allocation no longer zero-fills whole raw/warm pages before use; live
-  tokens are overwritten by the cache writer and attention masks exclude
-  unwritten page tail values.
+- The attempted ROCm-native paged-attention handoff for all-raw TMH batches was
+  removed from production. Endpoint smoke tests with both upper-bound and exact
+  active sequence lengths wedged the engine after `_tmh_unified_attention_kernel`
+  JIT. Keeping that handoff would be unsafe.
 
 Verification for this pass:
 
@@ -131,13 +139,23 @@ Verification for this pass:
 - Result: `9 passed`
 
 Benchmark status: this pass has now been endpoint-benchmarked against the
-GMK/AMD Qwen3-30B suite. The scoped warmup fixed startup reliability: TMH reached
-`/health` in 58s and the direct warmup no longer wedges in synthetic MoE decode.
-The throughput problem did not move enough: same-day standard geomean was
-`34.78` completion tok/s, physical TMH geomean was `28.49` completion tok/s, for
-`-18.08%` geomean completion throughput and `+22.13%` geomean wall-clock
-latency. This confirms startup coupling was a real production bug, but it was
-not the root cause of the physical attention throughput gap.
+GMK/AMD Qwen3-30B suite. The scoped warmup fixed startup reliability, but not
+throughput. The adaptive raw-placement pass produced `29.10` geomean completion
+tok/s versus the same-day standard `34.78`, for `-16.35%` geomean completion
+throughput and `+19.55%` geomean wall-clock latency. The prior physical TMH run
+was `28.49` geomean completion tok/s, so adaptive placement helped by `+2.12%`
+versus old TMH. This is real but not close to enough.
+
+Raw artifacts:
+
+- Standard and prior physical TMH: `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-native-rerun/`
+- Adaptive raw-placement TMH: `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-adaptive-custom/`
+
+Conclusion from this pass: the `-18%` gap is dominated by the custom TMH
+attention kernel remaining on the hot path, not by early warm-page compression
+alone. The next viable optimization is a TMH-owned raw fast attention kernel or
+a properly integrated backend contract that can reuse standard ROCm paged
+attention without substituting an invalid block table.
 
 ## What Has Worked
 

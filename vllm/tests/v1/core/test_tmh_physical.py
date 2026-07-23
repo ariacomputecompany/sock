@@ -16,7 +16,6 @@ from vllm.v1.kv_cache_interface import TMHFullAttentionSpec
 from vllm.v1.tmh_physical import (
     TMHPhysicalRuntime,
     reshape_tmh_physical_kv_cache,
-    tmh_rocm_native_raw_attention_args,
 )
 
 
@@ -100,6 +99,43 @@ def descriptor(
         k_quant_mode="raw" if role == TMHPageRole.HOT_RAW else "int8_per_token_head",
         v_quant_mode="raw" if role == TMHPageRole.HOT_RAW else "int8_per_token_head",
     )
+
+
+def test_tmh_physical_runtime_promotes_low_pressure_warm_pages_to_raw_slots():
+    cache = make_physical_cache()
+    runtime = TMHPhysicalRuntime()
+    runtime.register_cache("model.layers.0.self_attn", cache)
+
+    runtime.apply_events(
+        [
+            TMHPhysicalEvent(
+                request_id="req-raw",
+                descriptors=(
+                    descriptor(
+                        request_id="req-raw",
+                        page_index=0,
+                        logical_block_id=0,
+                        role=TMHPageRole.PINNED_RAW,
+                        storage=TMHStorageKind.CANONICAL,
+                    ),
+                    descriptor(
+                        request_id="req-raw",
+                        page_index=1,
+                        logical_block_id=1,
+                        role=TMHPageRole.WARM_INT8_INT8,
+                        storage=TMHStorageKind.CANONICAL,
+                    ),
+                ),
+                total_pages=2,
+                recent_start_page=1,
+                hot_pages=1,
+            )
+        ],
+        {"req-raw": 0},
+    )
+
+    assert cache.request_slot_by_row_page[0, :2].tolist() == [0, 1]
+    assert cache.canonical_role_by_logical_block[1].item() == int(TMHPageRole.HOT_RAW)
 
 
 def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots():
@@ -277,51 +313,6 @@ def test_tmh_physical_runtime_reuses_released_canonical_raw_slots():
     )
 
     assert cache.request_slot_by_row_page[1, 0].item() in range(raw_capacity)
-
-
-def test_tmh_rocm_native_raw_attention_args_only_for_batches_without_warm_pages():
-    cache = make_physical_cache()
-    runtime = TMHPhysicalRuntime()
-    runtime.register_cache("model.layers.0.self_attn", cache)
-    runtime.apply_events(
-        [
-            TMHPhysicalEvent(
-                request_id="req-1",
-                descriptors=(
-                    descriptor(
-                        page_index=0,
-                        logical_block_id=0,
-                        role=TMHPageRole.PINNED_RAW,
-                        storage=TMHStorageKind.CANONICAL,
-                    ),
-                    descriptor(
-                        page_index=1,
-                        logical_block_id=1,
-                        role=TMHPageRole.HOT_RAW,
-                        storage=TMHStorageKind.CANONICAL,
-                    ),
-                ),
-                total_pages=2,
-                recent_start_page=1,
-                hot_pages=1,
-            )
-        ],
-        {"req-1": 0},
-    )
-
-    class Meta:
-        max_seq_len = 32
-        seq_lens = [32]
-        block_table = torch.empty((1, 2), dtype=torch.int32)
-
-    native = tmh_rocm_native_raw_attention_args(cache, Meta())
-    assert native is not None
-    raw_kv_cache, block_table = native
-    assert raw_kv_cache.data_ptr() == cache.raw_kv_cache.data_ptr()
-    assert block_table.tolist() == [[0, 1]]
-
-    Meta.max_seq_len = 33
-    assert tmh_rocm_native_raw_attention_args(cache, Meta()) is None
 
 
 def test_tmh_raw_cache_matches_rocm_paged_attention_split_views():
