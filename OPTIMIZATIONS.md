@@ -705,3 +705,36 @@ MoE shapes can poison EngineCore. The next useful pass is not a TMH attention
 optimization; it is a core runtime stability/backend pass around ROCm MoE WNA16
 or the shared/gate GEMM path. +20 is unreachable as a credible claim until this
 standard-path crash is either eliminated or isolated behind a safer backend.
+
+## 2026-07-24 Triton-Unfused MoE Backend Falsification
+
+The first core-runtime escape hatch was to route standard KV away from the
+default fused MoE expert backend with `--moe-backend triton_unfused`. The
+hypothesis was that the medium/long c4 crash was inside the fused expert kernel,
+so a simpler Triton expert path might stabilize the baseline even if it was
+slower.
+
+The endpoint came up cleanly, but the exact narrowed failure slice still died:
+
+```text
+standard --moe-backend triton_unfused health: passed
+medium_architecture_256 / long_cosmology_512 / long_context_summary_256 c4: HTTP 500
+```
+
+The stack still points through the stable MoE custom extension's top-k path:
+
+```text
+_moe_C_stable_libtorch.abi3.so -> topk_softmax
+Error: hip/CUDA illegal memory access
+```
+
+The log also showed inference-time Triton JIT for `_fwd_kernel`,
+`fused_moe_kernel_gptq_awq`, and `_gemm_kernel`, so this flag does not remove
+all of the relevant MoE custom/routing surface for Qwen3 GPTQ WNA16 on gfx1151.
+
+Conclusion: backend-level expert selection is not enough. The crash survives
+when the visible backend is `triton_unfused`, which makes the routing/top-k or
+shared WNA16 MoE path the more likely fault line. The next pass should disable
+fused grouped top-k directly with `VLLM_USE_FUSED_MOE_GROUPED_TOPK=0`; if that
+still fails, use `AMD_SERIALIZE_KERNEL=3` to force a more truthful crash site.
+
