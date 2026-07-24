@@ -432,3 +432,20 @@ partition/reduction geometry inside ROCm paged decode. On this `gfx1151` host,
 `512` is a better production compromise for the benchmark mix than the previous
 `256`.
 
+## 2026-07-24 Partition-1024 Falsification
+
+A direct follow-up tested `_PARTITION_SIZE_ROCM = 1024` after the `512` full-suite
+win. The hypothesis was that, for the endpoint suite sub-2048 token decode
+regime, larger partitions might reduce the reduction count further and move the
+concurrency-heavy cells closer to the +20% target.
+
+Result: the c4 long-context probe failed with HTTP 500 after EngineCore hit a
+HIP illegal memory access during the first request. The reported stack surfaced
+later in `_tmh_raw_reshape_and_cache_kernel`, which is consistent with an
+asynchronous device fault from the preceding ROCm paged-attention geometry.
+
+Conclusion: `1024` is outside the safe/supported geometry for this ROCm custom
+paged-attention path on `gfx1151`, at least under the current TMH all-raw native
+handoff. Keep `512` as the current production constant and continue searching
+below or around it, not above it.
+
