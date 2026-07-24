@@ -935,3 +935,44 @@ shorter/single-stream cells. The next code-level pass should inspect the Triton
 attention call site and test an adaptive TD gate keyed on runtime sequence shape
 rather than process-wide environment state.
 
+## 2026-07-24 Adaptive Triton Tensor-Descriptor Gate Falsification
+
+The global TD run revealed a tempting lamp: long-context summary c2/c4 improved
+by roughly 9-10%, while the full suite regressed. A code-level opt-in experiment
+therefore added `VLLM_TRITON_ATTN_ADAPTIVE_TD=1`, selecting TD only on ROCm when
+`seq_lens.shape[0] >= 2` and `max_seq_len >= 768`. The intent was to keep the
+large-context concurrent gain without paying TD overhead on short or single-stream
+shapes.
+
+The c4 gate looked directionally positive against the stable full-suite baseline:
+
+```text
+medium_architecture_256 c4:   53.6950 -> 54.2081  (+0.96%)
+long_cosmology_512 c4:        50.6543 -> 51.8571  (+2.37%)
+long_context_summary_256 c4:  65.8769 -> 68.4290  (+3.87%)
+```
+
+But the full suite falsified the adaptive gate:
+
+```text
+standard TRITON_ATTN full geomean:             36.7329
+standard TRITON_ATTN adaptive-TD full geomean: 35.6213
+Delta:                                         -3.03%
+```
+
+The losses were broad across c1/c2 cells, and the long-context c4 gain did not
+hold in the full run:
+
+```text
+long_context_summary_256 c2: 34.8894 -> 38.0918  (+9.18%)
+long_context_summary_256 c4: 65.8769 -> 64.0172  (-2.82%)
+medium_architecture_256 c2:  36.0764 -> 32.9737  (-8.60%)
+short_codegen_128 c2:        35.2789 -> 32.6029  (-7.59%)
+```
+
+Conclusion: a naive max-sequence/concurrency TD gate is not robust enough. The
+code was reverted; only this benchmark record remains. TD may still contain a
+shape-specific opportunity, but it needs a better signal than `max_seq_len >= 768`
+and `num_seqs >= 2`, or a deeper kernel-level change that avoids the short/medium
+regressions.
+
