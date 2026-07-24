@@ -426,6 +426,7 @@ def _tmh_native_decode_block_table(cache, seq_to_request_row, num_seqs: int):
     block_table = cache.native_block_table_by_seq[:num_seqs]
     if seq_to_request_row is None:
         block_table.copy_(cache.request_slot_by_row_page[:num_seqs])
+        block_table.clamp_min_(0)
         return block_table
 
     request_rows = cache.native_seq_to_request_row[:num_seqs]
@@ -436,6 +437,10 @@ def _tmh_native_decode_block_table(cache, seq_to_request_row, num_seqs: int):
         request_rows,
         out=block_table,
     )
+    # Standard vLLM block tables pad unused entries with block 0. TMH request
+    # rows use -1 internally to expose missing descriptors; sanitize the native
+    # handoff view so ROCm custom paged attention never observes that sentinel.
+    block_table.clamp_min_(0)
     return block_table
 
 
@@ -459,6 +464,16 @@ def _tmh_native_raw_attention(
     v_scale,
 ) -> None:
     num_seqs = len(attn_metadata.seq_lens)
+    max_query_len = int(getattr(attn_metadata, "max_query_len", 1) or 1)
+    max_seq_len = int(getattr(attn_metadata, "max_seq_len", 0) or 0)
+    # ROCm custom paged decode pays off for long-context concurrent decode on
+    # gfx1151, but regresses several short/single-stream cells. Keep the native
+    # handoff shape-adaptive instead of globally replacing the Triton fallback.
+    use_rocm_custom_decode = (
+        max_query_len == 1
+        and num_seqs >= 2
+        and max_seq_len >= 640
+    )
     block_table = _tmh_native_decode_block_table(
         cache,
         seq_to_request_row,
@@ -477,7 +492,7 @@ def _tmh_native_raw_attention(
         query_start_loc=attn_metadata.query_start_loc,
         seq_lens=attn_metadata.seq_lens,
         max_seq_len=attn_metadata.max_seq_len,
-        max_query_len=attn_metadata.max_query_len,
+        max_query_len=max_query_len,
         k_scale=identity_scale if k_scale is None else k_scale,
         v_scale=identity_scale if v_scale is None else v_scale,
         alibi_slopes=alibi_slopes,
@@ -486,7 +501,7 @@ def _tmh_native_raw_attention(
         output_scale=output_scale,
         sinks=sinks,
         causal=causal,
-        force_triton_decode=True,
+        force_triton_decode=not use_rocm_custom_decode,
     )
 
 

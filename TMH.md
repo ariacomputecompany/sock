@@ -5,6 +5,36 @@ what is proven, what is still wrong, and what optimization work has already been
 tried. It intentionally avoids broader sock benchmarking detail except where it
 directly explains TMH behavior.
 
+## Current GMK Checkpoint - 2026-07-24
+
+The latest production-shaped GMK/Ubuntu result supersedes the older `-16.35%`
+and `-7.22%` resume points below:
+
+| Runtime | Geomean completion tok/s | Delta vs same-day Ubuntu standard |
+| --- | ---: | ---: |
+| Standard KV, Ubuntu full suite | 37.8412 | baseline |
+| TMH all-raw native prefill + Triton decode | 35.1083 | -7.22% |
+| TMH all-raw native prefill + always ROCm custom decode | 35.1797 | -7.03% |
+| TMH all-raw native prefill + gated ROCm custom decode | 35.4940 | -6.20% |
+
+The current committed production thesis is now shape-adaptive all-raw execution:
+all-raw prefill uses the native vLLM path; all-raw decode normally uses generic
+Triton paged decode; long-context concurrent decode uses ROCm custom paged decode
+after sanitizing the native block-table handoff. Mixed raw/warm requests still
+use the TMH mixed attention kernel.
+
+The main remaining hot cell is still long-context concurrency:
+
+```text
+long_context_summary_256 c4:
+standard:       70.1954 completion tok/s
+TMH Triton:     40.8045
+TMH gated:      50.5300
+current gap:   about -28.0%
+```
+
+Detailed optimization history and benchmark commands are in `OPTIMIZATIONS.md`.
+
 ## Current Production State
 
 TMH is implemented as a first-class KV layout inside the vendored vLLM runtime.
@@ -23,10 +53,10 @@ The production-shaped TMH path currently includes:
   assignment. Runtime kernels consume only the physical slot table; page role is
   derived deterministically from sequence geometry and the hot-page budget.
 - Physical cache materialization and reclamation through the real vLLM worker
-  path. Raw TMH pages retain a zero-copy native-shaped KV view internally, but
-  the live ROCm backend does not substitute that view into standard paged
-  attention because endpoint smoke tests showed that handoff can wedge the
-  engine. Physical TMH currently uses the TMH-owned backend path for correctness.
+  path. Raw TMH pages retain a zero-copy native-shaped KV view internally.
+  All-raw prefill now uses the native vLLM path; all-raw decode uses a
+  shape-adaptive native handoff with a sanitized standard-style block table.
+  Mixed raw/warm batches remain on the TMH-owned backend path.
 - TMH cache update kernels that write raw pages and warm compressed pages.
 - TMH attention kernels that read raw, warm int8/int4, and warm int8/int8 pages.
 - Prefix-cache-aware descriptor handling.
