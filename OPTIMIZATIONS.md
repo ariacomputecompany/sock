@@ -976,3 +976,33 @@ shape-specific opportunity, but it needs a better signal than `max_seq_len >= 76
 and `num_seqs >= 2`, or a deeper kernel-level change that avoids the short/medium
 regressions.
 
+## 2026-07-24 Standard Triton Batched-2048 Narrow Falsification
+
+After standard `TRITON_ATTN` became the stable denominator, the scheduler window
+was retested with `--max-num-batched-tokens 2048`. This was a different question
+from the earlier TMH batched-2048 falsification because the attention backend had
+changed from unstable ROCm paged attention to stable Triton attention.
+
+The narrowed medium/long c4 gate completed, but the signal was too small and too
+mixed to justify a full-suite burn:
+
+```text
+standard TRITON_ATTN baseline medium_architecture_256 c4:   53.6950
+standard TRITON_ATTN batched-2048 medium_architecture_256 c4:53.2999
+Delta:                                                     -0.74%
+
+standard TRITON_ATTN baseline long_cosmology_512 c4:        50.6543
+standard TRITON_ATTN batched-2048 long_cosmology_512 c4:    51.6374
+Delta:                                                     +1.94%
+
+standard TRITON_ATTN baseline long_context_summary_256 c4:  65.8769
+standard TRITON_ATTN batched-2048 long_context_summary c4:  68.4410
+Delta:                                                     +3.89%
+```
+
+Conclusion: the larger batching window may help some long-context concurrent
+cells under Triton attention, but it is nowhere near the +20 target and already
+regresses the medium c4 cell. Given the earlier full-suite sensitivity to
+scheduler-window changes, keep `--max-num-batched-tokens 1024` as the stable
+serve shape until a stronger shape-aware scheduler policy exists.
+
