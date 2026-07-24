@@ -12,16 +12,17 @@ to be enough context for a future continuation without relying on chat memory.
 
 ## Headline Result
 
-The current best production-shaped TMH result is the shape-adaptive native
-all-raw path:
+The current best production-shaped TMH result is the maintained native block
+table path on top of shape-adaptive all-raw decode:
 
 ```text
 Same-day Ubuntu standard KV:         37.8412 geomean completion tok/s
 TMH all-raw native prefill, Triton decode: 35.1083 geomean completion tok/s
 TMH all-raw native prefill, always ROCm custom decode: 35.1797
 TMH all-raw native prefill, gated ROCm custom decode:  35.4940
+TMH gated decode, maintained native block table:        35.8999
 
-Current gap vs same-day standard: -6.20%
+Current gap vs same-day standard: -5.13%
 ```
 
 The long-context concurrency-4 hot cell improved materially:
@@ -32,6 +33,7 @@ standard KV:             70.1954 completion tok/s
 TMH Triton decode:       40.8045 completion tok/s
 TMH always custom decode:46.6415 completion tok/s
 TMH gated custom decode: 50.5300 completion tok/s
+TMH maintained native table: 50.5007 completion tok/s
 ```
 
 The overall path from the original physical TMH result now looks like this:
@@ -44,10 +46,11 @@ Ubuntu standard KV:          37.8412
 All-raw native prefill TMH:  35.1083, -7.22%
 Always custom decode TMH:    35.1797, -7.03%
 Gated custom decode TMH:     35.4940, -6.20%
+Maintained native table TMH: 35.8999, -5.13%
 ```
 
-Relative to the adaptive `29.10` checkpoint, the current `35.4940` result is
-`+21.97%`. Relative to the old physical `28.49` result, it is `+24.58%`.
+Relative to the adaptive `29.10` checkpoint, the current `35.8999` result is
+`+23.37%`. Relative to the old physical `28.49` result, it is `+26.01%`.
 
 ## First-Principles Finding
 
@@ -187,6 +190,70 @@ This is a production policy, not a no-op. It changes the attention backend used
 by all-raw TMH decode on long-context concurrent shapes, while preserving the
 Triton fallback for shapes where it is faster.
 
+### Maintained Native Block Table
+
+The next successful pass removed more scaffolding from the all-raw native
+attention call. The previous native handoff rebuilt a standard-style block table
+inside `_tmh_native_decode_block_table` for every attention invocation:
+
+- If the sequence-to-request-row map was absent, it copied
+  `request_slot_by_row_page` into a native workspace and clamped `-1` padding to
+  `0`.
+- In practice `tmh_physical_attention` always created a `seq_rows` tensor before
+  the native branch, so the helper usually took the gather path anyway.
+- The gather path copied the request-row map, indexed the request slot table,
+  and clamped the result.
+
+That was architecturally backward. The standard vLLM block table is not
+attention scratch; it is cache metadata. TMH now maintains a standard-style
+native block table at descriptor-application time:
+
+- `TMHPhysicalKVCache.native_block_table_by_seq` is zero-initialized.
+- `_clear_request_rows` clears the TMH internal request row to `-1` and clears
+  the native row to `0`.
+- `_apply_descriptor` writes the physical slot into both
+  `request_slot_by_row_page` and `native_block_table_by_seq`.
+- `_tmh_native_decode_block_table` returns the maintained table directly when
+  the sequence order is identity.
+- Non-identity request-row maps gather from the maintained native table into a
+  separate `native_block_table_gather` workspace, with no clamp.
+- `tmh_physical_attention` no longer creates `torch.arange` for the native
+  branch when no sequence-to-request-row map was provided.
+
+This keeps TMH's internal `-1` sentinel for mixed kernels and diagnostics while
+presenting native attention with a standard vLLM block table whose unused cells
+are already `0`.
+
+Result:
+
+```text
+Previous gated decode geomean: 35.4940
+Maintained native table geomean: 35.8999
+Delta vs previous gated: +1.14%
+Gap vs same-day standard: -5.13%
+```
+
+The targeted long-context slice also improved versus the previous gated slice:
+
+```text
+long_context_summary_256 targeted slice
+c1: 22.0323 -> 23.2895
+c2: 33.5267 -> 35.7113
+c4: 45.7216 -> 49.5003
+```
+
+The full-suite `long_context_summary_256 c4` result stayed essentially flat
+against the prior gated full run (`50.5300 -> 50.5007`), but the geomean moved
+because the same metadata-lifetime fix improved several other long/medium
+concurrent shapes:
+
+```text
+long_cosmology_512 c2:      34.3576 -> 38.8443
+long_cosmology_512 c4:      45.9218 -> 49.6267
+medium_architecture_256 c1: 26.6897 -> 27.4398
+medium_architecture_256 c4: 51.9031 -> 54.2022
+```
+
 ## Benchmark Artifacts
 
 Standard baseline:
@@ -219,6 +286,15 @@ benchmarks/2026-07-24-gmk-qwen3-30b-native-ubuntu-tmh-gated-decode/long-context-
 benchmarks/2026-07-24-gmk-qwen3-30b-native-ubuntu-tmh-gated-decode/tmh-suite-gated-decode.json
 geomean: 35.4940
 gap: -6.20%
+```
+
+Shape-adaptive decode plus maintained native block table:
+
+```text
+benchmarks/2026-07-24-gmk-qwen3-30b-native-ubuntu-tmh-native-table/long-context-summary.json
+benchmarks/2026-07-24-gmk-qwen3-30b-native-ubuntu-tmh-native-table/tmh-suite-native-table.json
+geomean: 35.8999
+gap: -5.13%
 ```
 
 Benchmark command shape:
@@ -274,6 +350,8 @@ Endpoint validation:
 - TMH always-custom decode full benchmark passed.
 - TMH gated decode long-context slice passed.
 - TMH gated decode full benchmark passed.
+- TMH maintained-native-table long-context slice passed.
+- TMH maintained-native-table full benchmark passed.
 
 The previous unsafe native handoff failure mode was an engine wedge during
 endpoint smoke. The sanitized/gated native decode path survived health checks,
@@ -281,22 +359,23 @@ smoke, long-context slice, and the full endpoint suite.
 
 ## Remaining Work
 
-The current `-6.20%` is a large improvement, but still not parity. The next
+The current `-5.13%` is a large improvement, but still not parity. The next
 largest target remains long-context concurrency:
 
 ```text
 long_context_summary_256 c4:
 standard: 70.1954
-gated TMH: 50.5300
+maintained-table TMH: 50.5007
 remaining gap: about -28.0%
 ```
 
 The likely next moonshot is deeper decode specialization:
 
 - Tune or replace the `max_seq_len >= 640` gate with measured shape buckets.
-- Investigate why standard c4 long-context reaches `70.1954` while TMH gated
-  reaches `50.5300`, even though TMH is all-raw in this regime.
-- Profile native decode block-table copy/gather overhead under c4.
+- Investigate why standard c4 long-context reaches `70.1954` while TMH now
+  reaches about `50.5`, even though TMH is all-raw in this regime.
+- Profile the remaining native handoff overhead under c4 now that block-table
+  copy/clamp is off the identity path.
 - Compare generic Triton decode, ROCm custom decode, and any AITER decode
   variants on the same raw TMH cache.
 - Consider a TMH-owned all-raw decode kernel only if native handoff overhead or

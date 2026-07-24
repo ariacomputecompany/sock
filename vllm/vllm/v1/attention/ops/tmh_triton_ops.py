@@ -423,24 +423,18 @@ def _tmh_can_use_native_raw_attention(
 
 
 def _tmh_native_decode_block_table(cache, seq_to_request_row, num_seqs: int):
-    block_table = cache.native_block_table_by_seq[:num_seqs]
     if seq_to_request_row is None:
-        block_table.copy_(cache.request_slot_by_row_page[:num_seqs])
-        block_table.clamp_min_(0)
-        return block_table
+        return cache.native_block_table_by_seq[:num_seqs]
 
     request_rows = cache.native_seq_to_request_row[:num_seqs]
     request_rows.copy_(seq_to_request_row[:num_seqs])
+    block_table = cache.native_block_table_gather[:num_seqs]
     torch.index_select(
-        cache.request_slot_by_row_page,
+        cache.native_block_table_by_seq,
         0,
         request_rows,
         out=block_table,
     )
-    # Standard vLLM block tables pad unused entries with block 0. TMH request
-    # rows use -1 internally to expose missing descriptors; sanitize the native
-    # handoff view so ROCm custom paged attention never observes that sentinel.
-    block_table.clamp_min_(0)
     return block_table
 
 
@@ -474,11 +468,7 @@ def _tmh_native_raw_attention(
         and num_seqs >= 2
         and max_seq_len >= 640
     )
-    block_table = _tmh_native_decode_block_table(
-        cache,
-        seq_to_request_row,
-        num_seqs,
-    )
+    block_table = _tmh_native_decode_block_table(cache, seq_to_request_row, num_seqs)
     identity_scale = cache.identity_scale
     chunked_prefill_paged_decode(
         query=q,
@@ -1384,11 +1374,6 @@ def tmh_physical_attention(
         else _get_tmh_mixed_tile_size(block_size=block_size)
     )
     head_size_padded = triton.next_power_of_2(head_size)
-    seq_rows = _seq_to_request_row(
-        seq_to_request_row,
-        num_seqs=num_seqs,
-        device=q.device,
-    )
     packed_v = cache.warm_value.shape[-1] * 2 == head_size
     seq_threshold_3d = getattr(attn_metadata, "seq_threshold_3D", None)
     num_segments = getattr(attn_metadata, "num_par_softmax_segments", None)
@@ -1442,7 +1427,7 @@ def tmh_physical_attention(
             cache=cache,
             out=out,
             attn_metadata=attn_metadata,
-            seq_to_request_row=seq_rows,
+            seq_to_request_row=seq_to_request_row,
             softmax_scale=softmax_scale,
             causal=causal,
             window_size=window_size,
@@ -1455,6 +1440,11 @@ def tmh_physical_attention(
         )
         return
 
+    seq_rows = _seq_to_request_row(
+        seq_to_request_row,
+        num_seqs=num_seqs,
+        device=q.device,
+    )
     if all_raw:
         _tmh_raw_attention_kernel[grid](
             output_ptr=out,

@@ -32,6 +32,7 @@ class TMHPhysicalKVCache:
     canonical_slot_by_logical_block: torch.Tensor
     request_slot_by_row_page: torch.Tensor
     native_block_table_by_seq: torch.Tensor
+    native_block_table_gather: torch.Tensor
     native_seq_to_request_row: torch.Tensor
     identity_scale: torch.Tensor
 
@@ -132,7 +133,12 @@ def reshape_tmh_physical_kv_cache(
         dtype=torch.int32,
         device=kv_raw_tensor.device,
     )
-    native_block_table_by_seq = torch.empty(
+    native_block_table_by_seq = torch.zeros(
+        request_shape,
+        dtype=torch.int32,
+        device=kv_raw_tensor.device,
+    )
+    native_block_table_gather = torch.empty(
         request_shape,
         dtype=torch.int32,
         device=kv_raw_tensor.device,
@@ -157,6 +163,7 @@ def reshape_tmh_physical_kv_cache(
         canonical_slot_by_logical_block=canonical_slot_by_logical_block,
         request_slot_by_row_page=request_slot_by_row_page,
         native_block_table_by_seq=native_block_table_by_seq,
+        native_block_table_gather=native_block_table_gather,
         native_seq_to_request_row=native_seq_to_request_row,
         identity_scale=identity_scale,
     )
@@ -381,8 +388,9 @@ class TMHPhysicalRuntime:
                     "TMH physical scheduler event targets layer "
                     f"{descriptor.layer_name!r}, but the worker has no "
                     "registered TMH physical cache for that layer."
-                )
+            )
             cache.request_slot_by_row_page[req_index].fill_(-1)
+            cache.native_block_table_by_seq[req_index].zero_()
             cleared.add(key)
 
     def _apply_descriptor(self, cache, layer_name, descriptor, req_index: int) -> None:
@@ -404,6 +412,7 @@ class TMHPhysicalRuntime:
                 f"{cache.request_slot_by_row_page.shape[1]} for layer {layer_name!r}."
             )
         cache.request_slot_by_row_page[req_index, page_index] = slot
+        cache.native_block_table_by_seq[req_index, page_index] = slot
 
     def _canonical_slot(
         self,

@@ -16,12 +16,13 @@ and `-7.22%` resume points below:
 | TMH all-raw native prefill + Triton decode | 35.1083 | -7.22% |
 | TMH all-raw native prefill + always ROCm custom decode | 35.1797 | -7.03% |
 | TMH all-raw native prefill + gated ROCm custom decode | 35.4940 | -6.20% |
+| TMH gated decode + maintained native block table | 35.8999 | -5.13% |
 
 The current committed production thesis is now shape-adaptive all-raw execution:
 all-raw prefill uses the native vLLM path; all-raw decode normally uses generic
 Triton paged decode; long-context concurrent decode uses ROCm custom paged decode
-after sanitizing the native block-table handoff. Mixed raw/warm requests still
-use the TMH mixed attention kernel.
+with a maintained standard-style native block table. Mixed raw/warm requests
+still use the TMH mixed attention kernel.
 
 The main remaining hot cell is still long-context concurrency:
 
@@ -29,7 +30,7 @@ The main remaining hot cell is still long-context concurrency:
 long_context_summary_256 c4:
 standard:       70.1954 completion tok/s
 TMH Triton:     40.8045
-TMH gated:      50.5300
+TMH maintained: 50.5007
 current gap:   about -28.0%
 ```
 
@@ -55,7 +56,7 @@ The production-shaped TMH path currently includes:
 - Physical cache materialization and reclamation through the real vLLM worker
   path. Raw TMH pages retain a zero-copy native-shaped KV view internally.
   All-raw prefill now uses the native vLLM path; all-raw decode uses a
-  shape-adaptive native handoff with a sanitized standard-style block table.
+  shape-adaptive native handoff with a maintained standard-style block table.
   Mixed raw/warm batches remain on the TMH-owned backend path.
 - TMH cache update kernels that write raw pages and warm compressed pages.
 - TMH attention kernels that read raw, warm int8/int4, and warm int8/int8 pages.

@@ -72,6 +72,9 @@ def test_tmh_triton_attention_reads_raw_and_warm_int4_pages():
     cache.request_slot_by_row_page[0, 0] = 0
     cache.request_slot_by_row_page[0, 1] = 0
     cache.request_slot_by_row_page[0, 2] = 1
+    cache.native_block_table_by_seq[0, 0] = 0
+    cache.native_block_table_by_seq[0, 1] = 0
+    cache.native_block_table_by_seq[0, 2] = 1
 
     tokens = 48
     heads = 1
@@ -153,6 +156,9 @@ def test_tmh_triton_attention_uses_raw_fast_path_for_all_raw_batches():
     cache.request_slot_by_row_page[0, 0] = 0
     cache.request_slot_by_row_page[0, 1] = 1
     cache.request_slot_by_row_page[0, 2] = 2
+    cache.native_block_table_by_seq[0, 0] = 0
+    cache.native_block_table_by_seq[0, 1] = 1
+    cache.native_block_table_by_seq[0, 2] = 2
 
     tokens = 48
     heads = 1
@@ -242,6 +248,7 @@ def test_tmh_native_raw_decode_reads_physical_raw_pages():
     )
     for page in range(4):
         cache.request_slot_by_row_page[0, page] = page
+        cache.native_block_table_by_seq[0, page] = page
 
     tokens = 49
     heads = 1
@@ -342,6 +349,9 @@ def test_tmh_triton_segmented_decode_reads_raw_and_warm_int4_pages():
     cache.request_slot_by_row_page[0, 0] = 0
     cache.request_slot_by_row_page[0, 1] = 0
     cache.request_slot_by_row_page[0, 2] = 1
+    cache.native_block_table_by_seq[0, 0] = 0
+    cache.native_block_table_by_seq[0, 1] = 0
+    cache.native_block_table_by_seq[0, 2] = 1
 
     tokens = 48
     heads = 1

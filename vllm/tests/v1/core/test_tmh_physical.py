@@ -136,6 +136,8 @@ def test_tmh_physical_runtime_promotes_low_pressure_warm_pages_to_raw_slots():
     )
 
     assert cache.request_slot_by_row_page[0, :2].tolist() == [0, 1]
+    assert cache.native_block_table_by_seq[0, :2].tolist() == [0, 1]
+    assert cache.native_block_table_by_seq[0, 2:].tolist() == [0] * 6
     assert cache.canonical_role_by_logical_block[1].item() == int(TMHPageRole.HOT_RAW)
 
 
@@ -174,6 +176,9 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
         TMHPageRole.WARM_INT8_INT8
     )
     assert cache.request_slot_by_row_page[0, 3].item() == 0
+    assert cache.native_block_table_by_seq[0, 1].item() == 0
+    assert cache.native_block_table_by_seq[0, 2].item() == 0
+    assert cache.native_block_table_by_seq[0, 3].item() == 0
 
     runtime.apply_events(
         [
@@ -210,6 +215,7 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
         {"req-2": 1},
     )
     assert cache.request_slot_by_row_page[1, 3].item() == 0
+    assert cache.native_block_table_by_seq[1, 3].item() == 0
 
 
 def test_tmh_physical_runtime_shares_prefix_cached_hot_raw_pages():
