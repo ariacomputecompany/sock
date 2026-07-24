@@ -738,3 +738,35 @@ shared WNA16 MoE path the more likely fault line. The next pass should disable
 fused grouped top-k directly with `VLLM_USE_FUSED_MOE_GROUPED_TOPK=0`; if that
 still fails, use `AMD_SERIALIZE_KERNEL=3` to force a more truthful crash site.
 
+## 2026-07-24 Fused Grouped Top-K Disable Falsification
+
+The next MoE-router pass disabled the fused grouped top-k path directly with
+`VLLM_USE_FUSED_MOE_GROUPED_TOPK=0` while keeping the standard KV serve shape.
+The hypothesis was that the grouped router/top-k custom path was corrupting GPU
+state for medium/long c4 requests.
+
+The endpoint loaded and passed health, but the same narrowed failure slice still
+failed:
+
+```text
+standard VLLM_USE_FUSED_MOE_GROUPED_TOPK=0 health: passed
+medium_architecture_256 / long_cosmology_512 / long_context_summary_256 c4: HTTP 500
+```
+
+The visible stack moved to the next attention output allocation:
+
+```text
+qwen3_moe.py -> self_attn -> attention.py torch.empty(output_shape, ...)
+Error: hip/CUDA illegal memory access
+```
+
+Because ROCm reports illegal memory accesses asynchronously, this stack is
+probably not the root kernel. It does prove that disabling fused grouped top-k is
+not sufficient to stabilize the standard medium/long c4 path.
+
+Conclusion: the fault is broader than the grouped top-k switch. It may still be
+an earlier MoE/router/WNA16 kernel, but the current non-serialized run only shows
+where the poisoned stream was observed. The next pass should rerun a minimal
+reproducer with `AMD_SERIALIZE_KERNEL=3` so the crash is attributed closer to the
+launch that causes it.
+
