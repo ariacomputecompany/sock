@@ -1006,3 +1006,41 @@ regresses the medium c4 cell. Given the earlier full-suite sensitivity to
 scheduler-window changes, keep `--max-num-batched-tokens 1024` as the stable
 serve shape until a stronger shape-aware scheduler policy exists.
 
+## 2026-07-24 Standard Triton Generation-Config VLLM Falsification
+
+The server log showed Qwen's `generation_config.json` overriding vLLM sampling
+defaults with `temperature=0.6`, `top_k=20`, and `top_p=0.95` unless the server
+is launched with `--generation-config vllm`. Since the benchmark requests set
+`temperature=0.2` but do not set `top_k` or `top_p`, the hypothesis was that
+removing model-default top-k/top-p sampling constraints might reduce sampler
+work without changing the benchmark script.
+
+The c4 gate looked positive enough to earn a full-suite run:
+
+```text
+medium_architecture_256 c4:   53.6950 -> 54.0170  (+0.60%)
+long_cosmology_512 c4:        50.6543 -> 52.7777  (+4.19%)
+long_context_summary_256 c4:  65.8769 -> 71.6499  (+8.76%)
+```
+
+The full suite falsified it as a global serve setting:
+
+```text
+standard TRITON_ATTN full geomean:                 36.7329
+standard TRITON_ATTN --generation-config vllm:     36.4462
+Delta:                                             -0.78%
+```
+
+The long c4 cells improved, but shorter c1/c2 cells gave the gain back:
+
+```text
+long_cosmology_512 c4: 50.6543 -> 52.5560  (+3.75%)
+short_codegen_128 c1: 25.7130 -> 24.9749  (-2.87%)
+medium_architecture c2:36.0764 -> 34.7814 (-3.59%)
+tiny_fact_64 c1:      32.9116 -> 31.8761  (-3.15%)
+```
+
+Conclusion: `--generation-config vllm` is not a +20 path for the current suite.
+It may help selected long concurrent cells, but the full endpoint mix prefers
+the model generation defaults. Keep the stable baseline serve shape unchanged.
+
