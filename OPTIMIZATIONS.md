@@ -618,3 +618,35 @@ Conclusion: the endpoint mix prefers the original `--max-num-batched-tokens 1024
 The c4 long-context gate alone is insufficient because scheduler batching is a
 global latency/throughput policy. Keep `1024` in the production-shaped command
 until a shape-aware scheduler policy exists.
+
+## 2026-07-24 Partition-512 Refresh Rebaseline Warning
+
+After several falsified moonshots, the current production-shaped partition-512
+code was rerun without code changes to check whether the original short c4 wins
+were reproducible. The code still had `_PARTITION_SIZE_ROCM = 512` and the
+shape-adaptive decode gate intact.
+
+The refresh did not reproduce the original partition-512 full-suite result:
+
+```text
+Original same-day standard KV full geomean:       37.8412
+Original TMH partition-512 full geomean:          37.9962
+Refreshed TMH partition-512 full geomean:         33.4570
+Older TMH maintained native table full geomean:   35.8999
+```
+
+The largest difference was the short concurrent cells that had carried the
+original partition-512 win:
+
+```text
+tiny_fact_64 c4:      82.5883 original -> 51.4558 refreshed
+short_codegen_128 c4: 74.7029 original -> 51.9847 refreshed
+medium_architecture c4:66.5721 original -> 54.5527 refreshed
+```
+
+Conclusion: the partition-512 code path remains the checked-in production
+candidate, but the old `+0.41%` headline should be treated as unstable until it
+is paired with a same-period standard full refresh. The next pass should first
+establish paired standard/TMH baselines under identical thermal/runtime state,
+then optimize against that live baseline. Do not chase +20 from the stale
+partition-512 artifact alone.
