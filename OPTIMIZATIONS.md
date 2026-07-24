@@ -841,3 +841,34 @@ ROCm paged attention on gfx1151 is unstable for medium/long concurrent decode.
 run a full standard `TRITON_ATTN` suite, then pair it against TMH under the same
 attention backend if TMH accepts that configuration.
 
+## 2026-07-24 Full Standard Triton-Attention Baseline
+
+After `TRITON_ATTN` stabilized the narrowed c4 failure slice, the full endpoint
+suite was rerun under the same standard KV serve shape with `--attention-backend
+TRITON_ATTN`.
+
+Result:
+
+```text
+standard TRITON_ATTN full geomean: 36.7329 completion tok/s
+cells: 6 cases x c1/c2/c4 = 18
+elapsed: 773.2601 s
+```
+
+Cell medians:
+
+```text
+tiny_fact_64 c1/c2/c4:              32.9116 / 34.6675 / 55.3841
+short_codegen_128 c1/c2/c4:         25.7130 / 35.2789 / 56.9322
+medium_architecture_256 c1/c2/c4:   25.2760 / 36.0764 / 53.6950
+long_cosmology_512 c1/c2/c4:        24.7322 / 33.6570 / 50.6543
+long_context_summary_256 c1/c2/c4:  23.7823 / 34.8894 / 65.8769
+extended_generation_768 c1/c2/c4:   23.7214 / 33.2304 / 51.0662
+```
+
+Conclusion: this is the first complete same-session standard baseline after the
+ROCm paged-attention crash surface was identified. It is not the fastest old
+headline, but it is stable and therefore usable. The next benchmark claim should
+be paired against this denominator, not against the stale 37.8412 standard
+artifact or the unstable 37.9962 TMH partition-512 artifact.
+
