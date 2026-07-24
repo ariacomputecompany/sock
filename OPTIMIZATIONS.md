@@ -555,3 +555,29 @@ isolation, but the full suite showed the specialization disturbed the broader
 kernel/autotune/runtime balance enough to erase the main concurrency win. Revert
 and keep the proven raw reshape kernel unchanged. Future single-stream work
 should be validated with a full suite immediately after a narrow probe.
+
+## 2026-07-24 Prefix Hot-Raw Sharing Falsification On Partition-512
+
+After the partition-512 decode win, prefix sharing was retested from first
+principles. Standard KV still dominates `long_context_summary_256 c4`, and TMH
+stores prefix-cached `HOT_RAW` pages as request overlays rather than canonical
+shared raw pages. The hypothesis was that canonical/shared hot raw prefix pages
+would recover some of standard KV long-context prefix-sharing advantage.
+
+The experiment changed `_storage_kind_for_role` in both the scheduler policy and
+runtime descriptor application so `PINNED_RAW` and `HOT_RAW` both used canonical
+storage even when `prefix_cached=True`.
+
+Focused tests passed, but the c4 long-context benchmark falsified the change:
+
+```text
+TMH partition-512 focused long_context_summary_256 c4 median: 54.8502 completion tok/s
+TMH partition-512 full-suite long_context_summary_256 c4:      51.6829 completion tok/s
+TMH prefix hot-raw sharing c4 median:                         47.5727 completion tok/s
+```
+
+Conclusion: prefix-cached hot raw request overlays are not accidental overhead;
+on this workload they are part of the working performance envelope. Forcing
+canonical hot-raw sharing likely increases contention/lifetime coupling or
+reduces useful request-local placement. Revert and keep the overlay policy. The
+long-context standard gap remains real, but this is not the route to closing it.
