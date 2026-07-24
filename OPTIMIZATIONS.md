@@ -872,3 +872,35 @@ headline, but it is stable and therefore usable. The next benchmark claim should
 be paired against this denominator, not against the stale 37.8412 standard
 artifact or the unstable 37.9962 TMH partition-512 artifact.
 
+## 2026-07-24 TMH Plus Triton Attention Pairing Falsification
+
+TMH was paired against the stable standard `TRITON_ATTN` denominator with the
+same serve shape plus `--kv-layout tmh --tmh-hot-budget-pct 25`. The goal was to
+see whether TMH's storage policy still added value once the crash-prone ROCm
+paged-attention backend was bypassed.
+
+The endpoint loaded and the narrowed medium/long c4 slice completed, but it was
+slower than the same-session standard Triton attention slice:
+
+```text
+standard TRITON_ATTN medium_architecture_256 c4:   51.2015 completion tok/s
+TMH TRITON_ATTN medium_architecture_256 c4:        49.2510 completion tok/s
+Delta:                                            -3.81%
+
+standard TRITON_ATTN long_cosmology_512 c4:        51.2788 completion tok/s
+TMH TRITON_ATTN long_cosmology_512 c4:             44.8669 completion tok/s
+Delta:                                           -12.50%
+
+standard TRITON_ATTN long_context_summary_256 c4:  74.3885 completion tok/s
+TMH TRITON_ATTN long_context_summary_256 c4:       34.4980 completion tok/s
+Delta:                                           -53.62%
+```
+
+Conclusion: TMH is not the +20 route under Triton attention as currently wired.
+The long-context summary regression is decisive enough that a full TMH Triton
+suite is not worth burning time on before changing the underlying policy. The
+near-term optimization front should move to standard `TRITON_ATTN` itself:
+Triton tensor-descriptor mode, warmup/JIT coverage, scheduler shape, and any
+Triton attention flags that affect c4 throughput without reintroducing ROCm
+paged-attention instability.
+
