@@ -472,3 +472,25 @@ run-shape artifact, while the full suite showed broad c2/c4 regressions. The
 next search should preserve the proven concurrency gate and look for a more
 selective shape policy or a deeper kernel-level improvement.
 
+
+## 2026-07-24 Partition-768 Falsification
+
+After `1024` proved unsafe and `512` proved production-positive, a follow-up
+probe tested `_PARTITION_SIZE_ROCM = 768`. The hypothesis was that a middle
+partition could keep the safe geometry of `512` while reducing partition/reduce
+overhead for long-context concurrency-4 decode.
+
+Result: the c4 long-context probe was stable but did not beat `512`:
+
+```text
+TMH partition-512 long_context_summary_256 c4 median: 54.8502 completion tok/s
+TMH partition-768 long_context_summary_256 c4 median: 54.2934 completion tok/s
+Delta vs partition-512: -1.02%
+```
+
+Conclusion: `768` is safe but worse than `512` on the most relevant early-gate
+shape. The useful abstraction is no longer "larger partition is better"; it is
+"Strix Halo needs a shape-aware ROCm decode policy, and `512` is the current
+best stable global constant." Keep production code at `512` and spend the next
+passes on selective gating or deeper kernel launch/cache behavior rather than
+pushing the partition upward.
