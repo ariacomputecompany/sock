@@ -494,3 +494,27 @@ shape. The useful abstraction is no longer "larger partition is better"; it is
 best stable global constant." Keep production code at `512` and spend the next
 passes on selective gating or deeper kernel launch/cache behavior rather than
 pushing the partition upward.
+
+## 2026-07-24 Translated Native Cache-Update Falsification
+
+A deeper pass attacked the long-context prefill tax instead of another decode
+partition. The hypothesis was that all-raw TMH cache updates still pay a custom
+per-token/per-head Triton reshape kernel, while standard KV uses vLLM native
+`reshape_and_cache_flash`. The experiment translated TMH request/page metadata
+into a physical slot mapping and attempted to call native `reshape_and_cache_flash`
+against the TMH raw key/value views for all-raw prefill only.
+
+Result: focused TMH GPU tests failed before endpoint benchmarking. The native
+cache update corrupted adjacent TMH physical storage and broke decode correctness:
+
+```text
+tests/v1/core/test_tmh_triton_ops.py::test_tmh_triton_attention_uses_raw_fast_path_for_all_raw_batches FAILED
+tests/v1/core/test_tmh_triton_ops.py::test_tmh_native_raw_decode_reads_physical_raw_pages FAILED
+```
+
+Conclusion: the raw TMH views are compatible with native attention reads, but
+not with this native cache-write op boundary. The useful distinction is
+read-layout compatibility versus write-kernel ABI compatibility. Reverted the
+experiment and kept the production all-raw reshape kernel in place. A future
+version could still win here, but it needs a TMH-owned translated write kernel
+or a verified native write ABI, not a direct `reshape_and_cache_flash` call.
