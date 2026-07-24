@@ -581,3 +581,40 @@ on this workload they are part of the working performance envelope. Forcing
 canonical hot-raw sharing likely increases contention/lifetime coupling or
 reduces useful request-local placement. Revert and keep the overlay policy. The
 long-context standard gap remains real, but this is not the route to closing it.
+
+## 2026-07-24 Max Batched Tokens 2048 Falsification
+
+A runtime-shape pass tested `--max-num-batched-tokens 2048` with the proven
+partition-512 code. The hypothesis was that TMH might convert its memory-layout
+headroom into better long-context batching, especially for the c4 prefill/decode
+mix.
+
+The narrow gate looked positive:
+
+```text
+TMH partition-512 focused long_context_summary_256 c4 median: 54.8502 completion tok/s
+TMH max-num-batched-tokens=2048 c4 median:           55.9429 completion tok/s
+```
+
+But the full suite falsified the serve-config change:
+
+```text
+Standard KV full geomean:             37.8412
+TMH partition-512 full geomean:        37.9962
+TMH batched-2048 full geomean:         33.6334
+Delta vs partition-512:              -11.48%
+```
+
+The larger scheduler window again damaged the short and medium concurrent cells
+that carry the partition-512 win:
+
+```text
+tiny_fact_64 c4:           82.5883 -> 53.2313
+short_codegen_128 c4:      74.7029 -> 52.1535
+medium_architecture_256 c4:66.5721 -> 50.3301
+```
+
+Conclusion: the endpoint mix prefers the original `--max-num-batched-tokens 1024`.
+The c4 long-context gate alone is insufficient because scheduler batching is a
+global latency/throughput policy. Keep `1024` in the production-shaped command
+until a shape-aware scheduler policy exists.
