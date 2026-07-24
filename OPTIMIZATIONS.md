@@ -518,3 +518,40 @@ read-layout compatibility versus write-kernel ABI compatibility. Reverted the
 experiment and kept the production all-raw reshape kernel in place. A future
 version could still win here, but it needs a TMH-owned translated write kernel
 or a verified native write ABI, not a direct `reshape_and_cache_flash` call.
+
+## 2026-07-24 Single-Sequence Raw Reshape Falsification
+
+A narrow kernel specialization removed the binary-search sequence lookup from
+`_tmh_raw_reshape_and_cache_kernel` when `num_seqs == 1`. The hypothesis was
+that the remaining single-stream long-context gap was partly a repeated per-head
+metadata lookup in the all-raw cache-write path.
+
+The first c1 long-context probe looked promising:
+
+```text
+TMH partition-512 long_context_summary_256 c1 median: 18.3756 completion tok/s
+TMH single-seq reshape probe c1 median:              21.7416 completion tok/s
+```
+
+But the production-shaped full suite falsified the change:
+
+```text
+TMH partition-512 full geomean:       37.9962
+TMH single-seq reshape full geomean:  33.5783
+Delta vs partition-512:             -11.63%
+```
+
+The regression was broadest in the short concurrent cells that previously made
+partition-512 positive:
+
+```text
+tiny_fact_64 c4:      82.5883 -> 51.7367
+short_codegen_128 c4: 74.7029 -> 51.8042
+short_codegen_128 c2: 43.2201 -> 31.1047
+```
+
+Conclusion: this was another run-shape artifact. The c1-only probe improved in
+isolation, but the full suite showed the specialization disturbed the broader
+kernel/autotune/runtime balance enough to erase the main concurrency win. Revert
+and keep the proven raw reshape kernel unchanged. Future single-stream work
+should be validated with a full suite immediately after a narrow probe.
