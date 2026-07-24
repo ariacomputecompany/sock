@@ -384,3 +384,51 @@ The likely next moonshot is deeper decode specialization:
 The implementation rule for the next pass should remain the same: do not tune
 policy around a slow executor. Preserve the all-raw native fast path and move
 only the shapes with evidence onto a faster decode backend.
+
+## 2026-07-24 Partition-512 ROCm Decode Breakthrough
+
+After the maintained native block table result, several prefix-cache lifetime
+experiments were falsified:
+
+- `tmh-prefix-retain`: long-context c4 `43.3248`, worse than maintained table.
+- `tmh-prefix-retain-hash-only`: long-context c4 `41.7972`, also worse.
+- `tmh-no-prefix`: long-context c4 `35.6198`, proving TMH still benefits from prefix caching.
+- `tmh-identity-rows`: full sweep was not run; warmed c4 repeated at `50.2733`, essentially neutral.
+- `tmh-rocm-workspace-reuse`: c4 `45.4609`, worse than maintained table.
+
+The successful moonshot was changing the ROCm custom paged-attention decode
+partition from `256` to `512` in
+`vllm/v1/attention/ops/chunked_prefill_paged_decode.py`. This reduces the
+number of partitions/reductions for the Strix Halo long-ish decode shapes used
+by the endpoint suite.
+
+Production-shaped full-suite result:
+
+```text
+Same-day standard KV full geomean:       37.8412
+TMH maintained native table geomean:     35.8999
+TMH ROCm decode partition 512 geomean:   37.9962
+
+Delta vs maintained TMH: +5.84%
+Delta vs same-day standard: +0.41%
+```
+
+The win is concurrency-heavy rather than universal. Single-stream cells regress,
+but concurrency-2 and concurrency-4 cells improve enough to move the full suite
+positive:
+
+```text
+tiny_fact_64 c4:           55.5541 -> 82.5883
+short_codegen_128 c4:      53.7511 -> 74.7029
+medium_architecture_256 c4:54.2022 -> 66.5721
+long_cosmology_512 c4:     49.6267 -> 62.0212
+long_context_summary_256 c4:50.5007 -> 51.6829
+extended_generation_768 c4:58.0344 -> 58.4819
+```
+
+This changes the current thesis: after the native-table work, the remaining
+negative gap was not primarily prefix-cache lifetime. The lamp was the
+partition/reduction geometry inside ROCm paged decode. On this `gfx1151` host,
+`512` is a better production compromise for the benchmark mix than the previous
+`256`.
+

@@ -400,7 +400,7 @@ def chunked_prefill_paged_decode(
         use_custom = False
 
     if use_custom:
-        _PARTITION_SIZE_ROCM = 256
+        _PARTITION_SIZE_ROCM = 512
         max_num_partitions = (
             max_seq_len + _PARTITION_SIZE_ROCM - 1
         ) // _PARTITION_SIZE_ROCM
