@@ -650,3 +650,29 @@ is paired with a same-period standard full refresh. The next pass should first
 establish paired standard/TMH baselines under identical thermal/runtime state,
 then optimize against that live baseline. Do not chase +20 from the stale
 partition-512 artifact alone.
+
+## 2026-07-24 Paired Standard Baseline Crash
+
+After the partition-512 refresh failed to reproduce the original short-c4 spike,
+the next first-principles pass attempted a paired full baseline: fresh standard
+KV full suite followed immediately by fresh TMH full suite under the same host
+state.
+
+The standard full suite did not complete. It failed with HTTP 500 after EngineCore
+hit a ROCm illegal memory access in the Qwen3-MoE router/gate path, not in TMH
+attention:
+
+```text
+standard-paired-refresh-full-suite: FAILED
+EngineCore stack: qwen3_moe.py -> fused_moe runner -> gate(hidden_states)
+ROCm op: torch.ops._rocm_C.wvSplitK via rocm_unquantized_gemm
+Error: hip/CUDA illegal memory access
+```
+
+Conclusion: the live benchmark state is currently unstable below the TMH layer.
+This invalidates immediate standard-vs-TMH claims from the paired pass. Before
+any +20 optimization claim, the next step is to prove baseline health again:
+run a narrow standard smoke, then either a serialized `AMD_SERIALIZE_KERNEL=3`
+repro for `wvSplitK` or a clean reboot if the GPU remains poisoned. Treat all
+post-crash throughput comparisons as suspect until the standard endpoint can
+complete the suite again.
