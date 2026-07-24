@@ -11,7 +11,7 @@ from vllm.logger import init_logger
 from vllm.utils.math_utils import cdiv
 from vllm.v1.attention.ops.tmh_triton_ops import (
     tmh_reshape_and_cache,
-    tmh_unified_attention,
+    tmh_physical_attention,
 )
 from vllm.v1.core.tmh_policy import TMHKVRuntimePolicy
 from vllm.v1.tmh_physical import TMHPhysicalKVCache
@@ -55,79 +55,93 @@ def warmup_tmh_physical_kernels(model_runner: "GPUModelRunner") -> None:
         cache.request_slot_by_row_page.shape[1] for cache in caches
     )
     prompt_pages = min(max_descriptor_pages, max(1, min(4, max_descriptor_pages)))
-    prompt_len = max(block_size, prompt_pages * block_size, decode_query_len + 1)
-    max_num_reqs = min(
-        model_runner.scheduler_config.max_num_seqs,
-        max(1, model_runner.max_num_tokens // max(prompt_len, decode_query_len)),
-    )
+    main_prompt_len = max(block_size, prompt_pages * block_size, decode_query_len + 1)
+    prompt_lens = list(range(1, block_size + 1))
+    if main_prompt_len not in prompt_lens:
+        prompt_lens.append(main_prompt_len)
     group_block_sizes = [
         group.kv_cache_spec.block_size for group in kv_cache_config.kv_cache_groups
     ]
-    block_counts = [cdiv(prompt_len, size) for size in group_block_sizes]
-    blocks_per_req = sum(block_counts)
-    max_num_reqs = min(
-        max_num_reqs,
-        max(1, (kv_cache_config.num_blocks - 1) // max(1, blocks_per_req)),
-    )
-    if max_num_reqs <= 0:
+
+    shape_index = 0
+    warmed_any = False
+    for prompt_len in prompt_lens:
+        max_num_reqs = min(
+            model_runner.scheduler_config.max_num_seqs,
+            max(1, model_runner.max_num_tokens // max(prompt_len, decode_query_len)),
+        )
+        block_counts = [cdiv(prompt_len, size) for size in group_block_sizes]
+        blocks_per_req = sum(block_counts)
+        max_num_reqs = min(
+            max_num_reqs,
+            max(1, (kv_cache_config.num_blocks - 1) // max(1, blocks_per_req)),
+        )
+        if max_num_reqs <= 0:
+            continue
+
+        warmup_num_reqs = [1]
+        if max_num_reqs > 1:
+            warmup_num_reqs.append(max_num_reqs)
+
+        for num_reqs in warmup_num_reqs:
+            warmed_any = True
+            logger.info(
+                "Warming physical TMH kernels directly with num_reqs=%d "
+                "prompt_len=%d decode_query_len=%d block_size=%d.",
+                num_reqs,
+                prompt_len,
+                decode_query_len,
+                block_size,
+            )
+            tmh_policy = TMHKVRuntimePolicy.from_kv_cache_config(
+                kv_cache_config, block_size
+            )
+            req_ids = [
+                f"_tmh_physical_warmup_{shape_index}_{i}_"
+                for i in range(num_reqs)
+            ]
+            shape_index += 1
+            next_block_id = 1
+
+            def alloc_blocks(num_blocks: int) -> list[int]:
+                nonlocal next_block_id
+                block_ids = list(range(next_block_id, next_block_id + num_blocks))
+                next_block_id += num_blocks
+                return block_ids
+
+            blocks_by_req: dict[str, tuple[list[int], ...]] = {}
+            for req_id in req_ids:
+                blocks_by_req[req_id] = tuple(alloc_blocks(n) for n in block_counts)
+
+            _record_tmh_descriptors(
+                tmh_policy=tmh_policy,
+                total_tokens_by_req={req_id: prompt_len for req_id in req_ids},
+                block_ids_by_req=blocks_by_req,
+            )
+            runtime.apply_events(
+                tmh_policy.take_physical_events(),
+                {req_id: index for index, req_id in enumerate(req_ids)},
+            )
+
+            try:
+                for cache in caches:
+                    _warmup_physical_cache(
+                        model_runner=model_runner,
+                        cache=cache,
+                        num_reqs=num_reqs,
+                        prompt_len=prompt_len,
+                        block_size=block_size,
+                    )
+            finally:
+                for req_id in req_ids:
+                    tmh_policy.forget_request(req_id)
+                runtime.apply_events(tmh_policy.take_physical_events(), {})
+                torch.accelerator.synchronize()
+
+    if not warmed_any:
         logger.warning(
             "Skipping physical TMH warmup because no KV blocks are available."
         )
-        return
-
-    warmup_num_reqs = [1]
-    if max_num_reqs > 1:
-        warmup_num_reqs.append(max_num_reqs)
-
-    for shape_index, num_reqs in enumerate(warmup_num_reqs):
-        logger.info(
-            "Warming physical TMH kernels directly with num_reqs=%d "
-            "prompt_len=%d decode_query_len=%d block_size=%d.",
-            num_reqs,
-            prompt_len,
-            decode_query_len,
-            block_size,
-        )
-        tmh_policy = TMHKVRuntimePolicy.from_kv_cache_config(
-            kv_cache_config, block_size
-        )
-        req_ids = [f"_tmh_physical_warmup_{shape_index}_{i}_" for i in range(num_reqs)]
-        next_block_id = 1
-
-        def alloc_blocks(num_blocks: int) -> list[int]:
-            nonlocal next_block_id
-            block_ids = list(range(next_block_id, next_block_id + num_blocks))
-            next_block_id += num_blocks
-            return block_ids
-
-        blocks_by_req: dict[str, tuple[list[int], ...]] = {}
-        for req_id in req_ids:
-            blocks_by_req[req_id] = tuple(alloc_blocks(n) for n in block_counts)
-
-        _record_tmh_descriptors(
-            tmh_policy=tmh_policy,
-            total_tokens_by_req={req_id: prompt_len for req_id in req_ids},
-            block_ids_by_req=blocks_by_req,
-        )
-        runtime.apply_events(
-            tmh_policy.take_physical_events(),
-            {req_id: index for index, req_id in enumerate(req_ids)},
-        )
-
-        try:
-            for cache in caches:
-                _warmup_physical_cache(
-                    model_runner=model_runner,
-                    cache=cache,
-                    num_reqs=num_reqs,
-                    prompt_len=prompt_len,
-                    block_size=block_size,
-                )
-        finally:
-            for req_id in req_ids:
-                tmh_policy.forget_request(req_id)
-            runtime.apply_events(tmh_policy.take_physical_events(), {})
-            torch.accelerator.synchronize()
 
 
 def _record_tmh_descriptors(
@@ -224,7 +238,7 @@ def _warmup_physical_cache(
     )
     output = torch.empty_like(query)
     query.normal_(mean=0.0, std=0.01)
-    tmh_unified_attention(
+    tmh_physical_attention(
         q=query,
         cache=cache,
         out=output,
@@ -252,7 +266,8 @@ def _warmup_physical_cache(
     )
     decode_output = torch.empty_like(decode_query)
     decode_query.normal_(mean=0.0, std=0.01)
-    tmh_unified_attention(
+    kv_scale = torch.tensor(1.0, dtype=torch.float32, device=device)
+    tmh_physical_attention(
         q=decode_query,
         cache=cache,
         out=decode_output,
@@ -262,4 +277,7 @@ def _warmup_physical_cache(
         causal=True,
         window_size=(-1, -1),
         softcap=0.0,
+        kv_cache_dtype="auto",
+        k_scale=kv_scale,
+        v_scale=kv_scale,
     )

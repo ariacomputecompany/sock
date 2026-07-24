@@ -31,6 +31,9 @@ class TMHPhysicalKVCache:
     canonical_role_by_logical_block: torch.Tensor
     canonical_slot_by_logical_block: torch.Tensor
     request_slot_by_row_page: torch.Tensor
+    native_block_table_by_seq: torch.Tensor
+    native_seq_to_request_row: torch.Tensor
+    identity_scale: torch.Tensor
 
     @property
     def device(self) -> torch.device:
@@ -129,6 +132,17 @@ def reshape_tmh_physical_kv_cache(
         dtype=torch.int32,
         device=kv_raw_tensor.device,
     )
+    native_block_table_by_seq = torch.empty(
+        request_shape,
+        dtype=torch.int32,
+        device=kv_raw_tensor.device,
+    )
+    native_seq_to_request_row = torch.empty(
+        (spec.tmh_max_num_seqs,),
+        dtype=torch.int64,
+        device=kv_raw_tensor.device,
+    )
+    identity_scale = torch.ones((), dtype=torch.float32, device=kv_raw_tensor.device)
     return TMHPhysicalKVCache(
         spec=spec,
         num_logical_blocks=num_logical_blocks,
@@ -142,6 +156,9 @@ def reshape_tmh_physical_kv_cache(
         canonical_role_by_logical_block=canonical_role_by_logical_block,
         canonical_slot_by_logical_block=canonical_slot_by_logical_block,
         request_slot_by_row_page=request_slot_by_row_page,
+        native_block_table_by_seq=native_block_table_by_seq,
+        native_seq_to_request_row=native_seq_to_request_row,
+        identity_scale=identity_scale,
     )
 
 

@@ -157,6 +157,44 @@ alone. The next viable optimization is a TMH-owned raw fast attention kernel or
 a properly integrated backend contract that can reuse standard ROCm paged
 attention without substituting an invalid block table.
 
+## Raw Fast-Path Cutover
+
+The physical TMH attention entrypoint is now split by execution regime instead
+of routing every request through one mixed-layout kernel. The production facade
+is `tmh_physical_attention`; it dispatches all-raw batches to dedicated raw-only
+Triton kernels and keeps the mixed raw/warm kernel only for batches that can
+actually touch compressed pages.
+
+Implemented in this pass:
+
+- `_tmh_raw_reshape_and_cache_kernel` writes all-raw batches without warm scale,
+  quantization, or packed-value code.
+- `_tmh_raw_attention_kernel` reads raw physical slots only; warm branches,
+  dequantization, packed int4 unpacking, and page-role checks are not present in
+  that kernel.
+- `_tmh_mixed_attention_kernel` remains the compressed-page executor instead of
+  the universal hot path.
+- Physical TMH warmup now covers first-page raw prompt lengths plus the existing
+  multi-page shape for both single-request and max-request launches.
+
+Verification so far:
+
+- Focused TMH tests: `10 passed`.
+- Endpoint start/smoke on GMK Qwen3-30B TMH profile completed without wedging.
+- Focused `tiny_fact_64` one-run smoke after warmup ladder:
+  - c1: `27.59` completion tok/s, `2.32s` wall.
+  - c2: `30.35` completion tok/s, `4.22s` wall.
+  - c4: `47.14` completion tok/s, `5.43s` wall.
+- A second smoke on the same live server reached c4 `49.67` completion tok/s.
+
+Caveat: the first endpoint request still emitted one `_tmh_raw_attention_kernel`
+JIT warning, even after direct warmup covered the relevant token counts. No
+additional raw-kernel JIT appeared on the second smoke. This points at a remaining
+real-model tensor-layout specialization gap in direct warmup, not repeated raw
+executor compilation. Do not claim full production victory or full-suite delta
+recovery until the six-case benchmark is rerun and the first-request raw JIT is
+understood or accepted as a startup tradeoff.
+
 ## What Has Worked
 
 ### Physical Bring-Up
@@ -423,3 +461,58 @@ More precisely:
 What is not yet production-good is TMH physical throughput on AMD 30B. The
 remaining work is performance engineering in the physical attention kernel.
 
+## 2026-07-24 Ubuntu/GFX1151 Native All-Raw Update
+
+The post-Ubuntu ROCm stack changed the denominator and clarified the real safe
+fast path.
+
+Runtime status:
+
+- Bare-metal Ubuntu + ROCm 7.2.4 + source-built torch 2.11.0+gfx1151 is the
+  active GMK stack.
+- Torch had to be rebuilt with Gloo enabled for vLLM engine startup.
+- vLLM native ROCm extensions were rebuilt against that torch wheel.
+- Focused TMH tests pass: `13 passed`.
+
+Execution-method update:
+
+- All-raw TMH prefill now receives live K/V through the ROCm attention backend
+  boundary and uses vLLM's native context prefill path.
+- All-raw TMH decode uses the generic Triton paged decode fallback.
+- The old TMH custom raw attention kernel is no longer used for all-raw endpoint
+  batches.
+- ROCm custom C++ paged decode must not be used for TMH physical raw cache on
+  this stack: serialized endpoint debugging traced the illegal-address failure
+  to `paged_attention_custom_launcher_navi`.
+- Mixed raw+warm batches still use the TMH mixed kernel, because native raw-only
+  attention cannot represent compressed warm pages.
+
+Current full-suite numbers:
+
+- Standard KV, current Ubuntu full suite: `37.8412` geomean completion tok/s.
+- TMH native-allraw/Triton-decode full suite: `35.1083` geomean completion
+  tok/s.
+- Current apples-to-apples gap: `-7.22%`.
+- Versus earlier same-day standard baseline `34.78`: `+0.94%`.
+- Versus previous raw-fastpath TMH `29.7749`: `+17.91%`.
+
+Per-case cliff:
+
+- `long_context_summary_256` remains the dominant blocker:
+  - c1: `20.76` TMH vs `26.85` standard (`-22.7%`)
+  - c2: `28.00` TMH vs `36.67` standard (`-23.6%`)
+  - c4: `40.80` TMH vs `70.20` standard (`-41.9%`)
+
+Artifacts:
+
+- `benchmarks/2026-07-24-gmk-qwen3-30b-native-ubuntu-tmh-gloo-smoke/tmh-suite-native-allraw-triton-decode.json`
+- `benchmarks/2026-07-24-gmk-qwen3-30b-native-ubuntu-standard-full/standard-suite.json`
+
+Next performance thesis:
+
+The gap is no longer a general all-raw short-context tax. Short and medium
+cases are competitive or positive in several cells. The main remaining problem
+is long-context summary under concurrency, where the generic Triton decode
+fallback and/or mixed warm-page path cannot match standard KV's specialized
+ROCm paged attention. The next moonshot should focus on a TMH-safe long-context
+decode specialization rather than more policy tuning.

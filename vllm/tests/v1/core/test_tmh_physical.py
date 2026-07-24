@@ -86,8 +86,11 @@ def descriptor(
     page_index: int,
     logical_block_id: int,
     role: TMHPageRole,
-    storage: TMHStorageKind,
+    storage: TMHStorageKind = TMHStorageKind.CANONICAL,
+    prefix_cached: bool | None = None,
 ) -> TMHPhysicalPageDescriptor:
+    if prefix_cached is None:
+        prefix_cached = storage == TMHStorageKind.REQUEST_OVERLAY
     return TMHPhysicalPageDescriptor(
         request_id=request_id,
         layer_name="model.layers.0.self_attn",
@@ -95,7 +98,7 @@ def descriptor(
         page_index=page_index,
         role=role,
         storage=storage,
-        prefix_cached=storage == TMHStorageKind.REQUEST_OVERLAY,
+        prefix_cached=prefix_cached,
         k_quant_mode="raw" if role == TMHPageRole.HOT_RAW else "int8_per_token_head",
         v_quant_mode="raw" if role == TMHPageRole.HOT_RAW else "int8_per_token_head",
     )
@@ -116,14 +119,12 @@ def test_tmh_physical_runtime_promotes_low_pressure_warm_pages_to_raw_slots():
                         page_index=0,
                         logical_block_id=0,
                         role=TMHPageRole.PINNED_RAW,
-                        storage=TMHStorageKind.CANONICAL,
                     ),
                     descriptor(
                         request_id="req-raw",
                         page_index=1,
                         logical_block_id=1,
                         role=TMHPageRole.WARM_INT8_INT8,
-                        storage=TMHStorageKind.CANONICAL,
                     ),
                 ),
                 total_pages=2,
@@ -152,7 +153,6 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
                         page_index=1,
                         logical_block_id=1,
                         role=TMHPageRole.WARM_INT8_INT8,
-                        storage=TMHStorageKind.CANONICAL,
                     ),
                     descriptor(
                         page_index=3,
@@ -212,6 +212,56 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
     assert cache.request_slot_by_row_page[1, 3].item() == 0
 
 
+def test_tmh_physical_runtime_shares_prefix_cached_hot_raw_pages():
+    cache = make_physical_cache()
+    runtime = TMHPhysicalRuntime()
+    runtime.register_cache("model.layers.0.self_attn", cache)
+
+    runtime.apply_events(
+        [
+            TMHPhysicalEvent(
+                request_id="req-1",
+                descriptors=(
+                    descriptor(
+                        request_id="req-1",
+                        page_index=3,
+                        logical_block_id=3,
+                        role=TMHPageRole.HOT_RAW,
+                        storage=TMHStorageKind.CANONICAL,
+                        prefix_cached=True,
+                    ),
+                ),
+                total_pages=4,
+                recent_start_page=3,
+                hot_pages=1,
+            ),
+            TMHPhysicalEvent(
+                request_id="req-2",
+                descriptors=(
+                    descriptor(
+                        request_id="req-2",
+                        page_index=3,
+                        logical_block_id=3,
+                        role=TMHPageRole.HOT_RAW,
+                        storage=TMHStorageKind.CANONICAL,
+                        prefix_cached=True,
+                    ),
+                ),
+                total_pages=4,
+                recent_start_page=3,
+                hot_pages=1,
+            ),
+        ],
+        {"req-1": 0, "req-2": 1},
+    )
+
+    shared_slot = cache.request_slot_by_row_page[0, 3].item()
+    assert shared_slot >= 0
+    assert cache.request_slot_by_row_page[1, 3].item() == shared_slot
+    assert cache.canonical_role_by_logical_block[3].item() == int(TMHPageRole.HOT_RAW)
+    assert cache.canonical_slot_by_logical_block[3].item() == shared_slot
+
+
 def test_tmh_policy_emits_release_descriptors_for_forgotten_canonical_pages():
     policy = TMHKVRuntimePolicy(
         policy="physical",
@@ -258,7 +308,6 @@ def test_tmh_physical_runtime_reuses_released_canonical_raw_slots():
             page_index=page,
             logical_block_id=page,
             role=TMHPageRole.HOT_RAW,
-            storage=TMHStorageKind.CANONICAL,
         )
         for page in range(raw_capacity)
     )
@@ -300,7 +349,6 @@ def test_tmh_physical_runtime_reuses_released_canonical_raw_slots():
                         page_index=page,
                         logical_block_id=page + raw_capacity,
                         role=TMHPageRole.HOT_RAW,
-                        storage=TMHStorageKind.CANONICAL,
                     )
                     for page in range(raw_capacity)
                 ),

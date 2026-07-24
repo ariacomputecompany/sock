@@ -291,6 +291,7 @@ def chunked_prefill_paged_decode(
     sinks=None,
     is_block_table_ptr: bool = False,
     causal: bool = True,
+    force_triton_decode: bool = False,
 ):
     if sm_scale is None:
         sm_scale = 1.0 / (query.shape[2] ** 0.5)
@@ -393,6 +394,9 @@ def chunked_prefill_paged_decode(
     if not has_native_layout:
         rejection_reasons.append("KV cache layout is not native-packed")
     if not is_pow2 or not has_native_layout:
+        use_custom = False
+    if force_triton_decode:
+        rejection_reasons.append("caller requested Triton decode")
         use_custom = False
 
     if use_custom:

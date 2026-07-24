@@ -1067,6 +1067,8 @@ class AiterFlashAttentionImpl(AttentionImpl):
 
             return tmh_backend_paged_attention(
                 query=query,
+                key=key,
+                value=value,
                 cache=kv_cache,
                 attn_metadata=attn_metadata,
                 output=output,
@@ -1076,6 +1078,9 @@ class AiterFlashAttentionImpl(AttentionImpl):
                 softcap=self.logits_soft_cap,
                 alibi_slopes=self.alibi_slopes,
                 sinks=self.sinks,
+                kv_cache_dtype=self.kv_cache_dtype,
+                k_scale=layer._k_scale,
+                v_scale=layer._v_scale,
             )
 
         key_cache, value_cache = kv_cache.unbind(1)
