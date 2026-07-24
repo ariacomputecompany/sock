@@ -904,3 +904,34 @@ Triton tensor-descriptor mode, warmup/JIT coverage, scheduler shape, and any
 Triton attention flags that affect c4 throughput without reintroducing ROCm
 paged-attention instability.
 
+## 2026-07-24 Global Triton Tensor-Descriptor Falsification
+
+Standard `TRITON_ATTN` was rerun with `VLLM_TRITON_ATTN_USE_TD=1`, forcing
+Triton tensor descriptors on ROCm. The hypothesis was that gfx1151 might benefit
+from the tensor-descriptor path even though the default auto policy only enables
+it on XPU.
+
+The c4 gate was stable and mixed, so a full suite was run. The full result
+falsified TD as a global switch:
+
+```text
+standard TRITON_ATTN full geomean:      36.7329
+standard TRITON_ATTN TD=1 full geomean: 36.3261
+Delta:                                  -1.11%
+```
+
+The useful signal is shape-specific. TD hurt many c1/c2 short and medium cells,
+but materially helped long-context summary at concurrency:
+
+```text
+long_context_summary_256 c2: 34.8894 -> 38.1454  (+9.33%)
+long_context_summary_256 c4: 65.8769 -> 72.4141  (+9.92%)
+```
+
+Conclusion: forcing tensor descriptors globally is not a +20 route. The stronger
+abstraction is shape-adaptive Triton attention: TD appears useful for the
+large-context concurrent summary shape, but it should not be paid for on the
+shorter/single-stream cells. The next code-level pass should inspect the Triton
+attention call site and test an adaptive TD gate keyed on runtime sequence shape
+rather than process-wide environment state.
+
