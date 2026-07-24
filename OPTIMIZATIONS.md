@@ -770,3 +770,40 @@ where the poisoned stream was observed. The next pass should rerun a minimal
 reproducer with `AMD_SERIALIZE_KERNEL=3` so the crash is attributed closer to the
 launch that causes it.
 
+## 2026-07-24 Serialized Minimal Reproducer Points At ROCm Paged Attention
+
+After the MoE backend and grouped-top-k switches failed, the benchmark was
+minimized to one request shape: standard KV, `medium_architecture_256`, c4,
+`--runs 1`, no warmup. The server was launched with `AMD_SERIALIZE_KERNEL=3` to
+try to force synchronous attribution.
+
+The minimal case reproduced the crash:
+
+```text
+standard medium_architecture_256 c4, runs=1, warmup=0: HTTP 500
+```
+
+One important caveat: the local PyTorch build warned that `AMD_SERIALIZE_KERNEL=3`
+was not accepted by its boolean env parser:
+
+```text
+Ignoring invalid value for boolean flag AMD_SERIALIZE_KERNEL: 3 valid values are 0 or 1
+```
+
+Even with that caveat, the failure stack moved to a concrete lower layer instead
+of generic MoE/attention allocation fallout:
+
+```text
+_rocm_C.abi3.so -> paged_attention_custom_launcher_navi<..., 256, false>
+_rocm_C.abi3.so -> paged_attention(...)
+Error: hip/CUDA illegal memory access
+```
+
+Conclusion: the strongest current evidence says the standard medium/long c4
+crash is in ROCm paged attention, not primarily in TMH storage, not primarily in
+MoE backend selection, and not fixed by disabling grouped top-k. The next pass
+should either rerun with the accepted boolean `AMD_SERIALIZE_KERNEL=1` or bypass
+ROCm paged attention entirely with a Triton attention backend probe. If Triton
+attention stabilizes the c4 slice, the +20 path becomes a paged-attention kernel
+problem rather than a TMH policy problem.
+
