@@ -807,3 +807,37 @@ ROCm paged attention entirely with a Triton attention backend probe. If Triton
 attention stabilizes the c4 slice, the +20 path becomes a paged-attention kernel
 problem rather than a TMH policy problem.
 
+## 2026-07-24 Triton Attention Stabilizes Standard Medium/Long C4
+
+The next coordinate-system change bypassed ROCm paged attention entirely with
+`--attention-backend TRITON_ATTN`, keeping the same standard KV serve shape.
+This directly tested the serialized finding that `_rocm_C paged_attention` was
+the live crash surface.
+
+The minimal reproducer passed:
+
+```text
+standard TRITON_ATTN medium_architecture_256 c4, runs=1: 52.3247 completion tok/s
+```
+
+Then the full narrowed medium/long c4 slice passed with two measured runs and
+one warmup:
+
+```text
+medium_architecture_256 c4:    51.2015 completion tok/s
+long_cosmology_512 c4:         51.2788 completion tok/s
+long_context_summary_256 c4:   74.3885 completion tok/s
+```
+
+This is the first same-session configuration that survives the exact slice that
+repeatedly killed standard ROCm paged attention. It also preserves useful
+throughput on the long-context summary case, where ROCm paged attention never
+reached a clean paired result in the current runtime state.
+
+Conclusion: the negative-throughput story was partly a false benchmark frame.
+The immediate blocker was not TMH policy, and not MoE routing alone; standard
+ROCm paged attention on gfx1151 is unstable for medium/long concurrent decode.
+`TRITON_ATTN` is now the stable baseline route for continued +20 work. Next,
+run a full standard `TRITON_ATTN` suite, then pair it against TMH under the same
+attention backend if TMH accepts that configuration.
+
