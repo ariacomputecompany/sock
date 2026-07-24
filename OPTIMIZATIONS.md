@@ -449,3 +449,26 @@ paged-attention path on `gfx1151`, at least under the current TMH all-raw native
 handoff. Keep `512` as the current production constant and continue searching
 below or around it, not above it.
 
+## 2026-07-24 C1 Custom Decode Gate Falsification
+
+After `512` won as the ROCm decode partition, a follow-up tested relaxing the
+TMH native decode gate from `num_seqs >= 2` to `num_seqs >= 1`. The hypothesis
+was that the new partition geometry might make ROCm custom paged decode useful
+for single-stream decode too.
+
+A concurrency-1-only suite looked promising: c1 geomean improved from `22.8834`
+to `25.1543` versus the partition-512 full-suite c1 cells. But the production
+full suite falsified the change:
+
+```text
+TMH partition-512 full geomean: 37.9962
+TMH c1-custom full geomean:     32.7044
+Delta vs partition-512:        -13.93%
+Delta vs standard KV:          -13.57%
+```
+
+Conclusion: the old `num_seqs >= 2` gate should stay. The c1-only result was a
+run-shape artifact, while the full suite showed broad c2/c4 regressions. The
+next search should preserve the proven concurrency gate and look for a more
+selective shape policy or a deeper kernel-level improvement.
+
