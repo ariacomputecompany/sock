@@ -676,3 +676,32 @@ run a narrow standard smoke, then either a serialized `AMD_SERIALIZE_KERNEL=3`
 repro for `wvSplitK` or a clean reboot if the GPU remains poisoned. Treat all
 post-crash throughput comparisons as suspect until the standard endpoint can
 complete the suite again.
+
+## 2026-07-24 Standard Health Reprobe Narrows Crash Surface
+
+After the paired standard full-suite crash, the standard endpoint was restarted
+and reprobed case-by-case.
+
+Result:
+
+```text
+standard tiny_fact_64 c4:      passed, median 53.5054 completion tok/s
+standard short_codegen_128 c4: passed, median 55.7930 completion tok/s
+standard medium/long c4 slice: failed with HTTP 500
+```
+
+The repeated failure is below TMH and below attention. The second crash surfaced
+in Qwen3-MoE WNA16 fused experts:
+
+```text
+qwen3_moe.py -> fused_moe runner -> moe_wna16.py -> fused_experts
+Failure site surfaced at fused_moe.py cache allocation after fused expert work
+Error: hip/CUDA illegal memory access
+```
+
+Conclusion: the live baseline blocker is now narrower than the full endpoint
+suite. Standard KV can serve short concurrent cells, but medium/long concurrent
+MoE shapes can poison EngineCore. The next useful pass is not a TMH attention
+optimization; it is a core runtime stability/backend pass around ROCm MoE WNA16
+or the shared/gate GEMM path. +20 is unreachable as a credible claim until this
+standard-path crash is either eliminated or isolated behind a safer backend.
