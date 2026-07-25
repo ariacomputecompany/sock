@@ -88,6 +88,66 @@ from vllm.version import __version__ as VLLM_VERSION
 
 logger = init_logger(__name__)
 
+_TMH_ENGINE_TIMING_LOG_COUNT = 0
+
+
+def _tmh_engine_timing_enabled() -> bool:
+    return os.environ.get("VLLM_TMH_LOG_ENGINE_TIMING", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _tmh_engine_timing_limit() -> int:
+    try:
+        return int(os.environ.get("VLLM_TMH_ENGINE_TIMING_LIMIT", "512"))
+    except ValueError:
+        return 512
+
+
+@contextmanager
+def _tmh_engine_timing(stage: str, scheduler_output: SchedulerOutput | None = None):
+    global _TMH_ENGINE_TIMING_LOG_COUNT
+    if not _tmh_engine_timing_enabled():
+        yield
+        return
+    if _TMH_ENGINE_TIMING_LOG_COUNT >= _tmh_engine_timing_limit():
+        yield
+        return
+
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        _TMH_ENGINE_TIMING_LOG_COUNT += 1
+        total_tokens = (
+            scheduler_output.total_num_scheduled_tokens
+            if scheduler_output is not None
+            else 0
+        )
+        scheduled_reqs = (
+            len(scheduler_output.num_scheduled_tokens)
+            if scheduler_output is not None
+            else 0
+        )
+        tmh_events = (
+            len(scheduler_output.tmh_physical_events)
+            if scheduler_output is not None
+            and scheduler_output.tmh_physical_events
+            else 0
+        )
+        logger.info(
+            "TMH engine timing: stage=%s elapsed_ms=%.3f total_tokens=%d "
+            "scheduled_reqs=%d tmh_events=%d",
+            stage,
+            (time.perf_counter() - start) * 1000.0,
+            total_tokens,
+            scheduled_reqs,
+            tmh_events,
+        )
+
 HANDSHAKE_TIMEOUT_MINS = 5
 
 _R = TypeVar("_R")  # Return type for collective_rpc
@@ -487,23 +547,30 @@ class EngineCore:
         # or finished and not yet removed from the batch.
         if not self.scheduler.has_requests():
             return {}, False
-        scheduler_output = self.scheduler.schedule(self._should_throttle_prefills())
-        future = self.model_executor.execute_model(scheduler_output, non_block=True)
-        grammar_output = self.scheduler.get_grammar_bitmask(scheduler_output)
+        with _tmh_engine_timing("schedule"):
+            scheduler_output = self.scheduler.schedule(self._should_throttle_prefills())
+        with _tmh_engine_timing("execute_submit", scheduler_output):
+            future = self.model_executor.execute_model(scheduler_output, non_block=True)
+        with _tmh_engine_timing("grammar", scheduler_output):
+            grammar_output = self.scheduler.get_grammar_bitmask(scheduler_output)
         with (
             self.log_error_detail(scheduler_output),
             self.log_iteration_details(scheduler_output),
         ):
-            model_output = future.result()
+            with _tmh_engine_timing("execute_wait", scheduler_output):
+                model_output = future.result()
             if model_output is None:
-                model_output = self.model_executor.sample_tokens(grammar_output)
+                with _tmh_engine_timing("sample_tokens", scheduler_output):
+                    model_output = self.model_executor.sample_tokens(grammar_output)
 
         # Before processing the model output, process any aborts that happened
         # during the model execution.
-        self._process_aborts_queue()
-        engine_core_outputs = self.scheduler.update_from_output(
-            scheduler_output, model_output
-        )
+        with _tmh_engine_timing("process_aborts", scheduler_output):
+            self._process_aborts_queue()
+        with _tmh_engine_timing("scheduler_update", scheduler_output):
+            engine_core_outputs = self.scheduler.update_from_output(
+                scheduler_output, model_output
+            )
 
         return engine_core_outputs, scheduler_output.total_num_scheduled_tokens > 0
 
@@ -544,11 +611,15 @@ class EngineCore:
         model_executed = False
         deferred_scheduler_output = None
         if self.scheduler.has_requests():
-            scheduler_output = self.scheduler.schedule(self._should_throttle_prefills())
-            with self.log_error_detail(scheduler_output):
-                exec_future = self.model_executor.execute_model(
-                    scheduler_output, non_block=True
+            with _tmh_engine_timing("queue_schedule"):
+                scheduler_output = self.scheduler.schedule(
+                    self._should_throttle_prefills()
                 )
+            with self.log_error_detail(scheduler_output):
+                with _tmh_engine_timing("queue_execute_submit", scheduler_output):
+                    exec_future = self.model_executor.execute_model(
+                        scheduler_output, non_block=True
+                    )
             if self.is_ec_consumer:
                 model_executed = scheduler_output.total_num_scheduled_tokens > 0
 
@@ -559,12 +630,14 @@ class EngineCore:
                 if not scheduler_output.pending_structured_output_tokens:
                     # We aren't waiting for any tokens, get any grammar output
                     # and sample immediately.
-                    grammar_output = self.scheduler.get_grammar_bitmask(
-                        scheduler_output
-                    )
-                    future = self.model_executor.sample_tokens(
-                        grammar_output, non_block=True
-                    )
+                    with _tmh_engine_timing("queue_grammar", scheduler_output):
+                        grammar_output = self.scheduler.get_grammar_bitmask(
+                            scheduler_output
+                        )
+                    with _tmh_engine_timing("queue_sample_submit", scheduler_output):
+                        future = self.model_executor.sample_tokens(
+                            grammar_output, non_block=True
+                        )
                 else:
                     # We need to defer sampling until we have processed the model output
                     # from the prior step.
@@ -592,19 +665,23 @@ class EngineCore:
             self.log_error_detail(scheduler_output),
             self.log_iteration_details(scheduler_output),
         ):
-            model_output = future.result()
+            with _tmh_engine_timing("queue_future_wait", scheduler_output):
+                model_output = future.result()
             if model_output is None:
                 # None from sample_tokens() implies that the original execute_model()
                 # call failed - raise that exception.
-                exec_model_fut.result()
+                with _tmh_engine_timing("queue_exec_error_wait", scheduler_output):
+                    exec_model_fut.result()
                 raise RuntimeError("unexpected error")
 
         # Before processing the model output, process any aborts that happened
         # during the model execution.
-        self._process_aborts_queue()
-        engine_core_outputs = self.scheduler.update_from_output(
-            scheduler_output, model_output
-        )
+        with _tmh_engine_timing("queue_process_aborts", scheduler_output):
+            self._process_aborts_queue()
+        with _tmh_engine_timing("queue_scheduler_update", scheduler_output):
+            engine_core_outputs = self.scheduler.update_from_output(
+                scheduler_output, model_output
+            )
 
         # NOTE(nick): We can either handle the deferred tasks here or save
         # in a field and do it immediately once step_with_batch_queue is
@@ -623,10 +700,16 @@ class EngineCore:
                     )
             # We now have the tokens needed to compute the bitmask for the
             # deferred request. Get the bitmask and call sample tokens.
-            grammar_output = self.scheduler.get_grammar_bitmask(
-                deferred_scheduler_output
-            )
-            future = self.model_executor.sample_tokens(grammar_output, non_block=True)
+            with _tmh_engine_timing("queue_deferred_grammar", deferred_scheduler_output):
+                grammar_output = self.scheduler.get_grammar_bitmask(
+                    deferred_scheduler_output
+                )
+            with _tmh_engine_timing(
+                "queue_deferred_sample_submit", deferred_scheduler_output
+            ):
+                future = self.model_executor.sample_tokens(
+                    grammar_output, non_block=True
+                )
             batch_queue.appendleft((future, deferred_scheduler_output, exec_future))
 
         return engine_core_outputs, model_executed

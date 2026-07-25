@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 import os
+import time
 
 import torch
 
@@ -44,6 +45,54 @@ TMH_SEGMENTED_DECODE_MIN_SEQ_LEN = 1025
 
 logger = init_logger(__name__)
 _TMH_RAW_MIX_LOG_COUNT = 0
+_TMH_TIMING_LOG_COUNT = 0
+
+
+def _tmh_timing_enabled() -> bool:
+    return os.getenv("VLLM_TMH_LOG_TIMING", "0").lower() in {"1", "true", "yes"}
+
+
+def _tmh_timing_limit() -> int:
+    try:
+        return int(os.getenv("VLLM_TMH_TIMING_LIMIT", "256"))
+    except ValueError:
+        return 256
+
+
+def _tmh_timing_sync() -> None:
+    if os.getenv("VLLM_TMH_TIMING_SYNC", "0").lower() not in {"1", "true", "yes"}:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
+def _tmh_log_timing(
+    *,
+    stage: str,
+    layer_name: str,
+    elapsed_ms: float,
+    num_tokens: int,
+    num_seqs: int,
+    max_query_len: int,
+    all_raw: bool | None = None,
+    native_raw: bool | None = None,
+) -> None:
+    global _TMH_TIMING_LOG_COUNT
+    if not _tmh_timing_enabled() or _TMH_TIMING_LOG_COUNT >= _tmh_timing_limit():
+        return
+    logger.info(
+        "TMH timing: stage=%s layer=%s elapsed_ms=%.3f num_tokens=%d "
+        "num_seqs=%d max_query_len=%d all_raw=%s native_raw=%s",
+        stage,
+        layer_name,
+        elapsed_ms,
+        num_tokens,
+        num_seqs,
+        max_query_len,
+        all_raw,
+        native_raw,
+    )
+    _TMH_TIMING_LOG_COUNT += 1
 
 
 @triton.jit
@@ -1424,6 +1473,11 @@ def tmh_backend_kv_cache_update(
     seq_to_request_row = get_forward_context().additional_kwargs.get(
         "tmh_seq_to_request_row"
     )
+    if _tmh_timing_enabled():
+        _tmh_timing_sync()
+        start = time.perf_counter()
+    else:
+        start = None
     tmh_reshape_and_cache(
         key,
         value,
@@ -1432,6 +1486,16 @@ def tmh_backend_kv_cache_update(
         attn_metadata,
         seq_to_request_row,
     )
+    if start is not None:
+        _tmh_timing_sync()
+        _tmh_log_timing(
+            stage="cache_update",
+            layer_name=layer.layer_name,
+            elapsed_ms=(time.perf_counter() - start) * 1000.0,
+            num_tokens=int(key.shape[0]),
+            num_seqs=int(len(attn_metadata.seq_lens)),
+            max_query_len=int(getattr(attn_metadata, "max_query_len", 0) or 0),
+        )
 
 
 def tmh_backend_paged_attention(
@@ -1458,6 +1522,11 @@ def tmh_backend_paged_attention(
     forward_context = get_forward_context()
     seq_to_request_row = forward_context.additional_kwargs.get("tmh_seq_to_request_row")
     mm_prefix_range_tensor = getattr(attn_metadata, "mm_prefix_range_tensor", None)
+    if _tmh_timing_enabled():
+        _tmh_timing_sync()
+        start = time.perf_counter()
+    else:
+        start = None
     tmh_physical_attention(
         q=query[: attn_metadata.num_actual_tokens],
         key=key[: attn_metadata.num_actual_tokens] if key is not None else None,
@@ -1480,6 +1549,16 @@ def tmh_backend_paged_attention(
         v_scale=v_scale,
         chunk_lookback=chunk_lookback,
     )
+    if start is not None:
+        _tmh_timing_sync()
+        _tmh_log_timing(
+            stage="attention",
+            layer_name=getattr(cache, "layer_name", "unknown"),
+            elapsed_ms=(time.perf_counter() - start) * 1000.0,
+            num_tokens=int(attn_metadata.num_actual_tokens),
+            num_seqs=int(len(attn_metadata.seq_lens)),
+            max_query_len=int(getattr(attn_metadata, "max_query_len", 0) or 0),
+        )
     return output
 
 

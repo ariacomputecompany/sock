@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 import itertools
+import os
 import time
 from collections import defaultdict, deque
 from collections.abc import Iterable
@@ -63,6 +64,69 @@ from vllm.v1.structured_output import StructuredOutputManager
 from vllm.v1.utils import record_function_or_nullcontext
 
 logger = init_logger(__name__)
+
+_TMH_SCHED_LOG_COUNT = 0
+
+
+def _tmh_sched_log_enabled() -> bool:
+    return os.environ.get("VLLM_TMH_LOG_SCHED", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _tmh_sched_log_limit() -> int:
+    try:
+        return int(os.environ.get("VLLM_TMH_SCHED_LOG_LIMIT", "256"))
+    except ValueError:
+        return 256
+
+
+def _tmh_log_schedule(
+    *,
+    num_scheduled_tokens: dict[str, int],
+    total_num_scheduled_tokens: int,
+    running_count: int,
+    waiting_count: int,
+    scheduled_new_count: int,
+    scheduled_resumed_count: int,
+    scheduled_running_count: int,
+    token_budget_remaining: int,
+    max_num_scheduled_tokens: int,
+    tmh_physical_events: Any,
+) -> None:
+    global _TMH_SCHED_LOG_COUNT
+    if not _tmh_sched_log_enabled():
+        return
+    if _TMH_SCHED_LOG_COUNT >= _tmh_sched_log_limit():
+        return
+    _TMH_SCHED_LOG_COUNT += 1
+
+    scheduled_values = list(num_scheduled_tokens.values())
+    max_tokens = max(scheduled_values) if scheduled_values else 0
+    min_tokens = min(scheduled_values) if scheduled_values else 0
+    tmh_event_count = len(tmh_physical_events) if tmh_physical_events else 0
+    logger.info(
+        "TMH sched: step=%d scheduled_reqs=%d total_tokens=%d "
+        "min_tokens=%d max_tokens=%d running=%d waiting=%d new=%d "
+        "resumed=%d cached=%d token_budget_remaining=%d "
+        "max_scheduled_tokens=%d tmh_events=%d",
+        _TMH_SCHED_LOG_COUNT,
+        len(scheduled_values),
+        total_num_scheduled_tokens,
+        min_tokens,
+        max_tokens,
+        running_count,
+        waiting_count,
+        scheduled_new_count,
+        scheduled_resumed_count,
+        scheduled_running_count,
+        token_budget_remaining,
+        max_num_scheduled_tokens,
+        tmh_event_count,
+    )
 
 
 class Scheduler(SchedulerInterface):
@@ -1085,6 +1149,18 @@ class Scheduler(SchedulerInterface):
         )
         tmh_physical_events = (
             self.kv_cache_manager.take_tmh_physical_events() or None
+        )
+        _tmh_log_schedule(
+            num_scheduled_tokens=num_scheduled_tokens,
+            total_num_scheduled_tokens=total_num_scheduled_tokens,
+            running_count=len(self.running),
+            waiting_count=len(self.waiting),
+            scheduled_new_count=len(scheduled_new_reqs),
+            scheduled_resumed_count=len(scheduled_resumed_reqs),
+            scheduled_running_count=len(scheduled_running_reqs),
+            token_budget_remaining=token_budget,
+            max_num_scheduled_tokens=self.max_num_scheduled_tokens,
+            tmh_physical_events=tmh_physical_events,
         )
 
         # Dynamic speculative decoding: compute optimal K

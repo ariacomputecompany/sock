@@ -1848,3 +1848,99 @@ slot-aware c12: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-slot-awa
 native raw c12: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-native-raw-c12/
 summary:        benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-native-raw-c12/analysis/slot_aware_native_raw_summary.json
 ```
+
+## 2026-07-25 TMH Live Bottleneck Pass: Canonical Descriptor Refcounts
+
+This pass followed the contradiction from the slot-aware run: cache update and
+TMH attention timing were measurable, but far too small to explain the live
+wall-time collapse. Matched c4 scheduler probes showed standard KV and TMH had
+identical scheduled-token geometry:
+
+```text
+steps=6 nonzero_steps=4 total_scheduled_tokens=27924
+step tokens: 6981, 8192, 8192, 4559, 0, 0
+scheduled reqs: 1, 2, 2, 1, 0, 0
+```
+
+Synchronized model-stage timing then proved the model path was not the missing
+wall. TMH hot25 c4 spent roughly `20.0s` in forward, `2.6s` in preprocess/TMH
+event application, and only `~1.4ms` in sampling, yet the request batch still
+took `~109s`. Engine-loop timing isolated the missing time:
+
+```text
+queue_scheduler_update sum_ms=85513.676
+largest scheduler_update calls: 28563.276ms, 32196.017ms, 24350.563ms
+model forward sum_ms=20048.842
+sample_total sum_ms=1.438
+```
+
+The root cause was `TMHKVRuntimePolicy.forget_request()`. On each finished
+request, it removed that request's physical descriptors and then checked whether
+each removed canonical descriptor was still referenced by scanning every active
+descriptor. For 7K-token prompts this is pages times layers, repeated for each
+descriptor, so request completion became quadratic CPU work.
+
+The fix adds maintained canonical descriptor reference counts. Descriptor
+recording increments/decrements the count when a canonical storage key appears
+or changes, and request cleanup emits `released_descriptors` only when the
+decrement removes the final reference. This preserves the existing worker event
+semantics while making finish cleanup linear in the finishing request's
+descriptors.
+
+Validation:
+
+```text
+cd vllm
+.venv/bin/python -m py_compile \
+  vllm/v1/core/tmh_policy.py \
+  vllm/v1/core/sched/scheduler.py \
+  vllm/v1/worker/gpu_model_runner.py \
+  vllm/v1/engine/core.py \
+  vllm/v1/attention/ops/tmh_triton_ops.py
+.venv/bin/python -m pytest tests/v1/core/test_tmh_physical.py tests/v1/core/test_tmh_triton_ops.py -q
+13 passed
+```
+
+Clean live results after the refcount fix:
+
+```text
+TMH hot25 c4 before: wall=107.7938s p50=93.2371s p90=107.7910s total_tok/s=259.0873
+TMH hot25 c4 after:  wall= 23.5851s p50=21.2238s p90= 23.5809s total_tok/s=1184.1359
+standard c4:         wall= 27.3267s p50=18.1438s p90= 27.3235s total_tok/s=1022.0045
+
+TMH hot25 c12 before native raw: wall=489.0607s p50=329.8101s p90=488.7363s total_tok/s=171.3223
+TMH hot25 c12 after refcount:    wall= 80.1571s p50= 58.5576s p90= 80.0961s total_tok/s=1045.2849
+standard c12:                    wall= 81.8280s p50= 50.4540s p90= 77.8302s total_tok/s=1023.9407
+```
+
+Relative movement:
+
+```text
+c4 after vs TMH c4 before:      +357.02% total_tok/s, -78.12% wall
+c4 after vs standard c4:         +15.86% total_tok/s, -13.69% wall
+c12 after vs native raw before: +510.13% total_tok/s, -83.61% wall
+c12 after vs standard c12:        +2.08% total_tok/s,  -2.04% wall
+```
+
+Interpretation: the main live bottleneck was not TMH attention, cache update,
+or scheduler admission. It was completion-time canonical descriptor liveness
+tracking. Removing that quadratic path turns the 25% hot-budget configuration
+from deeply negative to slightly positive at c12 while retaining the `14.07x`
+TMH allocator capacity point (`+73.51%` over standard at util0.35).
+
+Next target for the +20% goal: with the finish-path CPU collapse removed, the
+remaining c12 delta is ordinary active-step efficiency. The next pass should
+focus on reducing `tmh_apply_events` (~0.47-0.77s per non-empty step at c4) and
+the TMH attention/kernel warm path, then run c12/c14/c16/c20/c24 live saturation
+again to measure whether the allocator headroom now turns into higher frontier
+throughput under larger batches.
+
+Artifacts:
+
+```text
+scheduler shape: benchmarks/2026-07-25-gmk-qwen3-30b-sched-probe-c4/analysis/sched_probe_summary.json
+engine timing:   benchmarks/2026-07-25-gmk-qwen3-30b-tmh-engine-timing-c4/analysis/engine_timing_summary.json
+c4 result:       benchmarks/2026-07-25-gmk-qwen3-30b-tmh-refcount-c4/results/tmh-refcount-c4.json
+c12 result:      benchmarks/2026-07-25-gmk-qwen3-30b-tmh-refcount-c12/results/tmh-refcount-c12.json
+summary:         benchmarks/2026-07-25-gmk-qwen3-30b-tmh-refcount-c12/analysis/refcount_release_summary.json
+```

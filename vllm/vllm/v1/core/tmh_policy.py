@@ -133,6 +133,9 @@ class TMHKVRuntimePolicy:
     _physical_descriptors: dict[
         tuple[str, str, int], TMHPhysicalPageDescriptor
     ] = field(default_factory=dict)
+    _canonical_descriptor_refcounts: dict[tuple[str, int, int], int] = field(
+        default_factory=dict
+    )
     _pending_physical_events: list[TMHPhysicalEvent] = field(default_factory=list)
     _early_layers: list[TMHLayerShape] = field(init=False, repr=False)
     _late_layers: list[TMHLayerShape] = field(init=False, repr=False)
@@ -369,21 +372,15 @@ class TMHKVRuntimePolicy:
     def forget_request(self, request_id: str) -> None:
         self.latest_by_request.pop(request_id, None)
         self._regular_live_bytes_cache.pop(request_id, None)
-        removed_descriptors = [
-            descriptor
-            for key, descriptor in self._physical_descriptors.items()
-            if key[0] == request_id
-        ]
-        for descriptor in removed_descriptors:
-            self._physical_descriptors.pop(
-                (descriptor.request_id, descriptor.layer_name, descriptor.page_index),
-                None,
-            )
-        released_descriptors = tuple(
-            descriptor
-            for descriptor in removed_descriptors
-            if self._canonical_descriptor_unreferenced(descriptor)
-        )
+        removed_descriptors: list[TMHPhysicalPageDescriptor] = []
+        released_descriptors: list[TMHPhysicalPageDescriptor] = []
+        for key, descriptor in list(self._physical_descriptors.items()):
+            if key[0] != request_id:
+                continue
+            removed_descriptors.append(descriptor)
+            self._physical_descriptors.pop(key, None)
+            if self._untrack_canonical_descriptor(descriptor):
+                released_descriptors.append(descriptor)
         if self.physical and removed_descriptors:
             self._pending_physical_events.append(
                 TMHPhysicalEvent(
@@ -393,7 +390,7 @@ class TMHKVRuntimePolicy:
                     recent_start_page=0,
                     hot_pages=0,
                     released_request_ids=(request_id,),
-                    released_descriptors=released_descriptors,
+                    released_descriptors=tuple(released_descriptors),
                 )
             )
 
@@ -492,12 +489,18 @@ class TMHKVRuntimePolicy:
                 key = (request_id, layer.layer_name, page_index)
                 old_descriptor = self._physical_descriptors.get(key)
                 if old_descriptor != descriptor:
+                    if old_descriptor is not None:
+                        old_key = _canonical_descriptor_key(old_descriptor)
+                        new_key = _canonical_descriptor_key(descriptor)
+                        if old_key != new_key and self._untrack_canonical_descriptor(
+                            old_descriptor
+                        ):
+                            released_descriptors.append(old_descriptor)
+                        if old_key != new_key:
+                            self._track_canonical_descriptor(descriptor)
+                    else:
+                        self._track_canonical_descriptor(descriptor)
                     self._physical_descriptors[key] = descriptor
-                    if (
-                        old_descriptor is not None
-                        and self._canonical_descriptor_unreferenced(old_descriptor)
-                    ):
-                        released_descriptors.append(old_descriptor)
                     descriptors.append(descriptor)
         if descriptors or released_descriptors:
             self._pending_physical_events.append(
@@ -511,17 +514,30 @@ class TMHKVRuntimePolicy:
                 )
             )
 
-    def _canonical_descriptor_unreferenced(
+    def _track_canonical_descriptor(
+        self,
+        descriptor: TMHPhysicalPageDescriptor,
+    ) -> None:
+        descriptor_key = _canonical_descriptor_key(descriptor)
+        if descriptor_key is None:
+            return
+        self._canonical_descriptor_refcounts[descriptor_key] = (
+            self._canonical_descriptor_refcounts.get(descriptor_key, 0) + 1
+        )
+
+    def _untrack_canonical_descriptor(
         self,
         descriptor: TMHPhysicalPageDescriptor,
     ) -> bool:
         descriptor_key = _canonical_descriptor_key(descriptor)
         if descriptor_key is None:
             return False
-        return all(
-            _canonical_descriptor_key(active_descriptor) != descriptor_key
-            for active_descriptor in self._physical_descriptors.values()
-        )
+        count = self._canonical_descriptor_refcounts.get(descriptor_key, 0)
+        if count <= 1:
+            self._canonical_descriptor_refcounts.pop(descriptor_key, None)
+            return True
+        self._canonical_descriptor_refcounts[descriptor_key] = count - 1
+        return False
 
 
 def should_log_allocations() -> bool:

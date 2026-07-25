@@ -1,0 +1,76 @@
+{
+  "pass": "canonical_descriptor_refcounts",
+  "date": "2026-07-25",
+  "hypothesis": "TMH hot25 live saturation was bottlenecked by completion-time canonical descriptor liveness scans, not attention/cache update or scheduling shape.",
+  "diagnostics": {
+    "scheduler_shape": {
+      "standard_c4_steps": [6981, 8192, 8192, 4559, 0, 0],
+      "tmh_c4_steps": [6981, 8192, 8192, 4559, 0, 0],
+      "interpretation": "Standard KV and TMH scheduled identical work at c4."
+    },
+    "engine_timing_c4_pre_fix": {
+      "queue_scheduler_update_sum_ms": 85513.676,
+      "queue_scheduler_update_largest_ms": [32196.017, 28563.276, 24350.563],
+      "model_forward_sum_ms": 20048.842,
+      "sample_total_sum_ms": 1.438
+    }
+  },
+  "change": {
+    "file": "vllm/v1/core/tmh_policy.py",
+    "summary": "Maintain canonical descriptor reference counts and emit release events when a decrement removes the final reference, avoiding quadratic scans over all active physical descriptors during request cleanup."
+  },
+  "results": {
+    "tmh_hot25_c4_before": {
+      "wall_s": 107.7938,
+      "latency_p50_s": 93.2371,
+      "latency_p90_s": 107.791,
+      "total_tok_s": 259.0873
+    },
+    "tmh_hot25_c4_after": {
+      "wall_s": 23.5851,
+      "latency_p50_s": 21.2238,
+      "latency_p90_s": 23.5809,
+      "total_tok_s": 1184.1359
+    },
+    "standard_c4": {
+      "wall_s": 27.3267,
+      "latency_p50_s": 18.1438,
+      "latency_p90_s": 27.3235,
+      "total_tok_s": 1022.0045
+    },
+    "tmh_hot25_c12_before_native_raw": {
+      "wall_s": 489.0607,
+      "latency_p50_s": 329.8101,
+      "latency_p90_s": 488.7363,
+      "total_tok_s": 171.3223
+    },
+    "tmh_hot25_c12_after": {
+      "wall_s": 80.1571,
+      "latency_p50_s": 58.5576,
+      "latency_p90_s": 80.0961,
+      "total_tok_s": 1045.2849
+    },
+    "standard_c12": {
+      "wall_s": 81.828,
+      "latency_p50_s": 50.454,
+      "latency_p90_s": 77.8302,
+      "total_tok_s": 1023.9407
+    }
+  },
+  "relative": {
+    "c4_after_vs_tmh_before_total_tok_s_pct": 357.02,
+    "c4_after_vs_tmh_before_wall_pct": -78.12,
+    "c4_after_vs_standard_total_tok_s_pct": 15.86,
+    "c4_after_vs_standard_wall_pct": -13.69,
+    "c12_after_vs_native_raw_before_total_tok_s_pct": 510.13,
+    "c12_after_vs_native_raw_before_wall_pct": -83.61,
+    "c12_after_vs_standard_total_tok_s_pct": 2.08,
+    "c12_after_vs_standard_wall_pct": -2.04
+  },
+  "tests": {
+    "py_compile": "passed",
+    "pytest": "tests/v1/core/test_tmh_physical.py tests/v1/core/test_tmh_triton_ops.py -q",
+    "pytest_result": "13 passed"
+  },
+  "next_target": "Reduce tmh_apply_events and active-step TMH attention/event overhead, then rerun c12/c14/c16/c20/c24 saturation to chase +20% throughput."
+}

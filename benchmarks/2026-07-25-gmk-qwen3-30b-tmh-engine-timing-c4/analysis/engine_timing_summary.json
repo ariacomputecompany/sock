@@ -1,0 +1,480 @@
+{
+  "engine_rows": [
+    {
+      "elapsed_ms": 68.649,
+      "scheduled_reqs": 0,
+      "stage": "queue_schedule",
+      "tmh_events": 0,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 5280.426,
+      "scheduled_reqs": 1,
+      "stage": "queue_execute_submit",
+      "tmh_events": 1,
+      "total_tokens": 6981
+    },
+    {
+      "elapsed_ms": 0.004,
+      "scheduled_reqs": 1,
+      "stage": "queue_grammar",
+      "tmh_events": 1,
+      "total_tokens": 6981
+    },
+    {
+      "elapsed_ms": 2.676,
+      "scheduled_reqs": 1,
+      "stage": "queue_sample_submit",
+      "tmh_events": 1,
+      "total_tokens": 6981
+    },
+    {
+      "elapsed_ms": 75.382,
+      "scheduled_reqs": 0,
+      "stage": "queue_schedule",
+      "tmh_events": 0,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 6138.336,
+      "scheduled_reqs": 2,
+      "stage": "queue_execute_submit",
+      "tmh_events": 2,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 0.005,
+      "scheduled_reqs": 2,
+      "stage": "queue_grammar",
+      "tmh_events": 2,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 1.169,
+      "scheduled_reqs": 2,
+      "stage": "queue_sample_submit",
+      "tmh_events": 2,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 0.048,
+      "scheduled_reqs": 1,
+      "stage": "queue_future_wait",
+      "tmh_events": 1,
+      "total_tokens": 6981
+    },
+    {
+      "elapsed_ms": 0.009,
+      "scheduled_reqs": 1,
+      "stage": "queue_process_aborts",
+      "tmh_events": 1,
+      "total_tokens": 6981
+    },
+    {
+      "elapsed_ms": 28563.276,
+      "scheduled_reqs": 1,
+      "stage": "queue_scheduler_update",
+      "tmh_events": 1,
+      "total_tokens": 6981
+    },
+    {
+      "elapsed_ms": 178.872,
+      "scheduled_reqs": 0,
+      "stage": "queue_schedule",
+      "tmh_events": 0,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 6999.838,
+      "scheduled_reqs": 2,
+      "stage": "queue_execute_submit",
+      "tmh_events": 3,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 0.004,
+      "scheduled_reqs": 2,
+      "stage": "queue_grammar",
+      "tmh_events": 3,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 1.157,
+      "scheduled_reqs": 2,
+      "stage": "queue_sample_submit",
+      "tmh_events": 3,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 0.051,
+      "scheduled_reqs": 2,
+      "stage": "queue_future_wait",
+      "tmh_events": 2,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 0.026,
+      "scheduled_reqs": 2,
+      "stage": "queue_process_aborts",
+      "tmh_events": 2,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 32196.017,
+      "scheduled_reqs": 2,
+      "stage": "queue_scheduler_update",
+      "tmh_events": 2,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 164.741,
+      "scheduled_reqs": 0,
+      "stage": "queue_schedule",
+      "tmh_events": 0,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 4289.57,
+      "scheduled_reqs": 1,
+      "stage": "queue_execute_submit",
+      "tmh_events": 2,
+      "total_tokens": 4559
+    },
+    {
+      "elapsed_ms": 0.002,
+      "scheduled_reqs": 1,
+      "stage": "queue_grammar",
+      "tmh_events": 2,
+      "total_tokens": 4559
+    },
+    {
+      "elapsed_ms": 0.538,
+      "scheduled_reqs": 1,
+      "stage": "queue_sample_submit",
+      "tmh_events": 2,
+      "total_tokens": 4559
+    },
+    {
+      "elapsed_ms": 0.019,
+      "scheduled_reqs": 2,
+      "stage": "queue_future_wait",
+      "tmh_events": 3,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 0.004,
+      "scheduled_reqs": 2,
+      "stage": "queue_process_aborts",
+      "tmh_events": 3,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 24350.563,
+      "scheduled_reqs": 2,
+      "stage": "queue_scheduler_update",
+      "tmh_events": 3,
+      "total_tokens": 8192
+    },
+    {
+      "elapsed_ms": 0.06,
+      "scheduled_reqs": 0,
+      "stage": "queue_schedule",
+      "tmh_events": 0,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 12.108,
+      "scheduled_reqs": 0,
+      "stage": "queue_execute_submit",
+      "tmh_events": 1,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 0.024,
+      "scheduled_reqs": 1,
+      "stage": "queue_future_wait",
+      "tmh_events": 2,
+      "total_tokens": 4559
+    },
+    {
+      "elapsed_ms": 0.003,
+      "scheduled_reqs": 1,
+      "stage": "queue_process_aborts",
+      "tmh_events": 2,
+      "total_tokens": 4559
+    },
+    {
+      "elapsed_ms": 403.795,
+      "scheduled_reqs": 1,
+      "stage": "queue_scheduler_update",
+      "tmh_events": 2,
+      "total_tokens": 4559
+    },
+    {
+      "elapsed_ms": 0.037,
+      "scheduled_reqs": 0,
+      "stage": "queue_schedule",
+      "tmh_events": 0,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 8.686,
+      "scheduled_reqs": 0,
+      "stage": "queue_execute_submit",
+      "tmh_events": 1,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 0.002,
+      "scheduled_reqs": 0,
+      "stage": "queue_future_wait",
+      "tmh_events": 1,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 0.003,
+      "scheduled_reqs": 0,
+      "stage": "queue_process_aborts",
+      "tmh_events": 1,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 0.018,
+      "scheduled_reqs": 0,
+      "stage": "queue_scheduler_update",
+      "tmh_events": 1,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 0.002,
+      "scheduled_reqs": 0,
+      "stage": "queue_future_wait",
+      "tmh_events": 1,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 0.001,
+      "scheduled_reqs": 0,
+      "stage": "queue_process_aborts",
+      "tmh_events": 1,
+      "total_tokens": 0
+    },
+    {
+      "elapsed_ms": 0.007,
+      "scheduled_reqs": 0,
+      "stage": "queue_scheduler_update",
+      "tmh_events": 1,
+      "total_tokens": 0
+    }
+  ],
+  "engine_stages": {
+    "queue_execute_submit": {
+      "max_ms": 6999.838,
+      "mean_ms": 3788.161,
+      "min_ms": 8.686,
+      "n": 6,
+      "p50_ms": 4784.998,
+      "p90_ms": 6138.336,
+      "sum_ms": 22728.964
+    },
+    "queue_future_wait": {
+      "max_ms": 0.051,
+      "mean_ms": 0.024,
+      "min_ms": 0.002,
+      "n": 6,
+      "p50_ms": 0.021,
+      "p90_ms": 0.048,
+      "sum_ms": 0.146
+    },
+    "queue_grammar": {
+      "max_ms": 0.005,
+      "mean_ms": 0.004,
+      "min_ms": 0.002,
+      "n": 4,
+      "p50_ms": 0.004,
+      "p90_ms": 0.005,
+      "sum_ms": 0.015
+    },
+    "queue_process_aborts": {
+      "max_ms": 0.026,
+      "mean_ms": 0.008,
+      "min_ms": 0.001,
+      "n": 6,
+      "p50_ms": 0.004,
+      "p90_ms": 0.009,
+      "sum_ms": 0.046
+    },
+    "queue_sample_submit": {
+      "max_ms": 2.676,
+      "mean_ms": 1.385,
+      "min_ms": 0.538,
+      "n": 4,
+      "p50_ms": 1.163,
+      "p90_ms": 2.676,
+      "sum_ms": 5.54
+    },
+    "queue_schedule": {
+      "max_ms": 178.872,
+      "mean_ms": 81.29,
+      "min_ms": 0.037,
+      "n": 6,
+      "p50_ms": 72.016,
+      "p90_ms": 164.741,
+      "sum_ms": 487.741
+    },
+    "queue_scheduler_update": {
+      "max_ms": 32196.017,
+      "mean_ms": 14252.279,
+      "min_ms": 0.007,
+      "n": 6,
+      "p50_ms": 12377.179,
+      "p90_ms": 28563.276,
+      "sum_ms": 85513.676
+    }
+  },
+  "important_log_lines": [
+    "(EngineCore pid=37969) INFO 07-25 17:56:49 [core.py:141] TMH engine timing: stage=queue_schedule elapsed_ms=68.649 total_tokens=0 scheduled_reqs=0 tmh_events=0",
+    "(EngineCore pid=37969) INFO 07-25 17:56:50 [gpu_model_runner.py:286] TMH model timing: stage=tmh_apply_events elapsed_ms=619.673 num_tokens=6981 num_reqs=1 max_scheduled_tokens=6981 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:50 [gpu_model_runner.py:286] TMH model timing: stage=preprocess elapsed_ms=641.172 num_tokens=6981 num_reqs=1 max_scheduled_tokens=6981 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:55 [gpu_model_runner.py:286] TMH model timing: stage=forward elapsed_ms=4616.030 num_tokens=6981 num_reqs=1 max_scheduled_tokens=6981 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:55 [gpu_model_runner.py:286] TMH model timing: stage=postprocess elapsed_ms=22.474 num_tokens=6981 num_reqs=1 max_scheduled_tokens=6981 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:55 [core.py:141] TMH engine timing: stage=queue_execute_submit elapsed_ms=5280.426 total_tokens=6981 scheduled_reqs=1 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:55 [core.py:141] TMH engine timing: stage=queue_grammar elapsed_ms=0.004 total_tokens=6981 scheduled_reqs=1 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:55 [gpu_model_runner.py:286] TMH model timing: stage=sample_kernel elapsed_ms=0.149 num_tokens=6981 num_reqs=1 max_scheduled_tokens=6981 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:55 [gpu_model_runner.py:286] TMH model timing: stage=sample_update_states elapsed_ms=0.006 num_tokens=6981 num_reqs=1 max_scheduled_tokens=6981 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:55 [gpu_model_runner.py:286] TMH model timing: stage=sample_total elapsed_ms=0.211 num_tokens=6981 num_reqs=1 max_scheduled_tokens=6981 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:55 [core.py:141] TMH engine timing: stage=queue_sample_submit elapsed_ms=2.676 total_tokens=6981 scheduled_reqs=1 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:56:55 [core.py:141] TMH engine timing: stage=queue_schedule elapsed_ms=75.382 total_tokens=0 scheduled_reqs=0 tmh_events=0",
+    "(EngineCore pid=37969) INFO 07-25 17:56:56 [gpu_model_runner.py:286] TMH model timing: stage=tmh_apply_events elapsed_ms=738.050 num_tokens=8192 num_reqs=2 max_scheduled_tokens=6981 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:56:56 [gpu_model_runner.py:286] TMH model timing: stage=preprocess elapsed_ms=739.603 num_tokens=8192 num_reqs=2 max_scheduled_tokens=6981 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [gpu_model_runner.py:286] TMH model timing: stage=forward elapsed_ms=5395.163 num_tokens=8192 num_reqs=2 max_scheduled_tokens=6981 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [gpu_model_runner.py:286] TMH model timing: stage=postprocess elapsed_ms=2.978 num_tokens=8192 num_reqs=2 max_scheduled_tokens=6981 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [core.py:141] TMH engine timing: stage=queue_execute_submit elapsed_ms=6138.336 total_tokens=8192 scheduled_reqs=2 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [core.py:141] TMH engine timing: stage=queue_grammar elapsed_ms=0.005 total_tokens=8192 scheduled_reqs=2 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [gpu_model_runner.py:286] TMH model timing: stage=sample_kernel elapsed_ms=0.266 num_tokens=8192 num_reqs=2 max_scheduled_tokens=6981 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [gpu_model_runner.py:286] TMH model timing: stage=sample_update_states elapsed_ms=0.014 num_tokens=8192 num_reqs=2 max_scheduled_tokens=6981 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [gpu_model_runner.py:286] TMH model timing: stage=sample_total elapsed_ms=0.456 num_tokens=8192 num_reqs=2 max_scheduled_tokens=6981 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [core.py:141] TMH engine timing: stage=queue_sample_submit elapsed_ms=1.169 total_tokens=8192 scheduled_reqs=2 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [core.py:141] TMH engine timing: stage=queue_future_wait elapsed_ms=0.048 total_tokens=6981 scheduled_reqs=1 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:57:01 [core.py:141] TMH engine timing: stage=queue_process_aborts elapsed_ms=0.009 total_tokens=6981 scheduled_reqs=1 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:57:29 [core.py:141] TMH engine timing: stage=queue_scheduler_update elapsed_ms=28563.276 total_tokens=6981 scheduled_reqs=1 tmh_events=1",
+    "(APIServer pid=37768) INFO:     127.0.0.1:36238 - \"POST /v1/completions HTTP/1.1\" 200 OK",
+    "(EngineCore pid=37969) INFO 07-25 17:57:30 [core.py:141] TMH engine timing: stage=queue_schedule elapsed_ms=178.872 total_tokens=0 scheduled_reqs=0 tmh_events=0",
+    "(EngineCore pid=37969) INFO 07-25 17:57:30 [gpu_model_runner.py:286] TMH model timing: stage=tmh_apply_events elapsed_ms=765.650 num_tokens=8192 num_reqs=2 max_scheduled_tokens=5770 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:57:30 [gpu_model_runner.py:286] TMH model timing: stage=preprocess elapsed_ms=767.201 num_tokens=8192 num_reqs=2 max_scheduled_tokens=5770 tmh_events=3",
+    "(APIServer pid=37768) INFO 07-25 17:57:34 [loggers.py:273] Engine 000: Avg prompt throughput: 698.1 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 2 reqs, Waiting: 1 reqs, GPU KV cache usage: 7.1%, Prefix cache hit rate: 0.0%",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [gpu_model_runner.py:286] TMH model timing: stage=forward elapsed_ms=6228.933 num_tokens=8192 num_reqs=2 max_scheduled_tokens=5770 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [gpu_model_runner.py:286] TMH model timing: stage=postprocess elapsed_ms=2.977 num_tokens=8192 num_reqs=2 max_scheduled_tokens=5770 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [core.py:141] TMH engine timing: stage=queue_execute_submit elapsed_ms=6999.838 total_tokens=8192 scheduled_reqs=2 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [core.py:141] TMH engine timing: stage=queue_grammar elapsed_ms=0.004 total_tokens=8192 scheduled_reqs=2 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [gpu_model_runner.py:286] TMH model timing: stage=sample_kernel elapsed_ms=0.239 num_tokens=8192 num_reqs=2 max_scheduled_tokens=5770 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [gpu_model_runner.py:286] TMH model timing: stage=sample_update_states elapsed_ms=0.011 num_tokens=8192 num_reqs=2 max_scheduled_tokens=5770 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [gpu_model_runner.py:286] TMH model timing: stage=sample_total elapsed_ms=0.437 num_tokens=8192 num_reqs=2 max_scheduled_tokens=5770 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [core.py:141] TMH engine timing: stage=queue_sample_submit elapsed_ms=1.157 total_tokens=8192 scheduled_reqs=2 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [core.py:141] TMH engine timing: stage=queue_future_wait elapsed_ms=0.051 total_tokens=8192 scheduled_reqs=2 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:57:37 [core.py:141] TMH engine timing: stage=queue_process_aborts elapsed_ms=0.026 total_tokens=8192 scheduled_reqs=2 tmh_events=2",
+    "(APIServer pid=37768) INFO 07-25 17:57:44 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 2 reqs, Waiting: 1 reqs, GPU KV cache usage: 7.1%, Prefix cache hit rate: 0.0%",
+    "(EngineCore pid=37969) INFO 07-25 17:58:09 [core.py:141] TMH engine timing: stage=queue_scheduler_update elapsed_ms=32196.017 total_tokens=8192 scheduled_reqs=2 tmh_events=2",
+    "(APIServer pid=37768) INFO:     127.0.0.1:36244 - \"POST /v1/completions HTTP/1.1\" 200 OK",
+    "(EngineCore pid=37969) INFO 07-25 17:58:09 [core.py:141] TMH engine timing: stage=queue_schedule elapsed_ms=164.741 total_tokens=0 scheduled_reqs=0 tmh_events=0",
+    "(EngineCore pid=37969) INFO 07-25 17:58:10 [gpu_model_runner.py:286] TMH model timing: stage=tmh_apply_events elapsed_ms=476.097 num_tokens=4559 num_reqs=1 max_scheduled_tokens=4559 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:10 [gpu_model_runner.py:286] TMH model timing: stage=preprocess elapsed_ms=477.473 num_tokens=4559 num_reqs=1 max_scheduled_tokens=4559 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [gpu_model_runner.py:286] TMH model timing: stage=forward elapsed_ms=3808.716 num_tokens=4559 num_reqs=1 max_scheduled_tokens=4559 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [gpu_model_runner.py:286] TMH model timing: stage=postprocess elapsed_ms=2.996 num_tokens=4559 num_reqs=1 max_scheduled_tokens=4559 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [core.py:141] TMH engine timing: stage=queue_execute_submit elapsed_ms=4289.570 total_tokens=4559 scheduled_reqs=1 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [core.py:141] TMH engine timing: stage=queue_grammar elapsed_ms=0.002 total_tokens=4559 scheduled_reqs=1 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [gpu_model_runner.py:286] TMH model timing: stage=sample_kernel elapsed_ms=0.282 num_tokens=4559 num_reqs=1 max_scheduled_tokens=4559 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [gpu_model_runner.py:286] TMH model timing: stage=sample_update_states elapsed_ms=0.004 num_tokens=4559 num_reqs=1 max_scheduled_tokens=4559 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [gpu_model_runner.py:286] TMH model timing: stage=sample_total elapsed_ms=0.334 num_tokens=4559 num_reqs=1 max_scheduled_tokens=4559 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [core.py:141] TMH engine timing: stage=queue_sample_submit elapsed_ms=0.538 total_tokens=4559 scheduled_reqs=1 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [core.py:141] TMH engine timing: stage=queue_future_wait elapsed_ms=0.019 total_tokens=8192 scheduled_reqs=2 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:58:13 [core.py:141] TMH engine timing: stage=queue_process_aborts elapsed_ms=0.004 total_tokens=8192 scheduled_reqs=2 tmh_events=3",
+    "(APIServer pid=37768) INFO 07-25 17:58:14 [loggers.py:273] Engine 000: Avg prompt throughput: 698.1 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 2 reqs, Waiting: 0 reqs, GPU KV cache usage: 8.2%, Prefix cache hit rate: 0.0%",
+    "(APIServer pid=37768) INFO 07-25 17:58:24 [loggers.py:273] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 2 reqs, Waiting: 0 reqs, GPU KV cache usage: 8.2%, Prefix cache hit rate: 0.0%",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_scheduler_update elapsed_ms=24350.563 total_tokens=8192 scheduled_reqs=2 tmh_events=3",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_schedule elapsed_ms=0.060 total_tokens=0 scheduled_reqs=0 tmh_events=0",
+    "(APIServer pid=37768) INFO:     127.0.0.1:36252 - \"POST /v1/completions HTTP/1.1\" 200 OK",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [gpu_model_runner.py:286] TMH model timing: stage=tmh_apply_events elapsed_ms=10.082 num_tokens=0 num_reqs=0 max_scheduled_tokens=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [gpu_model_runner.py:286] TMH model timing: stage=preprocess elapsed_ms=10.497 num_tokens=0 num_reqs=0 max_scheduled_tokens=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_execute_submit elapsed_ms=12.108 total_tokens=0 scheduled_reqs=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_future_wait elapsed_ms=0.024 total_tokens=4559 scheduled_reqs=1 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_process_aborts elapsed_ms=0.003 total_tokens=4559 scheduled_reqs=1 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_scheduler_update elapsed_ms=403.795 total_tokens=4559 scheduled_reqs=1 tmh_events=2",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_schedule elapsed_ms=0.037 total_tokens=0 scheduled_reqs=0 tmh_events=0",
+    "(APIServer pid=37768) INFO:     127.0.0.1:36258 - \"POST /v1/completions HTTP/1.1\" 200 OK",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [gpu_model_runner.py:286] TMH model timing: stage=tmh_apply_events elapsed_ms=8.028 num_tokens=0 num_reqs=0 max_scheduled_tokens=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [gpu_model_runner.py:286] TMH model timing: stage=preprocess elapsed_ms=8.145 num_tokens=0 num_reqs=0 max_scheduled_tokens=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_execute_submit elapsed_ms=8.686 total_tokens=0 scheduled_reqs=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_future_wait elapsed_ms=0.002 total_tokens=0 scheduled_reqs=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_process_aborts elapsed_ms=0.003 total_tokens=0 scheduled_reqs=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_scheduler_update elapsed_ms=0.018 total_tokens=0 scheduled_reqs=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_future_wait elapsed_ms=0.002 total_tokens=0 scheduled_reqs=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_process_aborts elapsed_ms=0.001 total_tokens=0 scheduled_reqs=0 tmh_events=1",
+    "(EngineCore pid=37969) INFO 07-25 17:58:38 [core.py:141] TMH engine timing: stage=queue_scheduler_update elapsed_ms=0.007 total_tokens=0 scheduled_reqs=0 tmh_events=1"
+  ],
+  "model_stages": {
+    "forward": {
+      "max_ms": 6228.933,
+      "mean_ms": 5012.211,
+      "min_ms": 3808.716,
+      "n": 4,
+      "p50_ms": 5005.596,
+      "p90_ms": 6228.933,
+      "sum_ms": 20048.842
+    },
+    "postprocess": {
+      "max_ms": 22.474,
+      "mean_ms": 7.856,
+      "min_ms": 2.977,
+      "n": 4,
+      "p50_ms": 2.987,
+      "p90_ms": 22.474,
+      "sum_ms": 31.425
+    },
+    "preprocess": {
+      "max_ms": 767.201,
+      "mean_ms": 440.682,
+      "min_ms": 8.145,
+      "n": 6,
+      "p50_ms": 559.322,
+      "p90_ms": 739.603,
+      "sum_ms": 2644.091
+    },
+    "sample_kernel": {
+      "max_ms": 0.282,
+      "mean_ms": 0.234,
+      "min_ms": 0.149,
+      "n": 4,
+      "p50_ms": 0.253,
+      "p90_ms": 0.282,
+      "sum_ms": 0.936
+    },
+    "sample_total": {
+      "max_ms": 0.456,
+      "mean_ms": 0.359,
+      "min_ms": 0.211,
+      "n": 4,
+      "p50_ms": 0.386,
+      "p90_ms": 0.456,
+      "sum_ms": 1.438
+    },
+    "sample_update_states": {
+      "max_ms": 0.014,
+      "mean_ms": 0.009,
+      "min_ms": 0.004,
+      "n": 4,
+      "p50_ms": 0.009,
+      "p90_ms": 0.014,
+      "sum_ms": 0.035
+    },
+    "tmh_apply_events": {
+      "max_ms": 765.65,
+      "mean_ms": 436.263,
+      "min_ms": 8.028,
+      "n": 6,
+      "p50_ms": 547.885,
+      "p90_ms": 738.05,
+      "sum_ms": 2617.58
+    }
+  }
+}

@@ -4,6 +4,7 @@
 import functools
 import gc
 import itertools
+import os
 import threading
 import time
 from collections import defaultdict
@@ -235,6 +236,101 @@ if TYPE_CHECKING:
     from vllm.v1.worker.encoder_cudagraph import EncoderCudaGraphManager
 
 logger = init_logger(__name__)
+
+_TMH_MODEL_TIMING_LOG_COUNT = 0
+
+
+def _tmh_model_timing_enabled() -> bool:
+    return os.environ.get("VLLM_TMH_LOG_MODEL_TIMING", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _tmh_model_timing_limit() -> int:
+    try:
+        return int(os.environ.get("VLLM_TMH_MODEL_TIMING_LIMIT", "256"))
+    except ValueError:
+        return 256
+
+
+def _tmh_model_timing_sync() -> None:
+    if os.environ.get("VLLM_TMH_MODEL_TIMING_SYNC", "").lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
+def _tmh_log_model_timing(
+    *,
+    stage: str,
+    elapsed_ms: float,
+    num_tokens: int,
+    num_reqs: int,
+    max_scheduled_tokens: int,
+    tmh_events: int,
+) -> None:
+    global _TMH_MODEL_TIMING_LOG_COUNT
+    if not _tmh_model_timing_enabled():
+        return
+    if _TMH_MODEL_TIMING_LOG_COUNT >= _tmh_model_timing_limit():
+        return
+    _TMH_MODEL_TIMING_LOG_COUNT += 1
+    logger.info(
+        "TMH model timing: stage=%s elapsed_ms=%.3f num_tokens=%d "
+        "num_reqs=%d max_scheduled_tokens=%d tmh_events=%d",
+        stage,
+        elapsed_ms,
+        num_tokens,
+        num_reqs,
+        max_scheduled_tokens,
+        tmh_events,
+    )
+
+
+@contextmanager
+def _tmh_model_timing(
+    stage: str,
+    scheduler_output: "SchedulerOutput",
+    *,
+    num_reqs: int | None = None,
+    max_scheduled_tokens: int | None = None,
+) -> Iterator[None]:
+    if not _tmh_model_timing_enabled():
+        yield
+        return
+    values = list(scheduler_output.num_scheduled_tokens.values())
+    resolved_num_reqs = len(values) if num_reqs is None else num_reqs
+    resolved_max_scheduled_tokens = (
+        max(values) if values and max_scheduled_tokens is None else
+        (max_scheduled_tokens or 0)
+    )
+    tmh_events = (
+        len(scheduler_output.tmh_physical_events)
+        if scheduler_output.tmh_physical_events
+        else 0
+    )
+    _tmh_model_timing_sync()
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        _tmh_model_timing_sync()
+        _tmh_log_model_timing(
+            stage=stage,
+            elapsed_ms=(time.perf_counter() - start) * 1000.0,
+            num_tokens=scheduler_output.total_num_scheduled_tokens,
+            num_reqs=resolved_num_reqs,
+            max_scheduled_tokens=resolved_max_scheduled_tokens,
+            tmh_events=tmh_events,
+        )
 
 AttnMetadataDict: TypeAlias = dict[str, AttentionMetadata]
 # list when ubatching is enabled
@@ -1477,10 +1573,11 @@ class GPUModelRunner(
                     "Scheduler emitted TMH physical events, but the worker has "
                     "no TMH physical runtime registered."
                 )
-            self.tmh_physical_runtime.apply_events(
-                scheduler_output.tmh_physical_events,
-                self.input_batch.req_id_to_index,
-            )
+            with _tmh_model_timing("tmh_apply_events", scheduler_output):
+                self.tmh_physical_runtime.apply_events(
+                    scheduler_output.tmh_physical_events,
+                    self.input_batch.req_id_to_index,
+                )
 
         # Incrementally update ngram_gpu tensors after batch is stable
         if is_ngram_gpu:
@@ -4111,6 +4208,7 @@ class GPUModelRunner(
         num_scheduled_tokens = scheduler_output.total_num_scheduled_tokens
         with (
             record_function_or_nullcontext("gpu_model_runner: preprocess"),
+            _tmh_model_timing("preprocess", scheduler_output),
             self.synchronize_input_prep(),
         ):
             # Update persistent batch states.
@@ -4338,6 +4436,12 @@ class GPUModelRunner(
                 ubatch_slices_padded,
             )
         with (
+            _tmh_model_timing(
+                "forward",
+                scheduler_output,
+                num_reqs=num_reqs,
+                max_scheduled_tokens=max_num_scheduled_tokens,
+            ),
             set_forward_context(
                 attn_metadata,
                 self.vllm_config,
@@ -4371,7 +4475,15 @@ class GPUModelRunner(
                 **model_kwargs,
             )
 
-        with record_function_or_nullcontext("gpu_model_runner: postprocess"):
+        with (
+            record_function_or_nullcontext("gpu_model_runner: postprocess"),
+            _tmh_model_timing(
+                "postprocess",
+                scheduler_output,
+                num_reqs=num_reqs,
+                max_scheduled_tokens=max_num_scheduled_tokens,
+            ),
+        ):
             if self.use_aux_hidden_state_outputs:
                 # True when EAGLE 3 is used.
                 hidden_states, aux_hidden_states = model_output
@@ -4495,18 +4607,23 @@ class GPUModelRunner(
         # Clear ephemeral state.
         self.execute_model_state = None
 
-        # Apply structured output bitmasks if present.
-        if grammar_output is not None:
-            apply_grammar_bitmask(
-                scheduler_output, grammar_output, self.input_batch, logits
-            )
+        with _tmh_model_timing("sample_total", scheduler_output):
+            # Apply structured output bitmasks if present.
+            if grammar_output is not None:
+                apply_grammar_bitmask(
+                    scheduler_output, grammar_output, self.input_batch, logits
+                )
 
-        with record_function_or_nullcontext("gpu_model_runner: sample"):
-            sampler_output = self._sample(logits, spec_decode_metadata)
+            with (
+                record_function_or_nullcontext("gpu_model_runner: sample"),
+                _tmh_model_timing("sample_kernel", scheduler_output),
+            ):
+                sampler_output = self._sample(logits, spec_decode_metadata)
 
-        self._update_states_after_model_execute(
-            sampler_output.sampled_token_ids, scheduler_output
-        )
+            with _tmh_model_timing("sample_update_states", scheduler_output):
+                self._update_states_after_model_execute(
+                    sampler_output.sampled_token_ids, scheduler_output
+                )
         if self.use_async_scheduling:
             pp = get_pp_group()
             # For torchrun external_launcher PP mode with broadcast_pp_output=True,
