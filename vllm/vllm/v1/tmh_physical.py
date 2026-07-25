@@ -444,12 +444,9 @@ class TMHPhysicalRuntime:
     ) -> TMHPhysicalPageDescriptor:
         if descriptor.role in (TMHPageRole.PINNED_RAW, TMHPageRole.HOT_RAW):
             return descriptor
-        if descriptor.prefix_cached:
-            return descriptor
         if not self._raw_free_slots.get(layer_name):
             return descriptor
-        promoted = _descriptor_with_role(descriptor, TMHPageRole.HOT_RAW)
-        return replace(promoted, storage=TMHStorageKind.REQUEST_OVERLAY)
+        return _descriptor_with_role(descriptor, TMHPageRole.HOT_RAW)
 
     def _canonical_slot(
         self,

@@ -1680,3 +1680,97 @@ requests are being admitted and scheduled, then compress colder pages after the
 prefill-critical path or only under actual raw-slot pressure. Kernel work should
 focus on eliminating the current mixed-prefill tax, not on more allocator proof.
 
+## 2026-07-25 TMH Live Bottleneck Pass: Raw/Mixed Split
+
+The live saturation failure was decomposed into two questions:
+
+```text
+1. Is TMH slow because the physical descriptor/raw path itself is slow?
+2. Or is TMH slow because the 25% hot-budget run falls into the warm/mixed path?
+```
+
+The control result is decisive. With the same serve shape but
+`--tmh-hot-budget-pct 100`, TMH behaves like standard KV at c12:
+
+```text
+standard c12: ok=12 wall= 81.8280s p50= 50.4540s p90= 77.8302s total_tok/s=1023.9407
+TMH hot100:  ok=12 wall= 83.5554s p50= 53.2146s p90= 80.4788s total_tok/s=1002.7717
+```
+
+That means the descriptor machinery and raw TMH path are not the core latency
+bottleneck. The bottleneck is the warm/mixed live path used by the 25% hot-budget
+configuration.
+
+A code pass added request-page role tracking and an adaptive raw detector so TMH
+can recognize when the actually mapped request pages are all raw, instead of
+relying only on the static `raw_pages / max_num_seqs` threshold. It also
+opportunistically promotes warm descriptors to raw while raw physical slots are
+available. Focused TMH tests pass:
+
+```text
+cd vllm
+.venv/bin/python -m py_compile vllm/v1/tmh_physical.py vllm/v1/attention/ops/tmh_triton_ops.py
+.venv/bin/python -m pytest tests/v1/core/test_tmh_physical.py tests/v1/core/test_tmh_triton_ops.py -q
+13 passed
+```
+
+C12 live results after that pass:
+
+```text
+standard:              cap= 8.11x wall= 81.8280s p50= 50.4540s p90= 77.8302s total_tok/s=1023.9407
+TMH 25% baseline:      cap=14.07x wall=563.3834s p50=360.5790s p90=554.1521s total_tok/s= 148.7211
+TMH 25% adaptive raw:  cap=14.07x wall=497.8115s p50=335.2126s p90=497.4966s total_tok/s= 168.3107
+TMH 50% adaptive:      cap=11.30x wall=327.9347s p50=221.6583s p90=327.7123s total_tok/s= 255.4991
+TMH 75% adaptive:      cap= 9.44x wall=187.2462s p50=127.8954s p90=187.1252s total_tok/s= 447.4697
+TMH 100% all-raw:      cap= 8.11x wall= 83.5554s p50= 53.2146s p90= 80.4788s total_tok/s=1002.7717
+```
+
+Relative to the slow 25% TMH baseline:
+
+```text
+25% adaptive raw: +13.17% total_tok/s, -11.64% wall time
+50% adaptive:     +71.80% total_tok/s, -41.79% wall time
+75% adaptive:    +200.88% total_tok/s, -66.76% wall time
+100% all-raw:    +574.26% total_tok/s, -85.17% wall time
+```
+
+Reality: this pass found the bottleneck cleanly and delivered a modest safe
+runtime improvement at the original 25% capacity point, but it did not erase the
+live deficit. Increasing the hot budget collapses latency, but it also gives back
+TMH's capacity advantage: `14.07x` at 25%, `11.30x` at 50%, `9.44x` at 75%, and
+`8.11x` at 100%. The curve proves that live latency is dominated by how much of
+the request is routed through warm/mixed pages.
+
+An attempted request-overlay version of opportunistic raw promotion was aborted.
+It did not improve the all-raw decision and ran longer than the baseline c12
+path, so it was not kept. The safe retained change is canonical adaptive raw
+promotion plus request role tracking.
+
+Interpretation: the +20% target will not come from allocator work anymore. The
+allocator already works. It will come from one of two serving-layer changes:
+
+```text
+1. Mixed-path surgery: make _tmh_reshape_and_cache_kernel and
+   _tmh_mixed_attention_kernel cheap enough that 25% hot budget can serve live
+   long-prefill requests without the 6-7x latency tax.
+
+2. Admission/scheduling split: keep compressed TMH capacity for resident context,
+   but avoid scheduling latency-sensitive active prefills into mixed pages until
+   they truly exceed raw execution capacity.
+```
+
+Conclusion: the lamp is the hot100 control. TMH can be standard-speed when the
+live path is raw, and TMH can be +73.5% capacity when the warm pool is active;
+the missing product abstraction is a two-tier serving policy that separates
+"resident compressed capacity" from "active latency-sensitive compute pages."
+The next implementation pass should instrument per-batch raw/warm page counts
+inside `_tmh_batch_is_all_raw`, then either split raw and mixed sequences into
+separate launches or change scheduler admission so active prefills consume raw
+execution pages before warm residency pages.
+
+Artifact summary:
+
+```text
+benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-adaptive-raw-c12/analysis/adaptive_raw_and_hotbudget_summary.json
+```
+
