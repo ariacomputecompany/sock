@@ -5,7 +5,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT}"
 
 ENV_FILE="${ENV_FILE:-docker/inference/.env.inference}"
-QUILT_CLI="${QUILT_CLI:-cli}"
+if [[ -z "${QUILT_CLI:-}" && -x /home/deepsaint/work/quilt-oss/quilt-core/target/release/cli ]]; then
+  QUILT_CLI=/home/deepsaint/work/quilt-oss/quilt-core/target/release/cli
+else
+  QUILT_CLI="${QUILT_CLI:-cli}"
+fi
 QUILT_SERVER_ADDR="${QUILT_SERVER_ADDR:-http://127.0.0.1:50051}"
 QUILT_IMAGE_PATH="${QUILT_IMAGE_PATH:-}"
 QUILT_CONTAINER_NAME="${QUILT_CONTAINER_NAME:-sock-inference}"
