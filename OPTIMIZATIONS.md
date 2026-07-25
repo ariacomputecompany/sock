@@ -1172,3 +1172,53 @@ current V1 engine will not allow it as a serve-time flag. Do not spend benchmark
 time on this setting until the feature support boundary changes or SOCK owns a
 compatible scheduler path.
 
+## 2026-07-25 No Full-ISL Reservation Falsification
+
+After concurrent partial prefill failed at startup, the next runnable scheduler
+hypothesis was to relax full input-sequence reservation before admitting work.
+The server used the stable standard Triton shape plus:
+
+```text
+--no-scheduler-reserve-full-isl
+```
+
+The c4 gate again looked attractive:
+
+```text
+medium_architecture_256 c4:   53.6950 -> 54.1797  (+0.90%)
+long_cosmology_512 c4:        50.6543 -> 52.0940  (+2.84%)
+long_context_summary_256 c4:  65.8769 -> 72.3488  (+9.82%)
+Gate geomean delta:                                (+4.45%)
+```
+
+But the full suite showed the same shape-specific trap as the access-log probe:
+
+```text
+standard TRITON_ATTN full geomean:                 36.7329
+standard TRITON_ATTN no-full-ISL-reserve geomean:  36.3787
+Delta:                                             -0.96%
+```
+
+The useful positives were concentrated in c4 cells:
+
+```text
+short_codegen_128 c4:       56.9322 -> 60.3982  (+6.09%)
+long_cosmology_512 c4:      50.6543 -> 52.2737  (+3.20%)
+extended_generation_768 c4: 51.0662 -> 51.7474  (+1.33%)
+```
+
+But c1/c2 paid for it:
+
+```text
+long_cosmology_512 c2:      33.6570 -> 31.3659  (-6.81%)
+extended_generation_768 c2: 33.2304 -> 31.6048  (-4.89%)
+tiny_fact_64 c2:            34.6675 -> 33.6542  (-2.92%)
+short_codegen_128 c1:       25.7130 -> 25.1588  (-2.16%)
+```
+
+Conclusion: disabling full-ISL reservation is not a global +20 route. It does
+confirm a real shape-specific theme: c4 throughput can be improved by admitting
+work more aggressively, but the same policy taxes c1/c2 enough to lose the full
+endpoint mix. A future scheduler win likely needs per-shape/adaptive admission
+rather than another process-wide flag.
+
