@@ -1079,3 +1079,62 @@ Python/eager overhead. The losses point back toward kernel shape, scheduler
 batching policy, MoE routing/top-k cost, or benchmark-contract-level sampling and
 stream semantics rather than generic graph capture.
 
+## 2026-07-24 Standard Triton No-Access-Log Falsification
+
+The no-eager pass showed generic graph capture was not the missing lever, so the
+next contract-preserving frontend hypothesis was uvicorn access-log overhead.
+The server was launched with the stable standard Triton shape plus
+`--disable-uvicorn-access-log`:
+
+```text
+--kv-layout standard
+--attention-backend TRITON_ATTN
+--enforce-eager
+--max-num-batched-tokens 1024
+--max-num-seqs 4
+--disable-uvicorn-access-log
+```
+
+The latency-sensitive c4 gate looked promising:
+
+```text
+medium_architecture_256 c4:   53.6950 -> 54.1200  (+0.79%)
+long_cosmology_512 c4:        50.6543 -> 51.8451  (+2.35%)
+long_context_summary_256 c4:  65.8769 -> 72.2009  (+9.60%)
+Gate geomean delta:                                (+4.18%)
+```
+
+But the full suite rejected it as a global serve setting:
+
+```text
+standard TRITON_ATTN full geomean:                  36.7329
+standard TRITON_ATTN no-access-log full geomean:    36.3679
+Delta:                                              -0.99%
+```
+
+The full-suite positives were narrow and the c4 long-context summary gain did
+not reproduce at the same magnitude:
+
+```text
+long_cosmology_512 c4:        50.6543 -> 52.0296  (+2.72%)
+short_codegen_128 c4:         56.9322 -> 57.9707  (+1.82%)
+long_context_summary_256 c4:  65.8769 -> 66.0674  (+0.29%)
+```
+
+The losses came from c1/c2 and some short concurrent cells:
+
+```text
+long_cosmology_512 c2:        33.6570 -> 31.7142  (-5.77%)
+extended_generation_768 c2:   33.2304 -> 32.1579  (-3.23%)
+tiny_fact_64 c2:              34.6675 -> 33.7066  (-2.77%)
+tiny_fact_64 c4:              55.3841 -> 54.0542  (-2.40%)
+```
+
+Conclusion: uvicorn access logging is not the hidden +20 tax. The gate result was
+mostly run-to-run shape variance plus a small c4 benefit, not a robust global
+improvement. Keep the stable baseline unchanged. The next useful frontier is not
+frontend logging; it is either scheduler shape policy, MoE expert routing/kernel
+selection, or a deliberate benchmark-contract change such as token-only/greedy
+output that should be measured separately and not mixed with serving-runtime
+wins.
+
