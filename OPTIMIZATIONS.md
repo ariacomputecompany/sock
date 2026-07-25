@@ -1381,3 +1381,61 @@ or repeated-prefix pressure. The next falsifiable experiment should isolate why
 turn that shape-specific behavior into an adaptive policy instead of another
 process-wide flag.
 
+## 2026-07-25 TMH Memory-Pressure Capacity Frontier
+
+The throughput suite was the wrong primary judge for TMH's intended value. If
+TMH exists to reduce KV memory pressure at inference time, the first falsifiable
+question is not "does it decode faster at 2K?" but "does the same KV memory
+budget admit more logical context?"
+
+This pass compared vLLM's own startup capacity accounting for standard KV and
+TMH under the same model, same available KV memory, same context length, and
+same serve shape except `--kv-layout`:
+
+```text
+model: Qwen/Qwen3-30B-A3B-GPTQ-Int4
+gpu memory utilization: 0.35
+available KV cache memory: 6.50 GiB
+max seqs: 16
+standard: --kv-layout standard
+TMH:      --kv-layout tmh --tmh-hot-budget-pct 25
+artifacts: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-memory-pressure-capacity/
+summary:   benchmarks/2026-07-25-gmk-qwen3-30b-tmh-memory-pressure-capacity/analysis/summary.json
+```
+
+Result:
+
+```text
+max_model_len=8192:
+  standard KV cache tokens: 70,944   max concurrency:  8.66x
+  TMH KV cache tokens:      123,312  max concurrency: 15.05x
+  TMH capacity delta:       +73.79%
+
+max_model_len=16384:
+  standard KV cache tokens: 70,944   max concurrency:  4.33x
+  TMH KV cache tokens:      123,312  max concurrency:  7.53x
+  TMH capacity delta:       +73.90%
+```
+
+Reality: this is the cleanest positive TMH result so far. With identical
+`6.50 GiB` available KV memory, TMH admits `123,312` logical KV tokens versus
+standard's `70,944`, a `+73.82%` token-capacity lift. At 16K context, that moves
+the admitted concurrency frontier from roughly four full-context requests to
+roughly seven.
+
+Interpretation: TMH's compression value is real in the allocator/capacity model.
+That does not contradict the `-14.03%` throughput result; it explains the trade:
+TMH currently pays hot-path overhead, but it buys substantially more logical KV
+residency under memory pressure. The correct benchmark axis is therefore not
+low-pressure tok/s parity alone. It is capacity-adjusted serving: requests served
+per GiB, tail latency when standard KV must queue, and survival when the working
+set exceeds standard's raw KV pool.
+
+Conclusion: keep two scoreboards. Standard-KV throughput remains the invariant
+floor for low-pressure serving. TMH's value should be judged by a pressure
+frontier: maximum resident context, maximum admitted long-context concurrency,
+error/queue avoidance beyond standard capacity, and throughput per GiB. The next
+runtime benchmark should target the 16K frontier directly: run concurrent
+long-context requests at c4/c6/c8. Standard should be at or beyond its admitted
+capacity around c6/c8, while TMH should still have resident KV headroom.
+
