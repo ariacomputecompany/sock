@@ -31,6 +31,7 @@ RUN apt-get update && \
       git \
       jq \
       libnuma-dev \
+      libopenblas0-pthread \
       miopen-hip \
       ninja-build \
       pkg-config \
