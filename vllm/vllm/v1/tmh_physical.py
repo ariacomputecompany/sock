@@ -31,6 +31,7 @@ class TMHPhysicalKVCache:
     canonical_role_by_logical_block: torch.Tensor
     canonical_slot_by_logical_block: torch.Tensor
     request_slot_by_row_page: torch.Tensor
+    request_role_by_row_page: torch.Tensor
     native_block_table_by_seq: torch.Tensor
     native_block_table_gather: torch.Tensor
     native_seq_to_request_row: torch.Tensor
@@ -133,6 +134,12 @@ def reshape_tmh_physical_kv_cache(
         dtype=torch.int32,
         device=kv_raw_tensor.device,
     )
+    request_role_by_row_page = torch.full(
+        request_shape,
+        fill_value=-1,
+        dtype=torch.int16,
+        device=kv_raw_tensor.device,
+    )
     native_block_table_by_seq = torch.zeros(
         request_shape,
         dtype=torch.int32,
@@ -162,6 +169,7 @@ def reshape_tmh_physical_kv_cache(
         canonical_role_by_logical_block=canonical_role_by_logical_block,
         canonical_slot_by_logical_block=canonical_slot_by_logical_block,
         request_slot_by_row_page=request_slot_by_row_page,
+        request_role_by_row_page=request_role_by_row_page,
         native_block_table_by_seq=native_block_table_by_seq,
         native_block_table_gather=native_block_table_gather,
         native_seq_to_request_row=native_seq_to_request_row,
@@ -327,9 +335,17 @@ class TMHPhysicalRuntime:
             int(descriptor.role),
         )
         slot = self._canonical_slots.pop(key, None)
+        wants_raw = descriptor.role in (TMHPageRole.PINNED_RAW, TMHPageRole.HOT_RAW)
+        if slot is None and not wants_raw:
+            promoted_key = (
+                descriptor.layer_name,
+                descriptor.logical_block_id,
+                int(TMHPageRole.HOT_RAW),
+            )
+            slot = self._canonical_slots.pop(promoted_key, None)
+            wants_raw = slot is not None
         if slot is None:
             return
-        wants_raw = descriptor.role in (TMHPageRole.PINNED_RAW, TMHPageRole.HOT_RAW)
         free_slots = (
             self._raw_free_slots[descriptor.layer_name]
             if wants_raw
@@ -390,10 +406,12 @@ class TMHPhysicalRuntime:
                     "registered TMH physical cache for that layer."
             )
             cache.request_slot_by_row_page[req_index].fill_(-1)
+            cache.request_role_by_row_page[req_index].fill_(-1)
             cache.native_block_table_by_seq[req_index].zero_()
             cleared.add(key)
 
     def _apply_descriptor(self, cache, layer_name, descriptor, req_index: int) -> None:
+        descriptor = self._promote_to_raw_when_available(layer_name, descriptor)
         logical_block_id = descriptor.logical_block_id
         if logical_block_id < 0 or logical_block_id >= cache.num_logical_blocks:
             raise RuntimeError(
@@ -401,7 +419,11 @@ class TMHPhysicalRuntime:
                 f"allocated descriptor table ({cache.num_logical_blocks})."
             )
         if descriptor.storage == TMHStorageKind.REQUEST_OVERLAY:
-            slot = self._overlay_slot(layer_name, descriptor.request_id, descriptor.page_index)
+            slot = self._overlay_slot(
+                layer_name,
+                descriptor.request_id,
+                descriptor.page_index,
+            )
         else:
             slot = self._canonical_slot(layer_name, logical_block_id, descriptor.role)
 
@@ -412,7 +434,22 @@ class TMHPhysicalRuntime:
                 f"{cache.request_slot_by_row_page.shape[1]} for layer {layer_name!r}."
             )
         cache.request_slot_by_row_page[req_index, page_index] = slot
+        cache.request_role_by_row_page[req_index, page_index] = int(descriptor.role)
         cache.native_block_table_by_seq[req_index, page_index] = slot
+
+    def _promote_to_raw_when_available(
+        self,
+        layer_name: str,
+        descriptor: TMHPhysicalPageDescriptor,
+    ) -> TMHPhysicalPageDescriptor:
+        if descriptor.role in (TMHPageRole.PINNED_RAW, TMHPageRole.HOT_RAW):
+            return descriptor
+        if descriptor.prefix_cached:
+            return descriptor
+        if not self._raw_free_slots.get(layer_name):
+            return descriptor
+        promoted = _descriptor_with_role(descriptor, TMHPageRole.HOT_RAW)
+        return replace(promoted, storage=TMHStorageKind.REQUEST_OVERLAY)
 
     def _canonical_slot(
         self,

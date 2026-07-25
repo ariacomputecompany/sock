@@ -1603,3 +1603,80 @@ optimization pass should attack the TMH live prefill/write/scheduler path until
 c12 is at least standard-parity, then rerun the c12/c14/c16/c20/c24 ladder and
 only then return to the full 32K frontier.
 
+## 2026-07-25 TMH Mixed-Prefill Bottleneck Pass
+
+Reality from the live saturation run: the `25%` TMH policy had a real allocator
+win (`115,296` KV tokens, `14.07x`, `+73.51%` over standard) but c12 live
+serving was dominated by a slow warm/mixed path (`148.7211` total tok/s,
+`-85.48%` versus standard). The contradiction was that capacity existed but did
+not become runnable concurrency.
+
+The lamp: force TMH to `--tmh-hot-budget-pct 100`. That removes the compressed
+warm path and collapses TMH back to raw/native behavior. The result was nearly
+standard speed:
+
+```text
+standard c12:       66,448 KV tokens,  8.11x, wall= 81.8280s, total_tok/s=1023.9407
+TMH hot100 c12:     66,432 KV tokens,  8.11x, wall= 83.5554s, total_tok/s=1002.7717
+TMH hot100 delta:   capacity -0.02%, total_tok/s -2.07%
+```
+
+Interpretation: TMH's descriptor machinery, raw cache writer, and raw/native
+attention handoff are not the primary bottleneck. The live bottleneck is the
+compressed warm/mixed prefill path: quantizing older pages during long prefill
+and then attending through `_tmh_mixed_attention_kernel`.
+
+Implementation pass: add per-request page-role tracking and opportunistic raw
+promotion in the physical TMH runtime. When the scheduler asks for a warm page
+but the worker still has raw slots, the worker maps that page to a raw slot and
+records the actual request role. The attention path now checks the actual mapped
+roles for the scheduled batch, not just the static worst-case `raw_pages /
+max_num_seqs` threshold, so batches that are truly all-raw can use the raw fast
+path. Release handling also frees opportunistically promoted raw slots when the
+scheduler later releases the original warm descriptor.
+
+Validation:
+
+```text
+pytest tests/v1/core/test_tmh_physical.py tests/v1/core/test_tmh_triton_ops.py -q
+13 passed
+```
+
+Live c12 results after the pass:
+
+```text
+configuration              KV tokens  max conc  cap vs std  wall(s)   p50(s)   p90(s)   total tok/s  tok/s vs std  tok/s vs TMH25
+standard                   66,448      8.11x      +0.00%      81.828   50.454   77.830    1023.9407      +0.00%       +588.50%
+TMH hot25 baseline        115,296     14.07x     +73.51%     563.383  360.579  554.152     148.7211     -85.48%          base
+TMH hot25 adaptive raw    115,296     14.07x     +73.51%     497.812  335.213  497.497     168.3107     -83.56%        +13.17%
+TMH hot50 adaptive raw     92,560     11.30x     +39.30%     327.935  221.658  327.712     255.4991     -75.05%        +71.80%
+TMH hot75 adaptive raw     77,328      9.44x     +16.37%     187.246  127.895  187.125     447.4697     -56.30%       +200.88%
+TMH hot100 raw control     66,432      8.11x      -0.02%      83.555   53.215   80.479    1002.7717      -2.07%       +574.26%
+```
+
+Artifacts:
+
+```text
+adaptive raw c12: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-adaptive-raw-c12/
+hot-budget sweep: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-hotbudget-sweep/
+summary:          benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-hotbudget-sweep/analysis/hotbudget_adaptive_raw_summary.json
+hot100 control:   benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-hot100-control/
+```
+
+Conclusion: adaptive raw promotion is a real improvement, but it is not enough.
+At the original `25%` policy it recovers `+13.17%` tok/s without giving up the
+`+73.51%` capacity claim. Raising the hot budget gives a monotonic latency win,
+but the capacity trade becomes steep: hot75 is `3.0x` faster than baseline TMH
+and still `+16.37%` capacity over standard, but it remains `-56.30%` tok/s
+versus standard. Hot100 proves raw TMH can be standard-like, but it gives up the
+memory-pressure advantage.
+
+Better abstraction: TMH cannot be judged as one layout. It is two systems. The
+raw system is already close to standard. The compressed warm system buys
+capacity but is currently too expensive for live long-prefill saturation. The
+next bottleneck pass should stop compressing inside latency-sensitive prefill.
+The stronger design is a two-phase policy: keep active prefill pages raw while
+requests are being admitted and scheduled, then compress colder pages after the
+prefill-critical path or only under actual raw-slot pressure. Kernel work should
+focus on eliminating the current mixed-prefill tax, not on more allocator proof.
+

@@ -372,16 +372,40 @@ def _tmh_raw_only_pages(cache) -> int:
     )
 
 
-def _tmh_batch_is_all_raw(cache, attn_metadata) -> bool:
+def _tmh_batch_is_all_raw(cache, attn_metadata, seq_to_request_row=None) -> bool:
     max_seq_len = int(getattr(attn_metadata, "max_seq_len", 0) or 0)
+    seq_lens = getattr(attn_metadata, "seq_lens", None)
     if max_seq_len <= 0:
-        seq_lens = getattr(attn_metadata, "seq_lens", None)
         if seq_lens is None:
             return False
         max_seq_len = int(seq_lens.max().item())
     block_size = int(cache.spec.block_size)
     max_pages = (max_seq_len + block_size - 1) // block_size
-    return max_pages <= _tmh_raw_only_pages(cache)
+    if max_pages <= _tmh_raw_only_pages(cache):
+        return True
+
+    role_table = getattr(cache, "request_role_by_row_page", None)
+    if role_table is None or seq_lens is None or max_pages <= 0:
+        return False
+
+    num_seqs = int(seq_lens.shape[0])
+    if num_seqs <= 0:
+        return False
+    max_pages = min(max_pages, int(role_table.shape[1]))
+    if seq_to_request_row is None:
+        roles = role_table[:num_seqs, :max_pages]
+    else:
+        rows = seq_to_request_row[:num_seqs].to(dtype=torch.long)
+        roles = role_table.index_select(0, rows)[:, :max_pages]
+    page_counts = torch.div(
+        seq_lens[:num_seqs] + block_size - 1,
+        block_size,
+        rounding_mode="floor",
+    )
+    page_ids = torch.arange(max_pages, device=seq_lens.device)[None, :]
+    valid = page_ids < page_counts[:, None]
+    raw = (roles == TMH_ROLE_PINNED_RAW) | (roles == TMH_ROLE_HOT_RAW)
+    return bool(torch.all(raw | ~valid).item())
 
 
 def _tmh_can_use_native_raw_attention(
@@ -1129,7 +1153,7 @@ def tmh_reshape_and_cache(
         if current_platform.is_rocm()
         else min(16, max(1, head_size_padded // 32))
     )
-    if _tmh_batch_is_all_raw(cache, attn_metadata):
+    if _tmh_batch_is_all_raw(cache, attn_metadata, seq_rows):
         _tmh_raw_reshape_and_cache_kernel[(num_tokens, num_kv_heads)](
             key_ptr=key,
             value_ptr=value,
@@ -1361,7 +1385,12 @@ def tmh_physical_attention(
         "max_query_len",
         1 if q.shape[0] <= num_seqs else q.shape[0],
     )
-    all_raw = _tmh_batch_is_all_raw(cache, attn_metadata)
+    seq_rows = _seq_to_request_row(
+        seq_to_request_row,
+        num_seqs=num_seqs,
+        device=q.device,
+    )
+    all_raw = _tmh_batch_is_all_raw(cache, attn_metadata, seq_rows)
     tile_size = (
         _get_tmh_raw_tile_size(
             head_size=head_size,
@@ -1440,11 +1469,6 @@ def tmh_physical_attention(
         )
         return
 
-    seq_rows = _seq_to_request_row(
-        seq_to_request_row,
-        num_seqs=num_seqs,
-        device=q.device,
-    )
     if all_raw:
         _tmh_raw_attention_kernel[grid](
             output_ptr=out,

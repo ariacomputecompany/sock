@@ -172,13 +172,14 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
     )
 
     assert cache.request_slot_by_row_page[0, 1].item() == 0
-    assert cache.canonical_role_by_logical_block[1].item() == int(
-        TMHPageRole.WARM_INT8_INT8
-    )
-    assert cache.request_slot_by_row_page[0, 3].item() == 0
+    assert cache.request_role_by_row_page[0, 1].item() == int(TMHPageRole.HOT_RAW)
+    assert cache.canonical_role_by_logical_block[1].item() == -1
+    overlay_slot = cache.request_slot_by_row_page[0, 3].item()
+    assert overlay_slot >= 0
+    assert cache.request_role_by_row_page[0, 3].item() == int(TMHPageRole.HOT_RAW)
     assert cache.native_block_table_by_seq[0, 1].item() == 0
     assert cache.native_block_table_by_seq[0, 2].item() == 0
-    assert cache.native_block_table_by_seq[0, 3].item() == 0
+    assert cache.native_block_table_by_seq[0, 3].item() == overlay_slot
 
     runtime.apply_events(
         [
@@ -193,6 +194,9 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
         ],
         {},
     )
+
+    assert ("model.layers.0.self_attn", "req-1", 1) not in runtime._overlay_slots
+    assert ("model.layers.0.self_attn", "req-1", 3) not in runtime._overlay_slots
 
     runtime.apply_events(
         [
@@ -214,8 +218,9 @@ def test_tmh_physical_runtime_maps_request_pages_to_canonical_and_overlay_slots(
         ],
         {"req-2": 1},
     )
-    assert cache.request_slot_by_row_page[1, 3].item() == 0
-    assert cache.native_block_table_by_seq[1, 3].item() == 0
+    assert cache.request_slot_by_row_page[1, 3].item() == overlay_slot
+    assert cache.request_role_by_row_page[1, 3].item() == int(TMHPageRole.HOT_RAW)
+    assert cache.native_block_table_by_seq[1, 3].item() == overlay_slot
 
 
 def test_tmh_physical_runtime_shares_prefix_cached_hot_raw_pages():
@@ -344,6 +349,9 @@ def test_tmh_physical_runtime_reuses_released_canonical_raw_slots():
         ],
         {},
     )
+
+    assert ("model.layers.0.self_attn", "req-1", 1) not in runtime._overlay_slots
+    assert ("model.layers.0.self_attn", "req-1", 3) not in runtime._overlay_slots
 
     runtime.apply_events(
         [
