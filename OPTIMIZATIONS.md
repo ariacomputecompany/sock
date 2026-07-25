@@ -1499,3 +1499,107 @@ versus c24 at 32K, where standard is at its admitted frontier and TMH still has
 room. That benchmark should measure queueing, error rate, p90 latency, and
 completed tokens per GiB, not just raw tok/s.
 
+## 2026-07-25 Live Saturation Scaled 8K Frontier
+
+The next proof after allocator capacity was a live serving saturation run. The
+original target was 32K at `--gpu-memory-utilization 0.90` around standard KV's
+frontier, but that shape did not produce a useful full ladder: long unique
+prefills were effectively serialized by the scheduler. Standard showed real 32K
+capacity (`455,216` KV tokens, `13.89x` max concurrency) and `0.0%` prefix-cache
+hit rate, but the engine stayed around one to two running requests with a long
+waiting queue. That is a live prefill/scheduler bottleneck, not a clean capacity
+frontier comparison.
+
+So this pass scaled the same question down to an 8K frontier at
+`--gpu-memory-utilization 0.35`, with `--max-num-batched-tokens 8192`,
+`--max-num-seqs 32`, about 7K prompt tokens, one generated token per request, and
+concurrency levels c12/c14/c16/c20/c24. This is still a pressure test because
+standard reports only `8.11x` max concurrency while TMH reports `14.07x` under
+the exact same `6.08 GiB` available KV memory.
+
+Benchmark contract:
+
+```text
+model: Qwen/Qwen3-30B-A3B-GPTQ-Int4
+gpu memory utilization: 0.35
+available KV cache memory reported by vLLM: 6.08 GiB
+max model len: 8192
+max batched tokens: 8192
+max seqs: 32
+prompt shape: unique roughly 7K-token prompts, max_tokens=1
+standard: --kv-layout standard
+TMH:      --kv-layout tmh --tmh-hot-budget-pct 25
+artifacts: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-8k-util35-p7000/
+summary:   benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-8k-util35-p7000/analysis/live_saturation_c12_summary.json
+```
+
+Capacity result:
+
+```text
+standard KV cache tokens: 66,448   max concurrency:  8.11x
+TMH KV cache tokens:      115,296  max concurrency: 14.07x
+TMH capacity delta:       +73.51%
+```
+
+Standard live ladder completed successfully:
+
+```text
+c12: ok=12 failed=0 wall= 81.8280s total_tok/s=1023.9407 p50=50.4540s p90= 77.8302s tok/s/GiB=168.4113
+c14: ok=14 failed=0 wall= 61.0933s total_tok/s=1600.0609 p50=29.4706s p90= 54.3867s tok/s/GiB=263.1679
+c16: ok=16 failed=0 wall=109.4923s total_tok/s=1020.3369 p50=58.7277s p90=102.8679s tok/s/GiB=167.8186
+c20: ok=20 failed=0 wall=138.0045s total_tok/s=1011.9309 p50=74.8601s p90=127.6693s tok/s/GiB=166.4360
+c24: ok=24 failed=0 wall=165.7045s total_tok/s=1011.3366 p50=91.3260s p90=152.2424s tok/s/GiB=166.3383
+```
+
+The full TMH ladder was stopped after c12 proved the failure mode was too large
+to justify spending hours on c14/c16/c20/c24. A dedicated fresh-server TMH c12
+rerun produced the detailed comparison:
+
+```text
+standard c12:
+  ok=12 failed=0 wall= 81.8280s p50= 50.4540s p90= 77.8302s
+  total_tok/s=1023.9407 tok/s/GiB=168.4113 queueing_proxy= 74.8491s
+
+TMH c12:
+  ok=12 failed=0 wall=563.3834s p50=360.5790s p90=554.1521s
+  total_tok/s= 148.7211 tok/s/GiB= 24.4607 queueing_proxy=522.2314s
+```
+
+TMH versus standard at c12:
+
+```text
+capacity:       +73.51%
+wall time:     +588.50%
+p50 latency:   +614.67%
+p90 latency:   +612.00%
+queue proxy:   +597.71%
+total tok/s:    -85.48%
+tok/s/GiB:      -85.48%
+errors:           0 on both sides
+```
+
+Reality: this is not yet a product win. TMH's allocator gain is real and stable,
+but in the current live unique-prompt saturation shape that capacity does not
+turn into better inference experience. The TMH server completed c12 with zero
+errors and `0.0%` prefix-cache hit rate, but server telemetry showed only roughly
+two to three running requests while the rest waited. The hot bottleneck appears
+to be the live TMH prefill/cache-write/mixed-attention path and its scheduler
+interaction, not allocator admission.
+
+Interpretation: the next +20% path is not another capacity proof. It is making
+TMH cheap enough on the live path that the allocator headroom can actually be
+used. The highest-leverage targets are: cover the 7K prefill shape in TMH warmup
+so `_tmh_reshape_and_cache_kernel` and `_tmh_mixed_attention_kernel` do not JIT
+inside the measured run; reduce physical TMH cache-write overhead during long
+prefill; inspect why chunked prefill admits only a few running requests despite
+TMH's `14.07x` capacity; and benchmark with stricter fully unique prompt bodies
+or prefix caching disabled to remove the remaining standard-side prompt-sharing
+caveat in the wider ladder.
+
+Conclusion: keep the capacity claim, but do not claim live serving uplift yet.
+For product-facing inference, TMH currently means much larger resident context
+headroom at the cost of significantly worse live long-prefill latency. The next
+optimization pass should attack the TMH live prefill/write/scheduler path until
+c12 is at least standard-parity, then rerun the c12/c14/c16/c20/c24 ladder and
+only then return to the full 32K frontier.
+
