@@ -1044,3 +1044,38 @@ Conclusion: `--generation-config vllm` is not a +20 path for the current suite.
 It may help selected long concurrent cells, but the full endpoint mix prefers
 the model generation defaults. Keep the stable baseline serve shape unchanged.
 
+## 2026-07-24 Standard Triton No-Eager Falsification
+
+After stabilizing the denominator on standard KV plus `TRITON_ATTN`, the next
+high-leverage moonshot was to remove `--enforce-eager`. The hypothesis was that
+Triton attention might make vLLM's compiled/CUDAGraph path viable on gfx1151,
+reducing scheduler/model overhead broadly enough to move the full distribution.
+
+The server did initialize successfully with `enforce_eager=False`:
+
+```text
+torch.compile cache range: (1, 1024)
+torch.compile total:      33.92 s
+CUDAGraph capture:        4 s, 0.45 GiB
+Health readiness:         ready after 72 two-second polls
+```
+
+So this was not a stability failure. The narrowed latency-sensitive c4 gate ran
+to completion, but it clearly regressed against the stable standard Triton
+baseline:
+
+```text
+medium_architecture_256 c4:   53.6950 -> 47.6038  (-11.34%)
+long_cosmology_512 c4:        50.6543 -> 47.2523  ( -6.72%)
+long_context_summary_256 c4:  65.8769 -> 62.3257  ( -5.39%)
+Gate geomean delta:                                ( -7.85%)
+```
+
+Conclusion: compiled/CUDAGraph execution is now viable enough to serve traffic,
+but it is slower on the exact c4 cells where we need the most help. Do not run a
+full suite for this shape and keep `--enforce-eager` in the stable standard
+Triton baseline. The lamp here is useful: our current bottleneck is not simply
+Python/eager overhead. The losses point back toward kernel shape, scheduler
+batching policy, MoE routing/top-k cost, or benchmark-contract-level sampling and
+stream semantics rather than generic graph capture.
+
