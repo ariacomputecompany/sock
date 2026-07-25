@@ -2014,3 +2014,94 @@ c14 failed frontier: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-refcount-frontier/r
 c14 fallback result: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-overlay-fallback-c14/results/tmh-overlay-fallback-c14.json
 summary:             benchmarks/2026-07-25-gmk-qwen3-30b-tmh-overlay-fallback-c14/analysis/overlay_fallback_summary.json
 ```
+
+## 2026-07-25 TMH Frontier Pass: Canonical Raw Exhaustion Fallback
+
+The overlay fallback made c14 serviceable, but a larger batching experiment
+exposed a second fatal path. With `--max-num-batched-tokens 16384`, c14 no
+longer died in the request-overlay allocator. Instead, the engine exhausted the
+canonical `HOT_RAW` pool while applying worker-side physical descriptors:
+
+```text
+BT16384 before canonical fallback: wall=20.5495s total_tok/s=339.7643 ok=1 failed=13
+error: TMH physical raw pool for layer 'model.layers.0.self_attn.attn' is exhausted
+```
+
+The first-principles read is that TMH had two raw-pressure paths, but only one
+of them was pressure-adaptive. Overlay pages could spill to warm storage; shared
+canonical raw pages still treated raw capacity as a hard requirement. That is
+not a physical requirement. It is an implementation boundary.
+
+The retained change adds symmetric canonical fallback in the physical runtime:
+
+```text
+1. If a canonical `PINNED_RAW` or `HOT_RAW` descriptor already has a raw slot,
+   keep sharing that raw slot.
+2. If a raw slot is available, keep the fast raw path.
+3. If the raw pool is exhausted, demote only the new canonical descriptor to the
+   layer-appropriate warm role (`WARM_INT8_INT4` early, `WARM_INT8_INT8` late).
+4. On release, a scheduler-side raw release also checks for the warm fallback
+   key so the demoted slot is returned to the warm pool instead of leaking.
+```
+
+Validation:
+
+```text
+cd vllm
+.venv/bin/python -m py_compile vllm/v1/tmh_physical.py tests/v1/core/test_tmh_physical.py
+.venv/bin/python -m pytest tests/v1/core/test_tmh_physical.py tests/v1/core/test_tmh_triton_ops.py -q
+14 passed
+```
+
+The BT16384 probe now completes instead of failing:
+
+```text
+TMH hot25 c14 BT16384 after canonical fallback:
+wall=108.3874s p50=68.4651s p90=108.3815s queue=90.3070s total_tok/s=901.8857 tok/s/GiB=148.3365 ok=14 failed=0
+```
+
+But the larger batch is a rejected performance direction for the current
+runtime. It is robust, not faster:
+
+```text
+BT16384 after vs BT16384 before: serviceable instead of 13/14 failed
+BT16384 after vs accepted BT8192 c14: -10.79% total_tok/s, +11.66% wall
+```
+
+The accepted c14 shape remains stable after the runtime change:
+
+```text
+TMH hot25 c14 BT8192 after canonical fallback:
+wall=97.0692s p50=62.4780s p90=97.0302s queue=85.1950s total_tok/s=1007.0447 tok/s/GiB=165.6324 ok=14 failed=0
+```
+
+Relative to the current best c12 point:
+
+```text
+c14 BT8192 after vs c12 refcount:  -3.66% total_tok/s, +21.10% wall
+c14 BT16384 after vs c12 refcount: -13.72% total_tok/s, +35.22% wall
+```
+
+Interpretation: canonical fallback is worth keeping because it removes another
+engine-death edge without regressing the accepted c14 path. It does not move the
++20% throughput goal directly. The next bottleneck is now clearer: c14+ is
+limited by active-step work under raw pressure, not scheduler finish bookkeeping
+and not by simply increasing batch tokens.
+
+Next pass:
+
+```text
+1. Add admission/raw-reserve accounting so a single scheduler step cannot flood
+   canonical hot raw beyond the useful raw pool and force too many warm fallbacks.
+2. Measure whether that improves c14 queueing without reducing c12 throughput.
+3. If admission does not move the number, attack the warm mixed-attention path
+   directly, since c14 timing still points at model forward/attention plus
+   descriptor application as the active bottleneck.
+```
+
+Artifacts:
+
+```text
+c14 BT8192 after:  benchmarks/2026-07-25-gmk-qwen3-30b-tmh-overlay-fallback-c14/results/tmh-overlay-fallback-c14.json
+c14 BT16384 after: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-c14-bt16384/results/tmh-c14-bt16384.json
+```

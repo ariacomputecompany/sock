@@ -234,6 +234,14 @@ def _descriptor_with_role(
     )
 
 
+def _warm_role_for_cache(cache: TMHPhysicalKVCache) -> TMHPageRole:
+    return (
+        TMHPageRole.WARM_INT8_INT8
+        if cache.spec.tmh_late_layer
+        else TMHPageRole.WARM_INT8_INT4
+    )
+
+
 class TMHPhysicalRuntime:
     """Device-side TMH descriptor state for model runners."""
 
@@ -344,6 +352,15 @@ class TMHPhysicalRuntime:
             )
             slot = self._canonical_slots.pop(promoted_key, None)
             wants_raw = slot is not None
+        if slot is None and wants_raw:
+            cache = self._caches[descriptor.layer_name]
+            fallback_key = (
+                descriptor.layer_name,
+                descriptor.logical_block_id,
+                int(_warm_role_for_cache(cache)),
+            )
+            slot = self._canonical_slots.pop(fallback_key, None)
+            wants_raw = slot is None
         if slot is None:
             return
         free_slots = (
@@ -415,6 +432,9 @@ class TMHPhysicalRuntime:
         descriptor = self._demote_overlay_to_warm_when_raw_exhausted(
             cache, layer_name, descriptor
         )
+        descriptor = self._demote_canonical_to_warm_when_raw_exhausted(
+            cache, layer_name, descriptor
+        )
         logical_block_id = descriptor.logical_block_id
         if logical_block_id < 0 or logical_block_id >= cache.num_logical_blocks:
             raise RuntimeError(
@@ -450,12 +470,28 @@ class TMHPhysicalRuntime:
             return descriptor
         if self._raw_free_slots.get(layer_name):
             return descriptor
-        warm_role = (
-            TMHPageRole.WARM_INT8_INT8
-            if cache.spec.tmh_late_layer
-            else TMHPageRole.WARM_INT8_INT4
+        return _descriptor_with_role(descriptor, _warm_role_for_cache(cache))
+
+    def _demote_canonical_to_warm_when_raw_exhausted(
+        self,
+        cache: TMHPhysicalKVCache,
+        layer_name: str,
+        descriptor: TMHPhysicalPageDescriptor,
+    ) -> TMHPhysicalPageDescriptor:
+        if descriptor.storage != TMHStorageKind.CANONICAL:
+            return descriptor
+        if descriptor.role not in (TMHPageRole.PINNED_RAW, TMHPageRole.HOT_RAW):
+            return descriptor
+        raw_key = (
+            layer_name,
+            descriptor.logical_block_id,
+            int(descriptor.role),
         )
-        return _descriptor_with_role(descriptor, warm_role)
+        if raw_key in self._canonical_slots:
+            return descriptor
+        if self._raw_free_slots.get(layer_name):
+            return descriptor
+        return _descriptor_with_role(descriptor, _warm_role_for_cache(cache))
 
     def _promote_to_raw_when_available(
         self,

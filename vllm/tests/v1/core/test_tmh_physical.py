@@ -373,6 +373,83 @@ def test_tmh_physical_runtime_reuses_released_canonical_raw_slots():
     assert cache.request_slot_by_row_page[1, 0].item() in range(raw_capacity)
 
 
+def test_tmh_physical_runtime_demotes_canonical_raw_when_pool_exhausted():
+    cache = make_physical_cache()
+    runtime = TMHPhysicalRuntime()
+    runtime.register_cache("model.layers.0.self_attn", cache)
+    raw_capacity = cache.raw_key.shape[0]
+    raw_descriptors = tuple(
+        descriptor(
+            page_index=page,
+            logical_block_id=page,
+            role=TMHPageRole.HOT_RAW,
+        )
+        for page in range(raw_capacity)
+    )
+    fallback_descriptor = descriptor(
+        page_index=raw_capacity,
+        logical_block_id=raw_capacity,
+        role=TMHPageRole.HOT_RAW,
+    )
+
+    runtime.apply_events(
+        [
+            TMHPhysicalEvent(
+                request_id="req-1",
+                descriptors=raw_descriptors + (fallback_descriptor,),
+                total_pages=raw_capacity + 1,
+                recent_start_page=0,
+                hot_pages=raw_capacity + 1,
+            )
+        ],
+        {"req-1": 0},
+    )
+
+    fallback_slot = cache.request_slot_by_row_page[0, raw_capacity].item()
+    assert fallback_slot >= 0
+    assert cache.request_role_by_row_page[0, raw_capacity].item() == int(
+        TMHPageRole.WARM_INT8_INT4
+    )
+    assert cache.canonical_role_by_logical_block[raw_capacity].item() == int(
+        TMHPageRole.WARM_INT8_INT4
+    )
+
+    runtime.apply_events(
+        [
+            TMHPhysicalEvent(
+                request_id="req-1",
+                descriptors=(),
+                total_pages=0,
+                recent_start_page=0,
+                hot_pages=0,
+                released_descriptors=(fallback_descriptor,),
+            )
+        ],
+        {},
+    )
+
+    reused_descriptor = descriptor(
+        request_id="req-2",
+        page_index=raw_capacity + 1,
+        logical_block_id=raw_capacity + 1,
+        role=TMHPageRole.WARM_INT8_INT4,
+    )
+    runtime.apply_events(
+        [
+            TMHPhysicalEvent(
+                request_id="req-2",
+                descriptors=(reused_descriptor,),
+                total_pages=raw_capacity + 2,
+                recent_start_page=0,
+                hot_pages=raw_capacity + 2,
+            )
+        ],
+        {"req-2": 1},
+    )
+
+    assert cache.request_slot_by_row_page[1, raw_capacity + 1].item() == fallback_slot
+
+
 def test_tmh_raw_cache_matches_rocm_paged_attention_split_views():
     cache = make_physical_cache()
 
