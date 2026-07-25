@@ -14,7 +14,7 @@ proved.
 
 ## Short Version
 
-TMH means Transformer Memory Hierarchy.
+TMH means Tiered Memory Hierarchy.
 
 The core idea is simple: the KV cache is the model's working memory during
 inference, and standard KV stores that working memory mostly uniformly in raw
@@ -779,4 +779,3 @@ is to make the all-raw path indistinguishable from standard KV, keep improving
 shape-adaptive decode, and prove that the capacity headroom turns into lower
 queueing, fewer failures, and more long-context users per GPU under real memory
 pressure.
-

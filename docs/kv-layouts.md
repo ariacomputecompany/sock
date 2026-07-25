@@ -12,9 +12,8 @@ sock serve <model> --kv-layout standard
 sock serve <model> --kv-layout tmh
 ```
 
-`standard` selects regular vLLM paged KV. `tmh` selects the Transformer Memory
-Hierarchy fidelity-paged layout contract and maps to allocator-path accounting
-until physical mixed-fidelity storage is implemented.
+`standard` selects regular vLLM paged KV. `tmh` selects the Tiered Memory
+Hierarchy physical KV path on supported accelerator/runtime combinations.
 
 ## Production Contract
 
@@ -31,8 +30,8 @@ The current production support matrix is:
 | Layout | Public value | Runtime mode | CUDA | ROCm | Physical storage |
 | --- | --- | --- | --- | --- | --- |
 | Standard paged KV | `standard` | standard | yes | yes | yes |
-| TMH fidelity paged KV | `tmh` | accounting | yes | yes | no, fail-closed |
+| TMH fidelity paged KV | `tmh` | physical | yes | yes | yes, runtime-gated |
 
-Physical TMH must not silently store standard KV while reporting TMH. Until the
-mixed-fidelity warm-page tensors and layout-aware attention kernels exist,
-physical mode is rejected before inference startup.
+Physical TMH must not silently store standard KV while reporting TMH. If the
+detected runtime cannot support the physical TMH backend, startup must fail
+before inference.

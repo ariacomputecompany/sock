@@ -1,0 +1,30 @@
+services:
+  sock-inference:
+    build:
+      context: ../..
+      dockerfile: docker/inference/Dockerfile.rocm
+      args:
+        PYTORCH_ROCM_ARCH: ${PYTORCH_ROCM_ARCH:-gfx1151}
+        MAX_JOBS: ${MAX_JOBS:-8}
+    image: ${SOCK_IMAGE:-sock-inference:rocm-gfx1151}
+    container_name: ${SOCK_CONTAINER_NAME:-sock-inference}
+    ipc: host
+    group_add:
+      - video
+      - render
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    security_opt:
+      - seccomp=unconfined
+    cap_add:
+      - SYS_PTRACE
+    ports:
+      - "${SOCK_HOST_PORT:-8000}:8000"
+      - "${LINX_HOST_PORT:-18110}:18110"
+    env_file:
+      - .env.inference
+    volumes:
+      - ${HF_HOME:-/home/deepsaint/.cache/huggingface}:/root/.cache/huggingface
+      - ${SOCK_DATA_DIR:-/home/deepsaint/.sock-inference}:/data
+    restart: unless-stopped

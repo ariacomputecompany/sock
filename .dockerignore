@@ -1,0 +1,21 @@
+.git
+.fozzy
+target
+**/target
+**/.venv
+**/__pycache__
+**/*.pyc
+benchmarks
+artifacts
+vendor
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.cache
+*.nohup
+*.log
+
+# Keep the optional local torch wheel used by docker/inference/Dockerfile.rocm.
+!docker/inference/wheelhouse/
+!docker/inference/wheelhouse/*.whl
+!docker/inference/wheelhouse/.gitkeep
