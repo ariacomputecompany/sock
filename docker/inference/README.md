@@ -14,6 +14,7 @@ The default model is `Qwen/Qwen3-30B-A3B-GPTQ-Int4` with the production TMH layo
 --gpu-memory-utilization 0.90
 --max-num-batched-tokens 8192
 --max-num-seqs 32
+--chat-template /opt/sock/docker/inference/templates/sock-agent.jinja
 ```
 
 ## Prerequisites
@@ -61,6 +62,14 @@ LINX_PUBLIC_BASE_URL=https://api.example.com
 ```
 
 Until a domain is attached, leave it as `http://<host>:18110`.
+
+The image also ships a production chat template at
+`docker/inference/templates/sock-agent.jinja`. It injects a default system
+prompt that tells the model it is the SOCK inference agent, explains the
+container boundary, and requires refusal for host access, credential theft,
+container escape, and security bypass requests. Override `SOCK_CHAT_TEMPLATE`
+only when intentionally replacing that policy. `SOCK_TRUST_REQUEST_CHAT_TEMPLATE`
+defaults to `0` so callers cannot replace the server-side template per request.
 
 ## Build And Run
 

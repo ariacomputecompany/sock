@@ -81,6 +81,14 @@ sock_args=(
   --skip-mm-profiling
 )
 
+if [[ -n "${SOCK_CHAT_TEMPLATE:-}" ]]; then
+  sock_args+=(--chat-template "${SOCK_CHAT_TEMPLATE}")
+fi
+if bool_flag "${SOCK_TRUST_REQUEST_CHAT_TEMPLATE:-0}"; then
+  sock_args+=(--trust-request-chat-template)
+else
+  sock_args+=(--no-trust-request-chat-template)
+fi
 if bool_flag "${SOCK_ENFORCE_EAGER}"; then
   sock_args+=(--enforce-eager)
 fi
