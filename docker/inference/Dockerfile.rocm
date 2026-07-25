@@ -56,23 +56,23 @@ RUN git clone --depth 1 --branch "${LINX_REF}" "${LINX_REPO}" /opt/linx && \
     cp /opt/linx/target/release/linx /usr/local/bin/linx
 
 RUN python3 -m venv /opt/sock/vllm/.venv && \
-    /opt/sock/vllm/.venv/bin/python -m pip install --upgrade pip setuptools wheel && \
-    /opt/sock/vllm/.venv/bin/pip install -r requirements.txt && \
+    /opt/sock/vllm/.venv/bin/python -m pip install --upgrade pip "setuptools>=77.0.3,<80.0.0" wheel && \
+    /opt/sock/vllm/.venv/bin/python -m pip install -r requirements.txt && \
     torch_wheel="$(find /opt/wheelhouse -maxdepth 1 -name 'torch*.whl' | sort | head -n 1)" && \
     if [ -z "${torch_wheel}" ]; then \
       echo "Missing gfx1151 torch wheel. Copy torch-*-linux_x86_64.whl into docker/inference/wheelhouse/ before building." >&2; \
       exit 64; \
     fi && \
-    /opt/sock/vllm/.venv/bin/pip install "${torch_wheel}" && \
+    /opt/sock/vllm/.venv/bin/python -m pip install "${torch_wheel}" && \
     grep -vE '^(--extra-index-url|torch==|torchvision==|torchaudio==)' vllm/requirements/build/rocm.txt > /tmp/rocm-build-no-torch.txt && \
     grep -vE '^(torch==|torchvision==|torchaudio==)' vllm/requirements/rocm.txt > /tmp/rocm-runtime-no-torch.txt && \
-    /opt/sock/vllm/.venv/bin/pip install -r /tmp/rocm-build-no-torch.txt -r /tmp/rocm-runtime-no-torch.txt && \
+    /opt/sock/vllm/.venv/bin/python -m pip install -r /tmp/rocm-build-no-torch.txt -r /tmp/rocm-runtime-no-torch.txt && \
     cd /opt/sock/vllm && \
     SETUPTOOLS_SCM_PRETEND_VERSION="${VLLM_VERSION}" \
     VLLM_TARGET_DEVICE=rocm \
     PYTORCH_ROCM_ARCH="${PYTORCH_ROCM_ARCH}" \
     MAX_JOBS="${MAX_JOBS}" \
-    /opt/sock/vllm/.venv/bin/pip install --no-build-isolation -e .
+    /opt/sock/vllm/.venv/bin/python -m pip install --no-build-isolation -e .
 
 COPY docker/inference/entrypoint.sh /usr/local/bin/sock-inference-entrypoint
 COPY docker/inference/generate-api-key.sh /usr/local/bin/sock-generate-api-key
