@@ -1944,3 +1944,73 @@ c4 result:       benchmarks/2026-07-25-gmk-qwen3-30b-tmh-refcount-c4/results/tmh
 c12 result:      benchmarks/2026-07-25-gmk-qwen3-30b-tmh-refcount-c12/results/tmh-refcount-c12.json
 summary:         benchmarks/2026-07-25-gmk-qwen3-30b-tmh-refcount-c12/analysis/refcount_release_summary.json
 ```
+
+## 2026-07-25 TMH Frontier Pass: Overlay Raw Exhaustion Fallback
+
+After the canonical descriptor refcount fix, c12 became slightly positive
+against standard, but the first wider frontier sweep exposed the next limiter:
+c12 completed successfully, then c14 killed the engine with raw pool exhaustion.
+
+```text
+c12 after refcount: wall=80.2721s total_tok/s=1043.7870 ok=12 failed=0
+c14 before fallback: failed=14
+error: TMH physical raw pool for layer 'model.layers.0.self_attn.attn' is exhausted
+```
+
+A blanket experiment that classified owned hashed pages as canonical instead of
+overlay avoided the crash, but it was rejected because it made c14 crawl:
+
+```text
+c14 owned-hash canonical experiment: wall=349.1763s p50=180.5914s p90=335.5801s total_tok/s=279.9531
+```
+
+The retained change is narrower and lives in the worker-side physical runtime.
+When a request-overlay page wants raw storage but the raw pool is empty, the
+runtime demotes only that descriptor to the layer-appropriate warm role:
+early layers use `WARM_INT8_INT4`, late layers use `WARM_INT8_INT8`. This keeps
+the fast raw-overlay path for c12 and below, but turns c14+ raw-pool exhaustion
+from a hard engine failure into a compressed fallback.
+
+Validation:
+
+```text
+cd vllm
+.venv/bin/python -m py_compile vllm/v1/tmh_physical.py
+.venv/bin/python -m pytest tests/v1/core/test_tmh_physical.py tests/v1/core/test_tmh_triton_ops.py -q
+13 passed
+```
+
+Clean c14 result with overlay fallback:
+
+```text
+TMH hot25 c14 overlay fallback: wall=96.6954s p50=62.2219s p90=96.6604s total_tok/s=1010.9373 ok=14 failed=0
+```
+
+Relative movement:
+
+```text
+c14 fallback vs c14 hard failure: serviceable instead of engine-dead
+c14 fallback vs rejected canonical experiment: +261.12% total_tok/s, -72.31% wall
+c14 fallback vs c12 refcount point: -3.29% total_tok/s, +20.62% wall
+```
+
+Interpretation: this pass improves frontier robustness, not the +20 throughput
+target directly. The live frontier is now clear: c12 is the best current
+throughput point (`~1045 tok/s`, `+2.08%` over standard c12), c14 is serviceable
+but slightly lower throughput because it spills beyond the raw reserve into warm
+fallback. The next performance pass should either:
+
+```text
+1. change admission so latency-sensitive c14 batches do not spill many active
+   pages into warm fallback at once, or
+2. speed the warm fallback attention/update path enough that c14+ converts the
+   allocator headroom into positive throughput.
+```
+
+Artifacts:
+
+```text
+c14 failed frontier: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-refcount-frontier/results/tmh-refcount-frontier.json
+c14 fallback result: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-overlay-fallback-c14/results/tmh-overlay-fallback-c14.json
+summary:             benchmarks/2026-07-25-gmk-qwen3-30b-tmh-overlay-fallback-c14/analysis/overlay_fallback_summary.json
+```

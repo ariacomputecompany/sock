@@ -412,6 +412,9 @@ class TMHPhysicalRuntime:
 
     def _apply_descriptor(self, cache, layer_name, descriptor, req_index: int) -> None:
         descriptor = self._promote_to_raw_when_available(layer_name, descriptor)
+        descriptor = self._demote_overlay_to_warm_when_raw_exhausted(
+            cache, layer_name, descriptor
+        )
         logical_block_id = descriptor.logical_block_id
         if logical_block_id < 0 or logical_block_id >= cache.num_logical_blocks:
             raise RuntimeError(
@@ -436,6 +439,23 @@ class TMHPhysicalRuntime:
         cache.request_slot_by_row_page[req_index, page_index] = slot
         cache.request_role_by_row_page[req_index, page_index] = int(descriptor.role)
         cache.native_block_table_by_seq[req_index, page_index] = slot
+
+    def _demote_overlay_to_warm_when_raw_exhausted(
+        self,
+        cache: TMHPhysicalKVCache,
+        layer_name: str,
+        descriptor: TMHPhysicalPageDescriptor,
+    ) -> TMHPhysicalPageDescriptor:
+        if descriptor.storage != TMHStorageKind.REQUEST_OVERLAY:
+            return descriptor
+        if self._raw_free_slots.get(layer_name):
+            return descriptor
+        warm_role = (
+            TMHPageRole.WARM_INT8_INT8
+            if cache.spec.tmh_late_layer
+            else TMHPageRole.WARM_INT8_INT4
+        )
+        return _descriptor_with_role(descriptor, warm_role)
 
     def _promote_to_raw_when_available(
         self,

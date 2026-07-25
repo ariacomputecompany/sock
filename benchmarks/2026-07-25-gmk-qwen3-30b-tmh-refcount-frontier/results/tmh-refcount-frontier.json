@@ -1,0 +1,1108 @@
+{
+  "batches": [
+    {
+      "aggregate_completion_tok_per_s": 0.1495,
+      "aggregate_total_tok_per_s": 1043.787,
+      "completion_tok_per_s_per_kv_gib": 0.024587,
+      "completion_tokens": 12,
+      "concurrency": 12,
+      "failed_requests": 0,
+      "latency_s": {
+        "max": 80.2663,
+        "mean": 51.7277,
+        "median": 58.6011,
+        "min": 11.7288,
+        "p90": 80.2145
+      },
+      "queueing_proxy_s": 68.5375,
+      "requests": [
+        {
+          "completion_tok_per_s": 0.0853,
+          "completion_tokens": 1,
+          "elapsed_s": 11.7288,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6981,
+          "request_index": 1,
+          "run_index": 1,
+          "total_tok_per_s": 595.288,
+          "total_tokens": 6982
+        },
+        {
+          "completion_tok_per_s": 0.0524,
+          "completion_tokens": 1,
+          "elapsed_s": 19.0809,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6981,
+          "request_index": 2,
+          "run_index": 1,
+          "total_tok_per_s": 365.9157,
+          "total_tokens": 6982
+        },
+        {
+          "completion_tok_per_s": 0.0182,
+          "completion_tokens": 1,
+          "elapsed_s": 55.0241,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6981,
+          "request_index": 3,
+          "run_index": 1,
+          "total_tok_per_s": 126.8898,
+          "total_tokens": 6982
+        },
+        {
+          "completion_tok_per_s": 0.0161,
+          "completion_tokens": 1,
+          "elapsed_s": 62.1814,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6981,
+          "request_index": 4,
+          "run_index": 1,
+          "total_tok_per_s": 112.2844,
+          "total_tokens": 6982
+        },
+        {
+          "completion_tok_per_s": 0.0229,
+          "completion_tokens": 1,
+          "elapsed_s": 43.7494,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6981,
+          "request_index": 5,
+          "run_index": 1,
+          "total_tok_per_s": 159.5907,
+          "total_tokens": 6982
+        },
+        {
+          "completion_tok_per_s": 0.0125,
+          "completion_tokens": 1,
+          "elapsed_s": 80.2663,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6981,
+          "request_index": 6,
+          "run_index": 1,
+          "total_tok_per_s": 86.9854,
+          "total_tokens": 6982
+        },
+        {
+          "completion_tok_per_s": 0.0382,
+          "completion_tokens": 1,
+          "elapsed_s": 26.1864,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6981,
+          "request_index": 7,
+          "run_index": 1,
+          "total_tok_per_s": 266.627,
+          "total_tokens": 6982
+        },
+        {
+          "completion_tok_per_s": 0.0291,
+          "completion_tokens": 1,
+          "elapsed_s": 34.3993,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6981,
+          "request_index": 8,
+          "run_index": 1,
+          "total_tok_per_s": 202.9691,
+          "total_tokens": 6982
+        },
+        {
+          "completion_tok_per_s": 0.013,
+          "completion_tokens": 1,
+          "elapsed_s": 76.6508,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6981,
+          "request_index": 9,
+          "run_index": 1,
+          "total_tok_per_s": 91.0884,
+          "total_tokens": 6982
+        },
+        {
+          "completion_tok_per_s": 0.0161,
+          "completion_tokens": 1,
+          "elapsed_s": 62.1781,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6982,
+          "request_index": 10,
+          "run_index": 1,
+          "total_tok_per_s": 112.3065,
+          "total_tokens": 6983
+        },
+        {
+          "completion_tok_per_s": 0.0125,
+          "completion_tokens": 1,
+          "elapsed_s": 80.2145,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6982,
+          "request_index": 11,
+          "run_index": 1,
+          "total_tok_per_s": 87.0541,
+          "total_tokens": 6983
+        },
+        {
+          "completion_tok_per_s": 0.0145,
+          "completion_tokens": 1,
+          "elapsed_s": 69.0728,
+          "finish_reason": "length",
+          "ok": true,
+          "prompt_tokens": 6982,
+          "request_index": 12,
+          "run_index": 1,
+          "total_tok_per_s": 101.0962,
+          "total_tokens": 6983
+        }
+      ],
+      "run_index": 1,
+      "success_rate": 1.0,
+      "successful_requests": 12,
+      "total_tok_per_s_per_kv_gib": 171.6755,
+      "total_tokens": 83787,
+      "wall_s": 80.2721
+    },
+    {
+      "aggregate_completion_tok_per_s": 0.0,
+      "aggregate_total_tok_per_s": 0.0,
+      "completion_tok_per_s_per_kv_gib": 0.0,
+      "completion_tokens": 0,
+      "concurrency": 14,
+      "failed_requests": 14,
+      "latency_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "queueing_proxy_s": null,
+      "requests": [
+        {
+          "elapsed_s": 6.2368,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 1,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2366,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 2,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2381,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 3,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2379,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 4,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2351,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 5,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2367,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 6,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2361,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 7,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2333,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 8,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2348,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 9,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2328,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 10,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2344,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 11,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2317,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 12,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2315,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 13,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 6.2323,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 14,
+          "run_index": 1
+        }
+      ],
+      "run_index": 1,
+      "success_rate": 0.0,
+      "successful_requests": 0,
+      "total_tok_per_s_per_kv_gib": 0.0,
+      "total_tokens": 0,
+      "wall_s": 6.2406
+    },
+    {
+      "aggregate_completion_tok_per_s": 0.0,
+      "aggregate_total_tok_per_s": 0.0,
+      "completion_tok_per_s_per_kv_gib": 0.0,
+      "completion_tokens": 0,
+      "concurrency": 16,
+      "failed_requests": 16,
+      "latency_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "queueing_proxy_s": null,
+      "requests": [
+        {
+          "elapsed_s": 0.0062,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 1,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0057,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 2,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0058,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 3,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0063,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 4,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0046,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 5,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.005,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 6,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0055,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 7,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0057,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 8,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0051,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 9,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0055,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 10,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0056,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 11,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0059,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 12,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.006,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 13,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0059,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 14,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0056,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 15,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0055,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 16,
+          "run_index": 1
+        }
+      ],
+      "run_index": 1,
+      "success_rate": 0.0,
+      "successful_requests": 0,
+      "total_tok_per_s_per_kv_gib": 0.0,
+      "total_tokens": 0,
+      "wall_s": 0.0115
+    },
+    {
+      "aggregate_completion_tok_per_s": 0.0,
+      "aggregate_total_tok_per_s": 0.0,
+      "completion_tok_per_s_per_kv_gib": 0.0,
+      "completion_tokens": 0,
+      "concurrency": 20,
+      "failed_requests": 20,
+      "latency_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "queueing_proxy_s": null,
+      "requests": [
+        {
+          "elapsed_s": 0.0043,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 1,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0036,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 2,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0048,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 3,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0038,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 4,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0039,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 5,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0044,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 6,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0046,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 7,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0048,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 8,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0049,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 9,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0051,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 10,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0054,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 11,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0062,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 12,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0056,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 13,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0063,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 14,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0061,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 15,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0061,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 16,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0062,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 17,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0061,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 18,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0061,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 19,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0058,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 20,
+          "run_index": 1
+        }
+      ],
+      "run_index": 1,
+      "success_rate": 0.0,
+      "successful_requests": 0,
+      "total_tok_per_s_per_kv_gib": 0.0,
+      "total_tokens": 0,
+      "wall_s": 0.0113
+    },
+    {
+      "aggregate_completion_tok_per_s": 0.0,
+      "aggregate_total_tok_per_s": 0.0,
+      "completion_tok_per_s_per_kv_gib": 0.0,
+      "completion_tokens": 0,
+      "concurrency": 24,
+      "failed_requests": 24,
+      "latency_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "queueing_proxy_s": null,
+      "requests": [
+        {
+          "elapsed_s": 0.0015,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 1,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0063,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 2,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0043,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 3,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0031,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 4,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0054,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 5,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.003,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 6,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0046,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 7,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.005,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 8,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0046,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 9,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0046,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 10,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0053,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 11,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0046,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 12,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0054,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 13,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0056,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 14,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0062,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 15,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0054,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 16,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0061,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 17,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0062,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 18,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0064,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 19,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0065,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 20,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0067,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 21,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0068,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 22,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0064,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 23,
+          "run_index": 1
+        },
+        {
+          "elapsed_s": 0.0061,
+          "error": "RuntimeError('HTTP 500: {\"error\":{\"message\":\"EngineCore encountered an issue. See stack trace (above) for the root cause.\",\"type\":\"InternalServerError\",\"param\":null,\"code\":500}}')",
+          "ok": false,
+          "request_index": 24,
+          "run_index": 1
+        }
+      ],
+      "run_index": 1,
+      "success_rate": 0.0,
+      "successful_requests": 0,
+      "total_tok_per_s_per_kv_gib": 0.0,
+      "total_tokens": 0,
+      "wall_s": 0.0127
+    }
+  ],
+  "concurrency_levels": [
+    12,
+    14,
+    16,
+    20,
+    24
+  ],
+  "elapsed_s": 86.5489,
+  "kv_cache_gib": 6.08,
+  "label": "tmh-refcount-frontier",
+  "max_tokens": 1,
+  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+  "ok": true,
+  "prompt_token_estimate_local": 6970,
+  "summary": {
+    "12": {
+      "aggregate_completion_tok_per_s": {
+        "max": 0.1495,
+        "mean": 0.1495,
+        "median": 0.1495,
+        "min": 0.1495,
+        "p90": 0.1495
+      },
+      "aggregate_total_tok_per_s": {
+        "max": 1043.787,
+        "mean": 1043.787,
+        "median": 1043.787,
+        "min": 1043.787,
+        "p90": 1043.787
+      },
+      "completion_tok_per_s_per_kv_gib": {
+        "max": 0.0246,
+        "mean": 0.0246,
+        "median": 0.0246,
+        "min": 0.0246,
+        "p90": 0.0246
+      },
+      "failed_requests_total": 0,
+      "latency_p50_s": {
+        "max": 58.6011,
+        "mean": 58.6011,
+        "median": 58.6011,
+        "min": 58.6011,
+        "p90": 58.6011
+      },
+      "latency_p90_s": {
+        "max": 80.2145,
+        "mean": 80.2145,
+        "median": 80.2145,
+        "min": 80.2145,
+        "p90": 80.2145
+      },
+      "queueing_proxy_s": {
+        "max": 68.5375,
+        "mean": 68.5375,
+        "median": 68.5375,
+        "min": 68.5375,
+        "p90": 68.5375
+      },
+      "success_rate_mean": 1.0,
+      "successful_requests_total": 12,
+      "total_tok_per_s_per_kv_gib": {
+        "max": 171.6755,
+        "mean": 171.6755,
+        "median": 171.6755,
+        "min": 171.6755,
+        "p90": 171.6755
+      },
+      "wall_s": {
+        "max": 80.2721,
+        "mean": 80.2721,
+        "median": 80.2721,
+        "min": 80.2721,
+        "p90": 80.2721
+      }
+    },
+    "14": {
+      "aggregate_completion_tok_per_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "aggregate_total_tok_per_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "completion_tok_per_s_per_kv_gib": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "failed_requests_total": 14,
+      "latency_p50_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "latency_p90_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "queueing_proxy_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "success_rate_mean": 0.0,
+      "successful_requests_total": 0,
+      "total_tok_per_s_per_kv_gib": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "wall_s": {
+        "max": 6.2406,
+        "mean": 6.2406,
+        "median": 6.2406,
+        "min": 6.2406,
+        "p90": 6.2406
+      }
+    },
+    "16": {
+      "aggregate_completion_tok_per_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "aggregate_total_tok_per_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "completion_tok_per_s_per_kv_gib": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "failed_requests_total": 16,
+      "latency_p50_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "latency_p90_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "queueing_proxy_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "success_rate_mean": 0.0,
+      "successful_requests_total": 0,
+      "total_tok_per_s_per_kv_gib": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "wall_s": {
+        "max": 0.0115,
+        "mean": 0.0115,
+        "median": 0.0115,
+        "min": 0.0115,
+        "p90": 0.0115
+      }
+    },
+    "20": {
+      "aggregate_completion_tok_per_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "aggregate_total_tok_per_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "completion_tok_per_s_per_kv_gib": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "failed_requests_total": 20,
+      "latency_p50_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "latency_p90_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "queueing_proxy_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "success_rate_mean": 0.0,
+      "successful_requests_total": 0,
+      "total_tok_per_s_per_kv_gib": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "wall_s": {
+        "max": 0.0113,
+        "mean": 0.0113,
+        "median": 0.0113,
+        "min": 0.0113,
+        "p90": 0.0113
+      }
+    },
+    "24": {
+      "aggregate_completion_tok_per_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "aggregate_total_tok_per_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "completion_tok_per_s_per_kv_gib": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "failed_requests_total": 24,
+      "latency_p50_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "latency_p90_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "queueing_proxy_s": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "success_rate_mean": 0.0,
+      "successful_requests_total": 0,
+      "total_tok_per_s_per_kv_gib": {
+        "max": 0.0,
+        "mean": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "p90": 0.0
+      },
+      "wall_s": {
+        "max": 0.0127,
+        "mean": 0.0127,
+        "median": 0.0127,
+        "min": 0.0127,
+        "p90": 0.0127
+      }
+    }
+  },
+  "target_prompt_tokens": 7000
+}

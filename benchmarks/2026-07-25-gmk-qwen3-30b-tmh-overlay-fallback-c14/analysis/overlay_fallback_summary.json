@@ -1,0 +1,47 @@
+{
+  "pass": "overlay_raw_exhaustion_fallback",
+  "date": "2026-07-25",
+  "hypothesis": "After removing quadratic descriptor cleanup, the next live frontier failure is raw overlay pool exhaustion above c12.",
+  "failed_frontier": {
+    "c12_total_tok_s": 1043.787,
+    "c12_wall_s": 80.2721,
+    "c12_ok": 12,
+    "c14_failed": 14,
+    "error": "TMH physical raw pool for layer 'model.layers.0.self_attn.attn' is exhausted."
+  },
+  "rejected_experiment": {
+    "name": "owned_hash_pages_as_canonical",
+    "reason": "Avoided c14 raw-pool crash but collapsed throughput.",
+    "c14_wall_s": 349.1763,
+    "c14_latency_p50_s": 180.5914,
+    "c14_latency_p90_s": 335.5801,
+    "c14_total_tok_s": 279.9531
+  },
+  "retained_change": {
+    "file": "vllm/v1/tmh_physical.py",
+    "summary": "When a REQUEST_OVERLAY descriptor wants raw storage and the raw pool is empty, demote only that descriptor to the layer-appropriate warm role instead of raising a fatal raw-pool exhaustion error.",
+    "early_layer_fallback": "WARM_INT8_INT4",
+    "late_layer_fallback": "WARM_INT8_INT8"
+  },
+  "result": {
+    "c14_wall_s": 96.6954,
+    "c14_latency_p50_s": 62.2219,
+    "c14_latency_p90_s": 96.6604,
+    "c14_total_tok_s": 1010.9373,
+    "c14_ok": 14,
+    "c14_failed": 0
+  },
+  "relative": {
+    "fallback_vs_hard_failure": "serviceable instead of engine-dead",
+    "fallback_vs_rejected_canonical_total_tok_s_pct": 261.12,
+    "fallback_vs_rejected_canonical_wall_pct": -72.31,
+    "fallback_vs_c12_refcount_total_tok_s_pct": -3.29,
+    "fallback_vs_c12_refcount_wall_pct": 20.62
+  },
+  "tests": {
+    "py_compile": "vllm/v1/tmh_physical.py passed",
+    "pytest": "tests/v1/core/test_tmh_physical.py tests/v1/core/test_tmh_triton_ops.py -q",
+    "pytest_result": "13 passed"
+  },
+  "next_target": "Improve c14+ throughput by admission control around active warm fallback or by optimizing warm fallback attention/update."
+}
