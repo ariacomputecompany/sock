@@ -1774,3 +1774,77 @@ Artifact summary:
 benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-adaptive-raw-c12/analysis/adaptive_raw_and_hotbudget_summary.json
 ```
 
+## 2026-07-25 TMH Live Bottleneck Pass: Slot-Aware Native Raw
+
+The next pass tested a sharper hypothesis from the live c12 traces: the 25%
+hot-budget run was falling into mixed attention even when the actually
+materialized request pages were all raw. The diagnostic line showed:
+
+```text
+valid_pages=589 raw_pages=532 warm_pages=0 missing_pages=57
+slot_present_pages=532 missing_role_with_slot_pages=0
+missing_page_ranges_sample=[None, (0, 56)]
+context_pages_sample=[0, 76]
+```
+
+So the mixed branch was not being selected because warm pages were present. It
+was being selected because skipped/null prefix pages had no request slot. This
+pass made `_tmh_batch_is_all_raw` classify only materialized request slots, and
+made both TMH attention kernels mask `physical_slot < 0` loads. It also wired
+`key`, `value`, `kv_cache_dtype`, and `chunk_lookback` through the Triton TMH
+backend so all-raw prefill can use the native raw attention handoff.
+
+Validation:
+
+```text
+cd vllm
+.venv/bin/python -m py_compile \
+  vllm/v1/attention/ops/tmh_triton_ops.py \
+  vllm/v1/attention/backends/triton_attn.py
+.venv/bin/python -m pytest tests/v1/core/test_tmh_physical.py tests/v1/core/test_tmh_triton_ops.py -q
+13 passed
+```
+
+C12 live results:
+
+```text
+TMH 25% baseline:          wall=563.3834s p50=360.5790s p90=554.1521s total_tok/s=148.7211
+TMH 25% adaptive raw:      wall=497.8115s p50=335.2126s p90=497.4966s total_tok/s=168.3107
+TMH slot-aware raw:        wall=492.2959s p50=333.6394s p90=491.9745s total_tok/s=170.1964
+TMH slot-aware native raw: wall=489.0607s p50=329.8101s p90=488.7363s total_tok/s=171.3223
+standard c12:              wall= 81.8280s p50= 50.4540s p90= 77.8302s total_tok/s=1023.9407
+```
+
+Relative movement:
+
+```text
+slot-aware raw vs adaptive raw:        +1.12% total_tok/s, -1.11% wall
+slot-aware native raw vs adaptive raw: +1.79% total_tok/s, -1.76% wall
+slot-aware native raw vs TMH baseline: +15.20% total_tok/s, -13.20% wall
+slot-aware native raw vs standard:     -83.27% total_tok/s
+```
+
+The branch evidence is useful even though the throughput lift is small:
+slot-aware eliminated the skipped-prefix mixed-kernel trigger, and native raw
+compiled `_fwd_kernel` instead of `_tmh_raw_attention_kernel`. The endpoint still
+processed the c12 load in roughly two active long-prefill requests at a time,
+with repeated `~698 tokens/s` prompt-throughput bursts and high queueing. That
+means the dominant remaining bottleneck is not the raw/mixed branch selector.
+It is the active prefill/cache-update cadence: TMH still pays too much per
+7k-token prompt before the extra KV capacity can translate into real saturated
+concurrency.
+
+Next pass: instrument per-step time around `tmh_backend_kv_cache_update`,
+`_tmh_raw_reshape_and_cache_kernel`, and the attention call, then test a
+latency-first prefill mode that bypasses TMH cache writes for current prefill
+chunks or batches cache updates after attention. The target is to preserve the
+`14.07x` allocator capacity while making active prefill behave like the hot100
+control instead of the mixed/writer-bound path.
+
+Artifacts:
+
+```text
+slot-aware c12: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-slot-aware-c12/
+native raw c12: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-native-raw-c12/
+summary:        benchmarks/2026-07-25-gmk-qwen3-30b-tmh-live-saturation-native-raw-c12/analysis/slot_aware_native_raw_summary.json
+```

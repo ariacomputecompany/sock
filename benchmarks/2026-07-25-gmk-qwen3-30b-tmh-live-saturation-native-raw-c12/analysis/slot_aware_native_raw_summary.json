@@ -1,0 +1,69 @@
+{
+  "date": "2026-07-25",
+  "model": "Qwen/Qwen3-30B-A3B-GPTQ-Int4",
+  "serve_shape": {
+    "max_model_len": 8192,
+    "gpu_memory_utilization": 0.35,
+    "max_num_batched_tokens": 8192,
+    "max_num_seqs": 32,
+    "attention_backend": "TRITON_ATTN",
+    "kv_layout": "tmh",
+    "tmh_hot_budget_pct": 25
+  },
+  "baseline_standard_c12": {
+    "kv_tokens": 66448,
+    "max_concurrency_x": 8.11,
+    "wall_s": 81.8280,
+    "p50_s": 50.4540,
+    "p90_s": 77.8302,
+    "total_tok_s": 1023.9407
+  },
+  "tmh_hot25_baseline_c12": {
+    "kv_tokens": 115296,
+    "max_concurrency_x": 14.07,
+    "wall_s": 563.3834,
+    "p50_s": 360.5790,
+    "p90_s": 554.1521,
+    "total_tok_s": 148.7211
+  },
+  "tmh_hot25_adaptive_raw_c12": {
+    "kv_tokens": 115296,
+    "max_concurrency_x": 14.07,
+    "wall_s": 497.8115,
+    "p50_s": 335.2126,
+    "p90_s": 497.4966,
+    "total_tok_s": 168.3107
+  },
+  "tmh_slot_aware_raw_c12": {
+    "kv_tokens": 115296,
+    "max_concurrency_x": 14.07,
+    "wall_s": 492.2959,
+    "p50_s": 333.6394,
+    "p90_s": 491.9745,
+    "total_tok_s": 170.1964,
+    "total_tok_s_per_kv_gib": 27.9928
+  },
+  "tmh_slot_aware_native_raw_c12": {
+    "kv_tokens": 115296,
+    "max_concurrency_x": 14.07,
+    "wall_s": 489.0607,
+    "p50_s": 329.8101,
+    "p90_s": 488.7363,
+    "total_tok_s": 171.3223,
+    "total_tok_s_per_kv_gib": 28.1780
+  },
+  "relative": {
+    "slot_aware_raw_vs_adaptive_raw_total_tok_s_pct": 1.1204,
+    "slot_aware_raw_vs_adaptive_raw_wall_pct": -1.1080,
+    "slot_aware_native_raw_vs_adaptive_raw_total_tok_s_pct": 1.7893,
+    "slot_aware_native_raw_vs_adaptive_raw_wall_pct": -1.7579,
+    "slot_aware_native_raw_vs_tmh_baseline_total_tok_s_pct": 15.1970,
+    "slot_aware_native_raw_vs_tmh_baseline_wall_pct": -13.1939,
+    "slot_aware_native_raw_vs_standard_total_tok_s_pct": -83.2683
+  },
+  "branch_evidence": {
+    "slot_aware_raw": "No skipped-prefix mixed-kernel JIT at the prior cliff; TMH ran raw attention with slot-aware null-page handling.",
+    "native_raw": "Triton TMH backend passed key/value/kv_cache_dtype and compiled _fwd_kernel instead of _tmh_raw_attention_kernel for the all-raw prefill path."
+  },
+  "remaining_bottleneck": "Endpoint c12 still advances in roughly two active long-prefill requests at a time with ~698 prompt tokens/s bursts, so the next target is active prefill/cache-update cadence rather than the raw/mixed branch selector."
+}

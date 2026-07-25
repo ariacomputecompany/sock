@@ -5,10 +5,12 @@
 from __future__ import annotations
 
 from typing import Any
+import os
 
 import torch
 
 from vllm.forward_context import get_forward_context
+from vllm.logger import init_logger
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
 from vllm.v1.attention.ops.int4_per_token_head import (
@@ -39,6 +41,9 @@ TMH_ROLE_HOT_RAW = 1
 TMH_ROLE_WARM_INT8_INT4 = 2
 TMH_ROLE_WARM_INT8_INT8 = 3
 TMH_SEGMENTED_DECODE_MIN_SEQ_LEN = 1025
+
+logger = init_logger(__name__)
+_TMH_RAW_MIX_LOG_COUNT = 0
 
 
 @triton.jit
@@ -372,7 +377,15 @@ def _tmh_raw_only_pages(cache) -> int:
     )
 
 
-def _tmh_batch_is_all_raw(cache, attn_metadata, seq_to_request_row=None) -> bool:
+def _tmh_batch_is_all_raw(
+    cache,
+    attn_metadata,
+    seq_to_request_row=None,
+    *,
+    allow_missing_current_prefill: bool = False,
+    chunk_lookback: int = -1,
+    chunk_size: int = -1,
+) -> bool:
     max_seq_len = int(getattr(attn_metadata, "max_seq_len", 0) or 0)
     seq_lens = getattr(attn_metadata, "seq_lens", None)
     if max_seq_len <= 0:
@@ -392,11 +405,16 @@ def _tmh_batch_is_all_raw(cache, attn_metadata, seq_to_request_row=None) -> bool
     if num_seqs <= 0:
         return False
     max_pages = min(max_pages, int(role_table.shape[1]))
+    slot_table = getattr(cache, "request_slot_by_row_page", None)
     if seq_to_request_row is None:
         roles = role_table[:num_seqs, :max_pages]
+        slots = (slot_table[:num_seqs, :max_pages]
+                 if slot_table is not None else None)
     else:
         rows = seq_to_request_row[:num_seqs].to(dtype=torch.long)
         roles = role_table.index_select(0, rows)[:, :max_pages]
+        slots = (slot_table.index_select(0, rows)[:, :max_pages]
+                 if slot_table is not None else None)
     page_counts = torch.div(
         seq_lens[:num_seqs] + block_size - 1,
         block_size,
@@ -404,8 +422,135 @@ def _tmh_batch_is_all_raw(cache, attn_metadata, seq_to_request_row=None) -> bool
     )
     page_ids = torch.arange(max_pages, device=seq_lens.device)[None, :]
     valid = page_ids < page_counts[:, None]
+    query_start_loc = getattr(attn_metadata, "query_start_loc", None)
+    query_lens = None
+    context_lens = None
+    context_pages = None
+    if query_start_loc is not None:
+        query_lens = query_start_loc[1 : num_seqs + 1] - query_start_loc[:num_seqs]
+        context_lens = torch.clamp(seq_lens[:num_seqs] - query_lens, min=0)
+        context_pages = torch.div(
+            context_lens + block_size - 1,
+            block_size,
+            rounding_mode="floor",
+        )
+        if chunk_lookback > -1 and chunk_size > 0:
+            first_allowed = torch.clamp(
+                ((context_lens // chunk_size) - chunk_lookback) * chunk_size,
+                min=0,
+            )
+            skipped_pages = first_allowed // block_size
+            valid = valid & (page_ids >= skipped_pages[:, None])
     raw = (roles == TMH_ROLE_PINNED_RAW) | (roles == TMH_ROLE_HOT_RAW)
-    return bool(torch.all(raw | ~valid).item())
+    slot_present = (slots >= 0) if slots is not None else valid
+    materialized = valid & slot_present
+    missing = (roles < 0) & materialized
+    allowed_missing = torch.zeros_like(missing)
+    if allow_missing_current_prefill and context_pages is not None:
+        allowed_missing = missing & (page_ids >= context_pages[:, None])
+    all_raw = bool(torch.all(raw | ~materialized | allowed_missing).item())
+    if not all_raw:
+        _log_tmh_raw_mix_decision(
+            cache=cache,
+            num_seqs=num_seqs,
+            max_pages=max_pages,
+            valid=valid,
+            raw=raw,
+            roles=roles,
+            seq_lens=seq_lens,
+            seq_to_request_row=seq_to_request_row,
+            allowed_missing=allowed_missing,
+            slots=slots,
+            query_lens=query_lens,
+            context_lens=context_lens,
+            context_pages=context_pages,
+        )
+    return all_raw
+
+
+def _log_tmh_raw_mix_decision(
+    *,
+    cache,
+    num_seqs: int,
+    max_pages: int,
+    valid: torch.Tensor,
+    raw: torch.Tensor,
+    roles: torch.Tensor,
+    seq_lens: torch.Tensor,
+    seq_to_request_row: torch.Tensor | None,
+    allowed_missing: torch.Tensor,
+    slots: torch.Tensor | None,
+    query_lens: torch.Tensor | None,
+    context_lens: torch.Tensor | None,
+    context_pages: torch.Tensor | None,
+) -> None:
+    global _TMH_RAW_MIX_LOG_COUNT
+    if os.getenv("VLLM_TMH_LOG_RAW_MIX", "0").lower() not in {"1", "true", "yes"}:
+        return
+    if _TMH_RAW_MIX_LOG_COUNT >= 32:
+        return
+    valid_pages = int(valid.sum().item())
+    raw_pages = int((raw & valid).sum().item())
+    missing_pages = int(((roles < 0) & valid).sum().item())
+    allowed_missing_pages = int(allowed_missing.sum().item())
+    slot_present_pages = int(((slots >= 0) & valid).sum().item()) if slots is not None else -1
+    missing_role_with_slot_pages = (
+        int(((roles < 0) & (slots >= 0) & valid).sum().item())
+        if slots is not None else -1
+    )
+    warm_pages = max(0, valid_pages - raw_pages - missing_pages)
+    row_sample = None
+    if seq_to_request_row is not None:
+        row_sample = seq_to_request_row[: min(num_seqs, 8)].detach().cpu().tolist()
+    seq_sample = seq_lens[: min(num_seqs, 8)].detach().cpu().tolist()
+    query_sample = (
+        query_lens[: min(num_seqs, 8)].detach().cpu().tolist()
+        if query_lens is not None else None
+    )
+    context_sample = (
+        context_lens[: min(num_seqs, 8)].detach().cpu().tolist()
+        if context_lens is not None else None
+    )
+    context_page_sample = (
+        context_pages[: min(num_seqs, 8)].detach().cpu().tolist()
+        if context_pages is not None else None
+    )
+    missing_ranges = []
+    missing_mask = ((roles < 0) & valid).detach().cpu()
+    for row_idx in range(min(num_seqs, 8)):
+        pages = torch.nonzero(missing_mask[row_idx], as_tuple=False).flatten()
+        if pages.numel() == 0:
+            missing_ranges.append(None)
+        else:
+            missing_ranges.append((int(pages[0].item()), int(pages[-1].item())))
+    logger.info(
+        "TMH raw/mixed decision: all_raw=false num_seqs=%d max_pages=%d "
+        "valid_pages=%d raw_pages=%d warm_pages=%d missing_pages=%d "
+        "allowed_missing_pages=%d slot_present_pages=%d "
+        "missing_role_with_slot_pages=%d raw_only_pages=%d raw_pool_pages=%d "
+        "warm_pool_pages=%d "
+        "seq_lens_sample=%s query_lens_sample=%s context_lens_sample=%s "
+        "context_pages_sample=%s missing_page_ranges_sample=%s row_sample=%s",
+        num_seqs,
+        max_pages,
+        valid_pages,
+        raw_pages,
+        warm_pages,
+        missing_pages,
+        allowed_missing_pages,
+        slot_present_pages,
+        missing_role_with_slot_pages,
+        _tmh_raw_only_pages(cache),
+        int(cache.raw_key.shape[0]),
+        int(cache.warm_key.shape[0]),
+        seq_sample,
+        query_sample,
+        context_sample,
+        context_page_sample,
+        missing_ranges,
+        row_sample,
+    )
+    _TMH_RAW_MIX_LOG_COUNT += 1
 
 
 def _tmh_can_use_native_raw_attention(
@@ -594,6 +739,8 @@ def _tmh_mixed_attention_kernel(
     RAW_ONLY_PAGES: tl.constexpr,
     RAW_X: tl.constexpr,
     IS_3D: tl.constexpr,
+    CHUNK_LOOKBACK: tl.constexpr,
+    CHUNK_SIZE: tl.constexpr,
 ):
     q_block_global_idx = tl.program_id(0)
     kv_head_idx = tl.program_id(1)
@@ -674,6 +821,8 @@ def _tmh_mixed_attention_kernel(
         SLIDING_WINDOW,
         USE_MM_PREFIX,
         IS_3D,
+        CHUNK_LOOKBACK=CHUNK_LOOKBACK,
+        CHUNK_SIZE=CHUNK_SIZE,
     )
 
     for j in range(loop_lo, loop_hi):
@@ -687,6 +836,7 @@ def _tmh_mixed_attention_kernel(
             mask=(j * TILE_SIZE) < max_seq_prefix_len,
             other=-1,
         ).to(tl.int64)
+        slot_present = physical_slot >= 0
         total_pages = cdiv_fn(seq_len, BLOCK_SIZE)
         is_raw = (total_pages <= RAW_ONLY_PAGES) | _tmh_page_is_raw(
             page_index, seq_len, BLOCK_SIZE, HOT_BUDGET_BPS
@@ -708,13 +858,13 @@ def _tmh_mixed_attention_kernel(
             )
             K = tl.load(
                 raw_key_ptr + raw_k_offset,
-                mask=dim_mask[:, None] & tile_mask[None, :],
+                mask=slot_present & dim_mask[:, None] & tile_mask[None, :],
                 other=0.0,
             ).to(Q.dtype)
             V = tl.trans(
                 tl.load(
                     raw_value_ptr + raw_v_offset,
-                    mask=dim_mask[:, None] & tile_mask[None, :],
+                    mask=slot_present & dim_mask[:, None] & tile_mask[None, :],
                     other=0.0,
                 )
             ).to(Q.dtype)
@@ -732,13 +882,13 @@ def _tmh_mixed_attention_kernel(
             )
             warm_k_scale = tl.load(
                 warm_k_scale_ptr + warm_ks_idx,
-                mask=tile_mask,
+                mask=slot_present & tile_mask,
                 other=1.0,
             )
             K = (
                 tl.load(
                     warm_key_ptr + warm_k_offset,
-                    mask=dim_mask[:, None] & tile_mask[None, :],
+                    mask=slot_present & dim_mask[:, None] & tile_mask[None, :],
                     other=0,
                 ).to(tl.float32)
                 * warm_k_scale[None, :]
@@ -751,7 +901,7 @@ def _tmh_mixed_attention_kernel(
             )
             warm_v_scale = tl.load(
                 warm_v_scale_ptr + warm_vs_idx,
-                mask=tile_mask,
+                mask=slot_present & tile_mask,
                 other=1.0,
             )
             if WARM_VALUE_PACKED:
@@ -764,7 +914,7 @@ def _tmh_mixed_attention_kernel(
                 )
                 packed = tl.load(
                     warm_value_ptr + packed_offset,
-                    mask=dim_mask[None, :] & tile_mask[:, None],
+                    mask=slot_present & dim_mask[None, :] & tile_mask[:, None],
                     other=0,
                 )
                 lo, hi = unpack_int4_nibbles(packed)
@@ -781,7 +931,7 @@ def _tmh_mixed_attention_kernel(
                 V = (
                     tl.load(
                         warm_value_ptr + warm_v_offset,
-                        mask=dim_mask[None, :] & tile_mask[:, None],
+                        mask=slot_present & dim_mask[None, :] & tile_mask[:, None],
                         other=0,
                     ).to(tl.float32)
                     * warm_v_scale[:, None]
@@ -797,6 +947,8 @@ def _tmh_mixed_attention_kernel(
             SLIDING_WINDOW,
             USE_MM_PREFIX,
             MAX_MM_RANGES,
+            CHUNK_LOOKBACK=CHUNK_LOOKBACK,
+            CHUNK_SIZE=CHUNK_SIZE,
         )
         S = tl.dot(Q, K) * scale
         if USE_SOFTCAP:
@@ -921,6 +1073,8 @@ def _tmh_raw_attention_kernel(
     USE_FP8: tl.constexpr,
     RAW_X: tl.constexpr,
     IS_3D: tl.constexpr,
+    CHUNK_LOOKBACK: tl.constexpr,
+    CHUNK_SIZE: tl.constexpr,
 ):
     q_block_global_idx = tl.program_id(0)
     kv_head_idx = tl.program_id(1)
@@ -1001,6 +1155,8 @@ def _tmh_raw_attention_kernel(
         SLIDING_WINDOW,
         USE_MM_PREFIX,
         IS_3D,
+        CHUNK_LOOKBACK=CHUNK_LOOKBACK,
+        CHUNK_SIZE=CHUNK_SIZE,
     )
 
     for j in range(loop_lo, loop_hi):
@@ -1014,6 +1170,7 @@ def _tmh_raw_attention_kernel(
             mask=(j * TILE_SIZE) < max_seq_prefix_len,
             other=-1,
         ).to(tl.int64)
+        slot_present = physical_slot >= 0
 
         raw_k_offset = (
             physical_slot * stride_raw_k_slot
@@ -1030,13 +1187,13 @@ def _tmh_raw_attention_kernel(
         )
         K = tl.load(
             raw_key_ptr + raw_k_offset,
-            mask=dim_mask[:, None] & tile_mask[None, :],
+            mask=slot_present & dim_mask[:, None] & tile_mask[None, :],
             other=0.0,
         ).to(Q.dtype)
         V = tl.trans(
             tl.load(
                 raw_value_ptr + raw_v_offset,
-                mask=dim_mask[:, None] & tile_mask[None, :],
+                mask=slot_present & dim_mask[:, None] & tile_mask[None, :],
                 other=0.0,
             )
         ).to(Q.dtype)
@@ -1051,6 +1208,8 @@ def _tmh_raw_attention_kernel(
             SLIDING_WINDOW,
             USE_MM_PREFIX,
             MAX_MM_RANGES,
+            CHUNK_LOOKBACK=CHUNK_LOOKBACK,
+            CHUNK_SIZE=CHUNK_SIZE,
         )
         S = tl.dot(Q, K) * scale
         if USE_SOFTCAP:
@@ -1294,6 +1453,7 @@ def tmh_backend_paged_attention(
     kv_cache_dtype: str | None = None,
     k_scale=None,
     v_scale=None,
+    chunk_lookback: int = -1,
 ) -> torch.Tensor:
     forward_context = get_forward_context()
     seq_to_request_row = forward_context.additional_kwargs.get("tmh_seq_to_request_row")
@@ -1318,6 +1478,7 @@ def tmh_backend_paged_attention(
         kv_cache_dtype=kv_cache_dtype,
         k_scale=k_scale,
         v_scale=v_scale,
+        chunk_lookback=chunk_lookback,
     )
     return output
 
@@ -1344,6 +1505,7 @@ def tmh_physical_attention(
     kv_cache_dtype: str | None = None,
     k_scale=None,
     v_scale=None,
+    chunk_lookback: int = -1,
 ) -> None:
     if not bool(causal):
         raise ValueError("TMH physical attention currently requires causal attention")
@@ -1380,6 +1542,12 @@ def tmh_physical_attention(
     )
     total_num_q_blocks = q.shape[0] // block_q + num_seqs
     sliding_window = 1 + window_size[0] if window_size[0] >= 0 else 0
+    chunk_size = -1
+    if sliding_window > 0 and chunk_lookback > -1:
+        chunk_size = sliding_window // (chunk_lookback + 1)
+        assert chunk_size > 0, "sliding_window must be > chunk_lookback+1"
+    elif sliding_window <= 0:
+        chunk_lookback = -1
     max_query_len = getattr(
         attn_metadata,
         "max_query_len",
@@ -1390,7 +1558,14 @@ def tmh_physical_attention(
         num_seqs=num_seqs,
         device=q.device,
     )
-    all_raw = _tmh_batch_is_all_raw(cache, attn_metadata, seq_rows)
+    all_raw = _tmh_batch_is_all_raw(
+        cache,
+        attn_metadata,
+        seq_rows,
+        allow_missing_current_prefill=max_query_len > 1,
+        chunk_lookback=chunk_lookback,
+        chunk_size=chunk_size,
+    )
     tile_size = (
         _get_tmh_raw_tile_size(
             head_size=head_size,
@@ -1525,6 +1700,8 @@ def tmh_physical_attention(
             USE_FP8=output_scale is not None,
             RAW_X=16 // q.element_size(),
             IS_3D=use_3d,
+            CHUNK_LOOKBACK=chunk_lookback,
+            CHUNK_SIZE=chunk_size,
             **launch_kwargs,
         )
         if use_3d:
@@ -1625,6 +1802,8 @@ def tmh_physical_attention(
         RAW_ONLY_PAGES=_tmh_raw_only_pages(cache),
         RAW_X=16 // q.element_size(),
         IS_3D=use_3d,
+        CHUNK_LOOKBACK=chunk_lookback,
+        CHUNK_SIZE=chunk_size,
         **launch_kwargs,
     )
     if use_3d:

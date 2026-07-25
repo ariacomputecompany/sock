@@ -626,6 +626,8 @@ class TritonAttentionImpl(AttentionImpl):
 
             return tmh_backend_paged_attention(
                 query=query,
+                key=key,
+                value=value,
                 cache=kv_cache,
                 attn_metadata=attn_metadata,
                 output=output,
@@ -637,6 +639,8 @@ class TritonAttentionImpl(AttentionImpl):
                 use_alibi_sqrt=self.use_alibi_sqrt,
                 output_scale=output_scale,
                 sinks=self.sinks,
+                kv_cache_dtype=self.kv_cache_dtype,
+                chunk_lookback=self.chunk_lookback,
             )
 
         # Per-token-head quantized KV cache: handled by the core unified
