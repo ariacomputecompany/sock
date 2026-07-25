@@ -57,8 +57,11 @@ if HAS_TRITON:
             )
             HAS_TRITON = False
 
-        # Check Triton CPU
-        if "cpu" in version("vllm"):
+        # Check Triton CPU. Editable installs in production images may expose
+        # missing/None package metadata; those are GPU builds unless explicitly
+        # marked as CPU wheels.
+        vllm_version = version("vllm") or ""
+        if "cpu" in vllm_version:
             if "cpu" in backends:
                 HAS_TRITON = True
             else:
