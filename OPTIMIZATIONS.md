@@ -1439,3 +1439,63 @@ runtime benchmark should target the 16K frontier directly: run concurrent
 long-context requests at c4/c6/c8. Standard should be at or beyond its admitted
 capacity around c6/c8, while TMH should still have resident KV headroom.
 
+## 2026-07-25 TMH Memory-Pressure Capacity Frontier at 90% Utilization
+
+To verify that the `+73.8%` TMH capacity result was not a small-budget artifact,
+the same startup capacity frontier was rerun with vLLM pushed to
+`--gpu-memory-utilization 0.90`. This is the "overclocked" allocator-pressure
+version of the test: same model, same serve shape, same `--max-num-seqs 16`, but
+a much larger KV pool.
+
+Benchmark contract:
+
+```text
+model: Qwen/Qwen3-30B-A3B-GPTQ-Int4
+gpu memory utilization: 0.90
+available KV cache memory reported by vLLM: 41.70 GiB
+max seqs: 16
+contexts tested: 8192, 16384, 32768
+standard: --kv-layout standard
+TMH:      --kv-layout tmh --tmh-hot-budget-pct 25
+artifacts: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-memory-pressure-util90/
+summary:   benchmarks/2026-07-25-gmk-qwen3-30b-tmh-memory-pressure-util90/analysis/summary.json
+```
+
+Result:
+
+```text
+max_model_len=8192:
+  standard KV cache tokens: 455,424  max concurrency: 55.59x
+  TMH KV cache tokens:      792,592  max concurrency: 96.75x
+  TMH capacity delta:       +74.04%
+
+max_model_len=16384:
+  standard KV cache tokens: 455,424  max concurrency: 27.80x
+  TMH KV cache tokens:      792,592  max concurrency: 48.38x
+  TMH capacity delta:       +74.03%
+
+max_model_len=32768:
+  standard KV cache tokens: 455,424  max concurrency: 13.90x
+  TMH KV cache tokens:      792,592  max concurrency: 24.19x
+  TMH capacity delta:       +74.03%
+```
+
+Reality: the TMH allocator/capacity advantage scales to a high-utilization KV
+pool. At `41.70 GiB` available KV cache memory, standard admits `455,424`
+logical KV tokens and TMH admits `792,592`, a `+74.03%` token-capacity lift.
+This is essentially the same ratio as the earlier `6.50 GiB` run, so the memory
+pressure value is not a low-budget measurement artifact.
+
+Interpretation: the compression model is behaving linearly and predictably
+across KV budgets. The throughput problem is therefore not that TMH fails to buy
+memory headroom; it does. The remaining challenge is converting that headroom
+into end-user wins under saturated serving conditions while reducing the
+low-pressure hot-path tax.
+
+Conclusion: TMH has a real, reproducible capacity claim: about `1.74x` logical
+KV residency per GiB under the current `25%` hot-budget policy. The next proof
+should be a live saturation benchmark around the 32K frontier: for example c14
+versus c24 at 32K, where standard is at its admitted frontier and TMH still has
+room. That benchmark should measure queueing, error rate, p90 latency, and
+completed tokens per GiB, not just raw tok/s.
+
