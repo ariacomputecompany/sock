@@ -2105,3 +2105,30 @@ Artifacts:
 c14 BT8192 after:  benchmarks/2026-07-25-gmk-qwen3-30b-tmh-overlay-fallback-c14/results/tmh-overlay-fallback-c14.json
 c14 BT16384 after: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-c14-bt16384/results/tmh-c14-bt16384.json
 ```
+
+### Rejected follow-up: long-shape TMH warmup
+
+The BT16384 server log still showed inference-time JIT for
+`_tmh_reshape_and_cache_kernel` and `_tmh_mixed_attention_kernel`, so we tested
+a warmup change that added one prompt shape just beyond the per-request raw
+capacity plus the max scheduler-token shape. The idea was to move mixed-path
+TMH compile cost out of the measured saturated batch.
+
+Result:
+
+```text
+BT16384 canonical fallback: wall=108.3874s p50=68.4651s p90=108.3815s total_tok/s=901.8857
+BT16384 warmmix warmup:     wall=108.3835s p50=67.7277s p90=108.3741s total_tok/s=901.9173
+```
+
+The warmup change added about one minute to startup, did not remove the
+inference-time TMH mixed-kernel JIT warnings, and did not materially change
+throughput. It was reverted and not committed as code. This suggests the
+remaining c14/BT16384 latency is dominated by real active-step work and model
+kernel shape warmup, not by the direct TMH physical warmup helper alone.
+
+Artifact:
+
+```text
+rejected warmmix result: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-c14-bt16384-warmmix-warmmix/results/tmh-c14-bt16384-warmmix.json
+```
