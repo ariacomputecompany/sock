@@ -2132,3 +2132,65 @@ Artifact:
 ```text
 rejected warmmix result: benchmarks/2026-07-25-gmk-qwen3-30b-tmh-c14-bt16384-warmmix-warmmix/results/tmh-c14-bt16384-warmmix.json
 ```
+
+### Runtime packaging pass: qbuild SOCK inference image
+
+Goal: make the standalone ROCm inference image production-usable through
+qbuild/Quilt-style local execution without changing SOCK's Dockerfile into a
+qbuild-specific artifact.
+
+Fixes landed:
+
+```text
+SOCK:
+- Keep Triton enabled for editable vLLM builds when package metadata is present
+  but the version value is None.
+- Disable broken optional torchvision discovery in the text inference image by
+  default, with SOCK_DISABLE_TORCHVISION=1 and a reviewable sitecustomize hook.
+- Gate MiniMax M3 warmup optional imports behind the CUDA Blackwell platform
+  check so ROCm/Qwen text startup never imports torchvision-only processors.
+
+qbuild:
+- Honor .dockerignore during build COPY/ADD so ignored benchmark/log/cache
+  trees are not copied into the image context.
+```
+
+Final validated image:
+
+```text
+image:           local.test/sock-inference:rocm-gfx1151
+manifest:        sha256:5466e6ec018637ca04d9fcad4b64e5578fe61daedfbc76980d58fa62cbc72c86
+config:          sha256:c8663ae78a05ce83c2dc7d365d7d03019d138918b1da94fb47c178fb6d5cb839
+size_bytes:      13658975794
+```
+
+Image probes:
+
+```text
+torchvision available: False
+torchvision imported:  False
+HAS_TRITON:            True
+fused_experts:         real vLLM fused_experts function
+MiniMax warmup import: safe on ROCm, no torchvision import
+```
+
+Live qbuild container validation:
+
+```text
+container:        ctr-8d7573374063451eb1ba3d2498d7675d
+model:            Qwen/Qwen3-30B-A3B-GPTQ-Int4
+kv layout:        tmh
+gpu util target:  0.90
+VRAM observed:    90%
+linx health:      ok
+SOCK /health:     HTTP 200
+unauth /v1/models HTTP 401
+auth /v1/models:  returned Qwen/Qwen3-30B-A3B-GPTQ-Int4
+chat completion:  returned from OpenAI-compatible endpoint
+```
+
+Interpretation: the production image now clears the full startup path that was
+failing after the Ubuntu/ROCm rebuild. The failures were packaging/runtime
+integration issues, not TMH allocator regressions: ROCm was visible, the Qwen
+weights loaded, and the remaining blockers were Triton metadata detection and
+optional torchvision imports from unrelated warmup/vision paths.
