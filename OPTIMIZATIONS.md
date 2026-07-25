@@ -1296,3 +1296,88 @@ warm pages are reachable. In first-principles terms, the winning abstraction is
 not "faster TMH kernels"; it is "zero-overhead standard KV when the request set
 is all raw, with TMH activated only under memory pressure."
 
+## 2026-07-25 Robust SOCK Standard-KV vs Runnable Upstream vLLM
+
+After the robust standard/TMH rebaseline showed TMH itself was still negative,
+the next question was broader: how much of SOCK's current stack beats upstream
+vanilla vLLM on the same Strix Halo ROCm endpoint contract?
+
+Benchmark contract:
+
+```text
+model: Qwen/Qwen3-30B-A3B-GPTQ-Int4
+runs: 10 measured, 2 warmup
+concurrency levels: 1, 2, 4
+cases: tiny_fact_64, short_codegen_128, medium_architecture_256,
+       long_cosmology_512, long_context_summary_256, extended_generation_768
+SOCK source: benchmarks/2026-07-25-gmk-qwen3-30b-robust-pairs/standard-kv/
+vanilla source: benchmarks/2026-07-25-gmk-qwen3-30b-sock-vs-vanilla-vllm-runnable/vanilla/
+summary: benchmarks/2026-07-25-gmk-qwen3-30b-sock-vs-vanilla-vllm-runnable/analysis/
+serve shape: --max-model-len 2048 --gpu-memory-utilization 0.35
+             --max-num-batched-tokens 1024 --max-num-seqs 4
+             --enforce-eager --language-model-only --skip-mm-profiling
+             --attention-backend TRITON_ATTN
+```
+
+The vanilla environment used upstream vLLM commit
+`190be7dad2afa6684902324e0dffa2dc0229a364`, ROCm 7.2.4, and the local
+`torch-2.11.0+gfx1151` wheel. This was not a pristine `pip install vllm` run:
+upstream needed compatibility work just to serve this Strix Halo GPTQ model.
+The runnable vanilla configuration removed the incompatible CPU `torchvision`,
+provided a text-only `torchvision` import stub for unconditional multimodal
+warmup imports, and disabled `RDNAHybridW4A16LinearKernel` after it failed with
+`zp shape mismatch`. Those changes are environment/runnability fixes, not SOCK
+throughput features.
+
+Result:
+
+```text
+SOCK standard-KV geomean completion tok/s: 36.5928
+runnable upstream vLLM geomean tok/s:      38.0710
+Delta:                                     -3.88%
+```
+
+Cell-level result:
+
+```text
+tiny_fact_64 c1:               sock=29.9825 vanilla=31.2489  ( -4.05%)
+tiny_fact_64 c2:               sock=34.5563 vanilla=34.5823  ( -0.08%)
+tiny_fact_64 c4:               sock=52.9256 vanilla=55.3389  ( -4.36%)
+short_codegen_128 c1:          sock=27.7834 vanilla=29.3463  ( -5.33%)
+short_codegen_128 c2:          sock=35.7034 vanilla=36.3170  ( -1.69%)
+short_codegen_128 c4:          sock=55.0423 vanilla=57.8835  ( -4.91%)
+medium_architecture_256 c1:    sock=25.8058 vanilla=28.0122  ( -7.88%)
+medium_architecture_256 c2:    sock=35.6565 vanilla=36.3338  ( -1.86%)
+medium_architecture_256 c4:    sock=53.6564 vanilla=54.7798  ( -2.05%)
+long_cosmology_512 c1:         sock=24.3247 vanilla=26.8956  ( -9.56%)
+long_cosmology_512 c2:         sock=32.3613 vanilla=34.9785  ( -7.48%)
+long_cosmology_512 c4:         sock=51.1248 vanilla=54.2235  ( -5.71%)
+long_context_summary_256 c1:   sock=23.5821 vanilla=25.1748  ( -6.33%)
+long_context_summary_256 c2:   sock=40.0829 vanilla=37.2574  ( +7.58%)
+long_context_summary_256 c4:   sock=64.5823 vanilla=67.2209  ( -3.93%)
+extended_generation_768 c1:    sock=23.7281 vanilla=25.0400  ( -5.24%)
+extended_generation_768 c2:    sock=31.4565 vanilla=32.8328  ( -4.19%)
+extended_generation_768 c4:    sock=51.0567 vanilla=51.9019  ( -1.63%)
+```
+
+Reality: SOCK's standard-KV stack is close to runnable upstream vanilla but is
+not ahead in the robust 18-cell endpoint mean. The gap is much smaller than the
+current TMH tax (`-3.88%` vs `-14.03%`), and one cell is clearly positive
+(`long_context_summary_256 c2`, `+7.58%`), but the full answer is still negative.
+
+Interpretation: the broad SOCK stack is no longer catastrophically divergent
+from upstream, but the current fork has not yet produced a global throughput win
+for this all-raw standard-KV contract. The most valuable contradiction is that
+SOCK can beat vanilla in one long-context c2 cell while losing most c1 and c4
+cells. That points away from a single bad kernel and toward scheduler/admission,
+request-shape policy, or per-concurrency overhead in the fork.
+
+Conclusion: the +20 target is still possible only if the next work attacks the
+core serving path, not TMH cosmetics. First-principles next step: treat standard
+KV as the invariant floor. Any TMH or SOCK path must first match runnable
+upstream vLLM at the scheduler/attention boundary, then win under memory pressure
+or repeated-prefix pressure. The next falsifiable experiment should isolate why
+`long_context_summary_256 c2` is positive while nearby cells are negative, then
+turn that shape-specific behavior into an adaptive policy instead of another
+process-wide flag.
+
