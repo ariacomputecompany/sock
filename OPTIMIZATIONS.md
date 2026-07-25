@@ -1138,3 +1138,37 @@ selection, or a deliberate benchmark-contract change such as token-only/greedy
 output that should be measured separately and not mixed with serving-runtime
 wins.
 
+## 2026-07-25 Concurrent Partial-Prefill Startup Falsification
+
+After the frontend logging and no-eager passes failed globally, the next
+scheduler-shape hypothesis targeted vLLM's default `max_num_partial_prefills=1`.
+For c4 endpoint traffic, allowing four concurrent partial prefills could in
+principle reduce prefill serialization before decode.
+
+The server was launched with the stable standard Triton shape plus:
+
+```text
+--max-num-partial-prefills 4
+--max-long-partial-prefills 4
+```
+
+The CLI accepted and recorded both flags:
+
+```text
+'max_num_partial_prefills': 4,
+'max_long_partial_prefills': 4
+```
+
+But vLLM rejected the configuration before serving:
+
+```text
+NotImplementedError: Concurrent Partial Prefill is not supported.
+We recommend to remove Concurrent Partial Prefill from your config.
+```
+
+Conclusion: this is not a runnable +20 path without deeper scheduler support.
+The idea remains conceptually aligned with the observed bottleneck, but the
+current V1 engine will not allow it as a serve-time flag. Do not spend benchmark
+time on this setting until the feature support boundary changes or SOCK owns a
+compatible scheduler path.
+
