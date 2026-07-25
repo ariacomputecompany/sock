@@ -1222,3 +1222,77 @@ work more aggressively, but the same policy taxes c1/c2 enough to lose the full
 endpoint mix. A future scheduler win likely needs per-shape/adaptive admission
 rather than another process-wide flag.
 
+## 2026-07-25 Robust Standard-KV vs TMH Big-Bench Rebaseline
+
+The earlier small-sample standard/TMH comparisons were too noisy to support a
+credible +20 claim. This pass reran the production-shaped endpoint suite with a
+larger durable sample, writing one artifact per case so a network interruption
+could not erase the run.
+
+Benchmark contract:
+
+```text
+model: Qwen/Qwen3-30B-A3B-GPTQ-Int4
+runs: 10 measured, 2 warmup
+concurrency levels: 1, 2, 4
+cases: tiny_fact_64, short_codegen_128, medium_architecture_256,
+       long_cosmology_512, long_context_summary_256, extended_generation_768
+serve shape: --max-model-len 2048 --gpu-memory-utilization 0.35
+             --max-num-batched-tokens 1024 --max-num-seqs 4
+             --enforce-eager --language-model-only --skip-mm-profiling
+             --attention-backend TRITON_ATTN
+artifacts: benchmarks/2026-07-25-gmk-qwen3-30b-robust-pairs/
+summary:   benchmarks/2026-07-25-gmk-qwen3-30b-robust-pairs/analysis/
+```
+
+Result:
+
+```text
+standard KV geomean completion tok/s: 36.5928
+TMH geomean completion tok/s:         31.4599
+Delta:                                -14.03%
+```
+
+Cell-level result:
+
+```text
+extended_generation_768 c1: std=23.7281 tmh=19.3986  (-18.25%)
+extended_generation_768 c2: std=31.4565 tmh=29.5086  ( -6.19%)
+extended_generation_768 c4: std=51.0567 tmh=46.2539  ( -9.41%)
+long_context_summary_256 c1: std=23.5821 tmh=19.2927 (-18.19%)
+long_context_summary_256 c2: std=40.0829 tmh=25.5578 (-36.24%)
+long_context_summary_256 c4: std=64.5823 tmh=37.8040 (-41.46%)
+long_cosmology_512 c1: std=24.3247 tmh=19.5329      (-19.70%)
+long_cosmology_512 c2: std=32.3613 tmh=30.1226      ( -6.92%)
+long_cosmology_512 c4: std=51.1248 tmh=45.5535      (-10.90%)
+medium_architecture_256 c1: std=25.8058 tmh=22.1319 (-14.24%)
+medium_architecture_256 c2: std=35.6565 tmh=29.6048 (-16.97%)
+medium_architecture_256 c4: std=53.6564 tmh=49.0617 ( -8.56%)
+short_codegen_128 c1: std=27.7834 tmh=25.2315       ( -9.18%)
+short_codegen_128 c2: std=35.7034 tmh=33.2480       ( -6.88%)
+short_codegen_128 c4: std=55.0423 tmh=52.0787       ( -5.38%)
+tiny_fact_64 c1: std=29.9825 tmh=27.0825            ( -9.67%)
+tiny_fact_64 c2: std=34.5563 tmh=33.8173            ( -2.14%)
+tiny_fact_64 c4: std=52.9256 tmh=53.5568            ( +1.19%)
+```
+
+Reality: the robust run erased the comforting small-sample interpretation. TMH
+is not near parity under this all-raw, standard-like endpoint contract; it is
+back at a meaningful `-14.03%` gap. The largest lamp is
+`long_context_summary_256 c4`, where standard reached `64.5823` and TMH reached
+only `37.8040` completion tok/s.
+
+Interpretation: the remaining tax is probably not physical compression itself in
+this benchmark, because the low-pressure path should be all raw. The tax is more
+likely one or more all-raw TMH compatibility layers still sitting on the hot path:
+request-row indirection, block-table/view handoff, backend selection, or scheduler
+metadata shape. The short/medium losses show fixed overhead; the long-context c4
+loss shows a deeper decode-shape mismatch.
+
+Conclusion: do not claim the old `-5%` gap as current truth. The next moonshot
+must make TMH's all-raw path observationally identical to standard KV at the
+attention/scheduler boundary, then reintroduce TMH-specific behavior only when
+warm pages are reachable. In first-principles terms, the winning abstraction is
+not "faster TMH kernels"; it is "zero-overhead standard KV when the request set
+is all raw, with TMH activated only under memory pressure."
+
