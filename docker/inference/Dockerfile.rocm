@@ -64,9 +64,9 @@ RUN python3 -m venv /opt/sock/vllm/.venv && \
       exit 64; \
     fi && \
     /opt/sock/vllm/.venv/bin/python -m pip install "${torch_wheel}" && \
-    grep -vE '^(--extra-index-url|torch==|torchvision==|torchaudio==)' vllm/requirements/build/rocm.txt > /tmp/rocm-build-no-torch.txt && \
-    grep -vE '^(torch==|torchvision==|torchaudio==)' vllm/requirements/rocm.txt > /tmp/rocm-runtime-no-torch.txt && \
-    /opt/sock/vllm/.venv/bin/python -m pip install -r /tmp/rocm-build-no-torch.txt -r /tmp/rocm-runtime-no-torch.txt && \
+    grep -vE '^(--extra-index-url|torch==|torchvision==|torchaudio==)' vllm/requirements/build/rocm.txt > vllm/requirements/build/rocm-no-torch.txt && \
+    grep -vE '^(torch==|torchvision==|torchaudio==)' vllm/requirements/rocm.txt > vllm/requirements/rocm-no-torch.txt && \
+    /opt/sock/vllm/.venv/bin/python -m pip install -r vllm/requirements/build/rocm-no-torch.txt -r vllm/requirements/rocm-no-torch.txt && \
     cd /opt/sock/vllm && \
     SETUPTOOLS_SCM_PRETEND_VERSION="${VLLM_VERSION}" \
     VLLM_TARGET_DEVICE=rocm \
