@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 import dataclasses
+import os
 from importlib.util import find_spec
 from typing import TYPE_CHECKING, Any, cast
 
@@ -63,6 +64,22 @@ from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch
 from vllm.v1.worker.utils import AttentionGroup
 
 logger = init_logger(__name__)
+
+
+def _vision_deps_enabled() -> bool:
+    if "SOCK_ENABLE_VISION_DEPS" in os.environ:
+        return os.environ["SOCK_ENABLE_VISION_DEPS"].lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    return os.environ.get("SOCK_DISABLE_TORCHVISION", "1").lower() in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
 
 
 class SpecDecodeBaseProposer:
@@ -264,12 +281,6 @@ class SpecDecodeBaseProposer:
                 DeepseekV4ROCMAiterSparseSWAMetadata,
             )
 
-            # MiniMax-M3 sparse (lightning-indexer) attention. The multi-step
-            # drafting machinery is shared code at num_speculative_tokens>1.
-            # this just opts the metadata into the ROCm allowlist.
-            from vllm.models.minimax_m3.common.sparse_attention import (
-                MiniMaxM3SparseMetadata,
-            )
             from vllm.v1.attention.backends.mla.indexer import (
                 DeepseekV32IndexerMetadata,
             )
@@ -285,8 +296,23 @@ class SpecDecodeBaseProposer:
                 DeepseekV4ROCMAiterMLASparseMetadata,
                 DeepseekV4ROCMAiterSparseSWAMetadata,
                 DeepseekV32IndexerMetadata,
-                MiniMaxM3SparseMetadata,
             ]
+            if _vision_deps_enabled():
+                # MiniMax-M3 sparse attention is optional. Importing it can pull
+                # in the VL processor stack, so text-only images keep this off
+                # behind the same explicit vision-deps gate used at startup.
+                try:
+                    from vllm.models.minimax_m3.common.sparse_attention import (
+                        MiniMaxM3SparseMetadata,
+                    )
+                except (ImportError, RuntimeError):
+                    logger.debug(
+                        "MiniMax-M3 sparse metadata unavailable; skipping ROCm "
+                        "speculative attention allowlist registration.",
+                        exc_info=True,
+                    )
+                else:
+                    rocm_types.append(MiniMaxM3SparseMetadata)
             # ROCM_AITER_FA is an optional backend
             # We check is_enabled() here to avoid importing the backend module during
             # auto-discovery when VLLM_ROCM_USE_AITER=0, which would trigger aiter

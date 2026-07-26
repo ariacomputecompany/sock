@@ -2194,3 +2194,84 @@ failing after the Ubuntu/ROCm rebuild. The failures were packaging/runtime
 integration issues, not TMH allocator regressions: ROCm was visible, the Qwen
 weights loaded, and the remaining blockers were Triton metadata detection and
 optional torchvision imports from unrelated warmup/vision paths.
+
+### Rejected speed profile: Qwen3 draft-model speculative decoding
+
+Goal: test whether draft-model speculative decoding can improve the single-user
+streaming token experience for the fastest standard-KV profile. The control is
+the current speed profile:
+
+```text
+layout:                   standard KV
+enforce eager:            off
+max num seqs:             1
+max num batched tokens:   1024
+gpu memory utilization:   0.90
+baseline 512-token median 26.99 completion tok/s e2e
+baseline 512-token best:  27.10 completion tok/s e2e
+baseline stream rate:     about 27.2 tok/s after first chunk
+```
+
+Production fixes required before the test:
+
+```text
+- Added SOCK_ENABLE_VISION_DEPS=0 as the clean text-inference policy gate for
+  optional vision/VL dependency imports, while keeping SOCK_DISABLE_TORCHVISION
+  as a compatibility alias.
+- Made the ROCm speculative attention allowlist respect that same vision-deps
+  gate so unrelated Qwen draft-model startup does not import MiniMax/VL
+  processors or torchvision.
+- Fixed vLLM config cloning for draft-model speculation by making config
+  replace() ignore runtime/private attributes that are not dataclass init
+  fields, such as _resolved_compilation_policy.
+```
+
+Validated image after the fixes:
+
+```text
+image:      local.test/sock-inference:rocm-gfx1151
+manifest:   sha256:4a4625b6403a4e1c867d5497a257188fbe0ad680bc7581f2305576b5c21cf5bb
+```
+
+Speculative profile A:
+
+```text
+draft model:              Qwen/Qwen3-0.6B
+speculative tokens:       4
+max num batched tokens:   1024
+512-token runs:           5
+512 median e2e tok/s:     20.3151
+512 best e2e tok/s:       20.3282
+512 median stream tok/s:  20.4648
+512 median TTFT:          0.1831s warm, with first cold run at 2.9967s
+256 median e2e tok/s:     20.2619
+256 median stream tok/s:  20.5541
+```
+
+Speculative profile B:
+
+```text
+draft model:              Qwen/Qwen3-0.6B
+speculative tokens:       2
+max num batched tokens:   2048
+512-token runs:           3
+512 median e2e tok/s:     21.7655
+512 best e2e tok/s:       22.8568
+512 median stream tok/s:  22.6375
+512 best stream tok/s:    23.0286
+512 median TTFT:          0.1671s warm, with first cold run at 3.9448s
+```
+
+Interpretation: speculative decoding is functional now, but it is not the right
+speed profile for this workload on Strix Halo/ROCm with Qwen3-30B-A3B-GPTQ-Int4
+and Qwen3-0.6B as the draft model. The draft path adds enough per-step overhead,
+uses a separate ROCm attention path for the drafter, disables async scheduling,
+and does not recover enough accepted tokens to beat the captured non-spec decode
+path. The best tested speculative variant is still about 19% below the current
+non-spec single-user streaming baseline.
+
+Decision: keep the production fixes because they make speculative decoding and
+text-only packaging more correct, but restore the live endpoint to the non-spec
+standard-KV speed profile for user-facing streaming. Future speculative work
+should use a target-specific MTP/EAGLE-style head or a much cheaper draft path;
+generic Qwen3-0.6B draft speculation is rejected for this latency target.
