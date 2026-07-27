@@ -11,7 +11,9 @@ __pycache__/
 *.trace.fozzy
 *.rendered.json
 artifacts/
+adapters/
 dist/
+models/
 tmp/
 .venv/
 .venv-codex/

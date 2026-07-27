@@ -170,3 +170,22 @@ Invalid reuse, stale artifacts, and mismatched plan state are rejected instead o
 - `core/`: canonical schemas, identity, validation, bundle logic, verification, and rendering
 - `engine/`: planner, executor integration, and `vLLM`-specific build logic
 - `vllm/`: vendored `vLLM` source tree used for direct integration
+
+## Local RLM Chat
+
+The local grown-5B RLM adapter can be served through SOCK/vLLM as a static LoRA
+module. On GMK the live validation command registers:
+
+- base model: `models/qwen5b-grown-v3`
+- adapter model: `adapters/qwen5b-grown-v3-step1316-rlm-lora`
+- OpenAI model name: `qwen5b-grown-v3-step1316-rlm`
+
+Once the endpoint is running on `http://127.0.0.1:8020/v1`, use:
+
+```bash
+scripts/rlm_chat.py "Help me start a Rust distributed job queue."
+```
+
+The helper streams through `/v1/chat/completions`, applies the RLM stop markers,
+and uses a tool-aware coding-agent system prompt without forcing benchmark JSON
+for ordinary chat.
