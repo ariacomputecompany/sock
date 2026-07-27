@@ -2,6 +2,8 @@
 
 sock is an inference-engine graph compiler built around a vendored `vLLM` fork.
 
+sock also contains the production TMH implementation. Use `--kv-layout tmh` to enable the physical TMH KV path inside the vendored engine; the default `standard` layout keeps the native paged KV path.
+
 The short version: sock cleans up and tightens `vLLM` internals, then wraps them in a lazy compilation graph so you can get to inference with as little ceremony, waiting, and runtime guesswork as possible.
 
 The thesis is simple: inference engines should behave more like compiler targets. Given a serving intent, sock should build the smallest valid graph needed to serve that workload instead of forcing every request through one broad, opaque startup path.
