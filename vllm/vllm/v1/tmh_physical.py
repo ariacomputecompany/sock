@@ -35,6 +35,9 @@ class TMHPhysicalKVCache:
     native_block_table_by_seq: torch.Tensor
     native_block_table_gather: torch.Tensor
     native_seq_to_request_row: torch.Tensor
+    gathered_role_by_seq_page: torch.Tensor
+    gathered_slot_by_seq_page: torch.Tensor
+    page_index_by_model_page: torch.Tensor
     identity_scale: torch.Tensor
 
     @property
@@ -155,6 +158,21 @@ def reshape_tmh_physical_kv_cache(
         dtype=torch.int64,
         device=kv_raw_tensor.device,
     )
+    gathered_role_by_seq_page = torch.empty(
+        request_shape,
+        dtype=torch.int16,
+        device=kv_raw_tensor.device,
+    )
+    gathered_slot_by_seq_page = torch.empty(
+        request_shape,
+        dtype=torch.int32,
+        device=kv_raw_tensor.device,
+    )
+    page_index_by_model_page = torch.arange(
+        spec.tmh_max_model_pages,
+        dtype=torch.int32,
+        device=kv_raw_tensor.device,
+    )
     identity_scale = torch.ones((), dtype=torch.float32, device=kv_raw_tensor.device)
     return TMHPhysicalKVCache(
         spec=spec,
@@ -173,6 +191,9 @@ def reshape_tmh_physical_kv_cache(
         native_block_table_by_seq=native_block_table_by_seq,
         native_block_table_gather=native_block_table_gather,
         native_seq_to_request_row=native_seq_to_request_row,
+        gathered_role_by_seq_page=gathered_role_by_seq_page,
+        gathered_slot_by_seq_page=gathered_slot_by_seq_page,
+        page_index_by_model_page=page_index_by_model_page,
         identity_scale=identity_scale,
     )
 

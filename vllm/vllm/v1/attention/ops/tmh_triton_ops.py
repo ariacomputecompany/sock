@@ -460,16 +460,23 @@ def _tmh_batch_is_all_raw(
         slots = (slot_table[:num_seqs, :max_pages]
                  if slot_table is not None else None)
     else:
-        rows = seq_to_request_row[:num_seqs].to(dtype=torch.long)
-        roles = role_table.index_select(0, rows)[:, :max_pages]
-        slots = (slot_table.index_select(0, rows)[:, :max_pages]
-                 if slot_table is not None else None)
+        rows = cache.native_seq_to_request_row[:num_seqs]
+        rows.copy_(seq_to_request_row[:num_seqs])
+        gathered_roles = cache.gathered_role_by_seq_page[:num_seqs]
+        torch.index_select(role_table, 0, rows, out=gathered_roles)
+        roles = gathered_roles[:, :max_pages]
+        if slot_table is not None:
+            gathered_slots = cache.gathered_slot_by_seq_page[:num_seqs]
+            torch.index_select(slot_table, 0, rows, out=gathered_slots)
+            slots = gathered_slots[:, :max_pages]
+        else:
+            slots = None
     page_counts = torch.div(
         seq_lens[:num_seqs] + block_size - 1,
         block_size,
         rounding_mode="floor",
     )
-    page_ids = torch.arange(max_pages, device=seq_lens.device)[None, :]
+    page_ids = cache.page_index_by_model_page[:max_pages][None, :]
     valid = page_ids < page_counts[:, None]
     query_start_loc = getattr(attn_metadata, "query_start_loc", None)
     query_lens = None
@@ -1338,64 +1345,171 @@ def _seq_to_request_row(
     return torch.arange(num_seqs, device=device, dtype=torch.int32)
 
 
-def tmh_reshape_and_cache(
-    key: torch.Tensor,
-    value: torch.Tensor,
+def _tmh_resolve_max_query_len(
+    attn_metadata,
+    *,
+    q_num_tokens: int,
+    num_seqs: int,
+) -> int:
+    return int(
+        getattr(
+            attn_metadata,
+            "max_query_len",
+            1 if q_num_tokens <= num_seqs else q_num_tokens,
+        )
+        or 1
+    )
+
+
+def _tmh_resolve_chunking(
+    *,
+    window_size: tuple[int, int],
+    chunk_lookback: int,
+) -> tuple[int, int, int]:
+    sliding_window = 1 + window_size[0] if window_size[0] >= 0 else 0
+    resolved_chunk_lookback = chunk_lookback
+    chunk_size = -1
+    if sliding_window > 0 and resolved_chunk_lookback > -1:
+        chunk_size = sliding_window // (resolved_chunk_lookback + 1)
+        assert chunk_size > 0, "sliding_window must be > chunk_lookback+1"
+    elif sliding_window <= 0:
+        resolved_chunk_lookback = -1
+    return sliding_window, resolved_chunk_lookback, chunk_size
+
+
+def _tmh_cache_update_regime(
+    *,
     cache,
-    slot_mapping: torch.Tensor,
     attn_metadata,
     seq_to_request_row: torch.Tensor | None,
-) -> None:
-    num_tokens, num_kv_heads, head_size = key.shape
-    head_size_v = value.shape[2]
-    head_size_padded = triton.next_power_of_2(max(head_size, head_size_v))
-    block_size = cache.spec.block_size
+    device: torch.device,
+) -> tuple[torch.Tensor, int, bool]:
     num_seqs = len(attn_metadata.seq_lens)
     seq_rows = _seq_to_request_row(
         seq_to_request_row,
         num_seqs=num_seqs,
-        device=key.device,
+        device=device,
     )
-    num_warps = (
-        4
-        if current_platform.is_rocm()
-        else min(16, max(1, head_size_padded // 32))
-    )
-    if _tmh_batch_is_all_raw(cache, attn_metadata, seq_rows):
-        _tmh_raw_reshape_and_cache_kernel[(num_tokens, num_kv_heads)](
-            key_ptr=key,
-            value_ptr=value,
-            raw_key_ptr=cache.raw_key,
-            raw_value_ptr=cache.raw_value,
-            request_slot_ptr=cache.request_slot_by_row_page,
-            seq_to_request_row_ptr=seq_rows,
-            query_start_len_ptr=attn_metadata.query_start_loc,
-            seq_lens_ptr=attn_metadata.seq_lens,
-            slot_mapping_ptr=slot_mapping,
-            stride_key_tok=key.stride(0),
-            stride_key_head=key.stride(1),
-            stride_val_tok=value.stride(0),
-            stride_val_head=value.stride(1),
-            stride_raw_k_slot=cache.raw_key.stride(0),
-            stride_raw_k_head=cache.raw_key.stride(1),
-            stride_raw_k_dim_block=cache.raw_key.stride(2),
-            stride_raw_k_tok=cache.raw_key.stride(3),
-            stride_raw_k_x=cache.raw_key.stride(4),
-            stride_raw_v_slot=cache.raw_value.stride(0),
-            stride_raw_v_head=cache.raw_value.stride(1),
-            stride_raw_v_dim=cache.raw_value.stride(2),
-            stride_raw_v_tok=cache.raw_value.stride(3),
-            request_stride=cache.request_slot_by_row_page.stride(0),
-            num_seqs=num_seqs,
-            block_size=block_size,
-            RAW_X=16 // key.element_size(),
-            head_size=head_size,
-            head_size_v=head_size_v,
-            HEAD_SIZE_PADDED=head_size_padded,
-            num_warps=num_warps,
-        )
-        return
+    all_raw = _tmh_batch_is_all_raw(cache, attn_metadata, seq_rows)
+    return seq_rows, num_seqs, all_raw
 
+
+
+def _tmh_attention_regime(
+    *,
+    cache,
+    attn_metadata,
+    seq_to_request_row: torch.Tensor | None,
+    device: torch.device,
+    q_num_tokens: int,
+    window_size: tuple[int, int],
+    chunk_lookback: int,
+) -> tuple[torch.Tensor, int, int, bool, int, int, int]:
+    num_seqs = len(attn_metadata.seq_lens)
+    max_query_len = _tmh_resolve_max_query_len(
+        attn_metadata, q_num_tokens=q_num_tokens, num_seqs=num_seqs
+    )
+    sliding_window, resolved_chunk_lookback, chunk_size = _tmh_resolve_chunking(
+        window_size=window_size, chunk_lookback=chunk_lookback
+    )
+    seq_rows = _seq_to_request_row(
+        seq_to_request_row,
+        num_seqs=num_seqs,
+        device=device,
+    )
+    all_raw = _tmh_batch_is_all_raw(
+        cache,
+        attn_metadata,
+        seq_rows,
+        allow_missing_current_prefill=max_query_len > 1,
+        chunk_lookback=resolved_chunk_lookback,
+        chunk_size=chunk_size,
+    )
+    return (
+        seq_rows,
+        num_seqs,
+        max_query_len,
+        all_raw,
+        sliding_window,
+        resolved_chunk_lookback,
+        chunk_size,
+    )
+
+
+def _tmh_cache_update_num_warps(*, head_size_padded: int) -> int:
+    if current_platform.is_rocm():
+        return 4
+    return min(16, max(1, head_size_padded // 32))
+
+
+def _tmh_launch_raw_reshape_and_cache(
+    *,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    cache,
+    slot_mapping: torch.Tensor,
+    seq_rows: torch.Tensor,
+    num_tokens: int,
+    num_kv_heads: int,
+    num_seqs: int,
+    block_size: int,
+    head_size: int,
+    head_size_v: int,
+    head_size_padded: int,
+    num_warps: int,
+    attn_metadata,
+) -> None:
+    _tmh_raw_reshape_and_cache_kernel[(num_tokens, num_kv_heads)](
+        key_ptr=key,
+        value_ptr=value,
+        raw_key_ptr=cache.raw_key,
+        raw_value_ptr=cache.raw_value,
+        request_slot_ptr=cache.request_slot_by_row_page,
+        seq_to_request_row_ptr=seq_rows,
+        query_start_len_ptr=attn_metadata.query_start_loc,
+        seq_lens_ptr=attn_metadata.seq_lens,
+        slot_mapping_ptr=slot_mapping,
+        stride_key_tok=key.stride(0),
+        stride_key_head=key.stride(1),
+        stride_val_tok=value.stride(0),
+        stride_val_head=value.stride(1),
+        stride_raw_k_slot=cache.raw_key.stride(0),
+        stride_raw_k_head=cache.raw_key.stride(1),
+        stride_raw_k_dim_block=cache.raw_key.stride(2),
+        stride_raw_k_tok=cache.raw_key.stride(3),
+        stride_raw_k_x=cache.raw_key.stride(4),
+        stride_raw_v_slot=cache.raw_value.stride(0),
+        stride_raw_v_head=cache.raw_value.stride(1),
+        stride_raw_v_dim=cache.raw_value.stride(2),
+        stride_raw_v_tok=cache.raw_value.stride(3),
+        request_stride=cache.request_slot_by_row_page.stride(0),
+        num_seqs=num_seqs,
+        block_size=block_size,
+        RAW_X=16 // key.element_size(),
+        head_size=head_size,
+        head_size_v=head_size_v,
+        HEAD_SIZE_PADDED=head_size_padded,
+        num_warps=num_warps,
+    )
+
+
+def _tmh_launch_mixed_reshape_and_cache(
+    *,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    cache,
+    slot_mapping: torch.Tensor,
+    seq_rows: torch.Tensor,
+    num_tokens: int,
+    num_kv_heads: int,
+    num_seqs: int,
+    block_size: int,
+    head_size: int,
+    head_size_v: int,
+    head_size_padded: int,
+    num_warps: int,
+    attn_metadata,
+) -> None:
     packed_v = cache.warm_value.shape[-1] * 2 == head_size_v
     _tmh_reshape_and_cache_kernel[(num_tokens, num_kv_heads)](
         key_ptr=key,
@@ -1450,6 +1564,65 @@ def tmh_reshape_and_cache(
     )
 
 
+def tmh_reshape_and_cache(
+    key: torch.Tensor,
+    value: torch.Tensor,
+    cache,
+    slot_mapping: torch.Tensor,
+    attn_metadata,
+    seq_to_request_row: torch.Tensor | None,
+    *,
+    layer_name: str | None = None,
+) -> None:
+    num_tokens, num_kv_heads, head_size = key.shape
+    head_size_v = value.shape[2]
+    head_size_padded = triton.next_power_of_2(max(head_size, head_size_v))
+    block_size = cache.spec.block_size
+    _ = layer_name or getattr(cache, "layer_name", "unknown")
+    seq_rows, num_seqs, all_raw = _tmh_cache_update_regime(
+        cache=cache,
+        attn_metadata=attn_metadata,
+        seq_to_request_row=seq_to_request_row,
+        device=key.device,
+    )
+    num_warps = _tmh_cache_update_num_warps(head_size_padded=head_size_padded)
+    if all_raw:
+        _tmh_launch_raw_reshape_and_cache(
+            key=key,
+            value=value,
+            cache=cache,
+            slot_mapping=slot_mapping,
+            seq_rows=seq_rows,
+            num_tokens=num_tokens,
+            num_kv_heads=num_kv_heads,
+            num_seqs=num_seqs,
+            block_size=block_size,
+            head_size=head_size,
+            head_size_v=head_size_v,
+            head_size_padded=head_size_padded,
+            num_warps=num_warps,
+            attn_metadata=attn_metadata,
+        )
+        return
+
+    _tmh_launch_mixed_reshape_and_cache(
+        key=key,
+        value=value,
+        cache=cache,
+        slot_mapping=slot_mapping,
+        seq_rows=seq_rows,
+        num_tokens=num_tokens,
+        num_kv_heads=num_kv_heads,
+        num_seqs=num_seqs,
+        block_size=block_size,
+        head_size=head_size,
+        head_size_v=head_size_v,
+        head_size_padded=head_size_padded,
+        num_warps=num_warps,
+        attn_metadata=attn_metadata,
+    )
+
+
 def _tmh_current_layer_metadata(layer_name: str):
     attn_metadata = get_forward_context().attn_metadata
     if isinstance(attn_metadata, dict):
@@ -1485,6 +1658,7 @@ def tmh_backend_kv_cache_update(
         slot_mapping,
         attn_metadata,
         seq_to_request_row,
+        layer_name=layer.layer_name,
     )
     if start is not None:
         _tmh_timing_sync()
@@ -1603,7 +1777,6 @@ def tmh_physical_attention(
                 f"Unsupported mm_prefix_range shape: {mm_prefix_range.shape}"
             )
 
-    num_seqs = len(attn_metadata.seq_lens)
     num_query_heads = q.shape[1]
     num_kv_heads = cache.raw_key.shape[1]
     num_queries_per_kv = num_query_heads // num_kv_heads
@@ -1612,80 +1785,22 @@ def tmh_physical_attention(
         raise ValueError(
             "TMH physical attention currently requires head_size_v == head_size"
         )
-    block_size = cache.spec.block_size
-    block_m, block_q = _get_tmh_query_block_shape(
-        num_queries_per_kv=num_queries_per_kv,
-        head_size=head_size,
-        num_query_tokens=q.shape[0],
-        num_seqs=num_seqs,
-    )
-    total_num_q_blocks = q.shape[0] // block_q + num_seqs
-    sliding_window = 1 + window_size[0] if window_size[0] >= 0 else 0
-    chunk_size = -1
-    if sliding_window > 0 and chunk_lookback > -1:
-        chunk_size = sliding_window // (chunk_lookback + 1)
-        assert chunk_size > 0, "sliding_window must be > chunk_lookback+1"
-    elif sliding_window <= 0:
-        chunk_lookback = -1
-    max_query_len = getattr(
-        attn_metadata,
-        "max_query_len",
-        1 if q.shape[0] <= num_seqs else q.shape[0],
-    )
-    seq_rows = _seq_to_request_row(
-        seq_to_request_row,
-        num_seqs=num_seqs,
-        device=q.device,
-    )
-    all_raw = _tmh_batch_is_all_raw(
-        cache,
-        attn_metadata,
+    (
         seq_rows,
-        allow_missing_current_prefill=max_query_len > 1,
+        num_seqs,
+        max_query_len,
+        all_raw,
+        sliding_window,
+        chunk_lookback,
+        chunk_size,
+    ) = _tmh_attention_regime(
+        cache=cache,
+        attn_metadata=attn_metadata,
+        seq_to_request_row=seq_to_request_row,
+        device=q.device,
+        q_num_tokens=q.shape[0],
+        window_size=window_size,
         chunk_lookback=chunk_lookback,
-        chunk_size=chunk_size,
-    )
-    tile_size = (
-        _get_tmh_raw_tile_size(
-            head_size=head_size,
-            sliding_window=sliding_window,
-            element_size=q.element_size(),
-            block_size=block_size,
-            is_prefill=max_query_len > 1,
-        )
-        if all_raw
-        else _get_tmh_mixed_tile_size(block_size=block_size)
-    )
-    head_size_padded = triton.next_power_of_2(head_size)
-    packed_v = cache.warm_value.shape[-1] * 2 == head_size
-    seq_threshold_3d = getattr(attn_metadata, "seq_threshold_3D", None)
-    num_segments = getattr(attn_metadata, "num_par_softmax_segments", None)
-    segm_output = getattr(attn_metadata, "softmax_segm_output", None)
-    segm_max = getattr(attn_metadata, "softmax_segm_max", None)
-    segm_expsum = getattr(attn_metadata, "softmax_segm_expsum", None)
-    max_seq_len = getattr(attn_metadata, "max_seq_len", 0)
-    use_3d = not (
-        seq_threshold_3d is None
-        or num_segments is None
-        or segm_output is None
-        or segm_max is None
-        or segm_expsum is None
-        or max_query_len > 1
-        or max_seq_len < TMH_SEGMENTED_DECODE_MIN_SEQ_LEN
-        or num_seqs > seq_threshold_3d
-    )
-    grid: tuple[Any, ...]
-    if use_3d:
-        grid = (total_num_q_blocks, num_kv_heads, num_segments)
-    else:
-        grid = (total_num_q_blocks, num_kv_heads)
-        num_segments = 1
-        segm_output = out
-        segm_max = out
-        segm_expsum = out
-    launch_kwargs = _get_tmh_attention_launch_kwargs(
-        block_m=block_m,
-        head_size=head_size,
     )
     if _tmh_can_use_native_raw_attention(
         cache=cache,
@@ -1722,6 +1837,56 @@ def tmh_physical_attention(
             v_scale=v_scale,
         )
         return
+
+    block_size = cache.spec.block_size
+    block_m, block_q = _get_tmh_query_block_shape(
+        num_queries_per_kv=num_queries_per_kv,
+        head_size=head_size,
+        num_query_tokens=q.shape[0],
+        num_seqs=num_seqs,
+    )
+    total_num_q_blocks = q.shape[0] // block_q + num_seqs
+    tile_size = (
+        _get_tmh_raw_tile_size(
+            head_size=head_size,
+            sliding_window=sliding_window,
+            element_size=q.element_size(),
+            block_size=block_size,
+            is_prefill=max_query_len > 1,
+        )
+        if all_raw
+        else _get_tmh_mixed_tile_size(block_size=block_size)
+    )
+    head_size_padded = triton.next_power_of_2(head_size)
+    seq_threshold_3d = getattr(attn_metadata, "seq_threshold_3D", None)
+    num_segments = getattr(attn_metadata, "num_par_softmax_segments", None)
+    segm_output = getattr(attn_metadata, "softmax_segm_output", None)
+    segm_max = getattr(attn_metadata, "softmax_segm_max", None)
+    segm_expsum = getattr(attn_metadata, "softmax_segm_expsum", None)
+    max_seq_len = getattr(attn_metadata, "max_seq_len", 0)
+    use_3d = not (
+        seq_threshold_3d is None
+        or num_segments is None
+        or segm_output is None
+        or segm_max is None
+        or segm_expsum is None
+        or max_query_len > 1
+        or max_seq_len < TMH_SEGMENTED_DECODE_MIN_SEQ_LEN
+        or num_seqs > seq_threshold_3d
+    )
+    grid: tuple[Any, ...]
+    if use_3d:
+        grid = (total_num_q_blocks, num_kv_heads, num_segments)
+    else:
+        grid = (total_num_q_blocks, num_kv_heads)
+        num_segments = 1
+        segm_output = out
+        segm_max = out
+        segm_expsum = out
+    launch_kwargs = _get_tmh_attention_launch_kwargs(
+        block_m=block_m,
+        head_size=head_size,
+    )
 
     if all_raw:
         _tmh_raw_attention_kernel[grid](
@@ -1784,29 +1949,25 @@ def tmh_physical_attention(
             **launch_kwargs,
         )
         if use_3d:
-            reduce_segments[(q.shape[0], num_query_heads)](
-                output_ptr=out,
-                segm_output_ptr=segm_output,
-                segm_max_ptr=segm_max,
-                segm_expsum_ptr=segm_expsum,
-                seq_lens_ptr=attn_metadata.seq_lens,
+            _tmh_reduce_segment_outputs(
+                out=out,
+                segm_output=segm_output,
+                segm_max=segm_max,
+                segm_expsum=segm_expsum,
+                attn_metadata=attn_metadata,
                 num_seqs=num_seqs,
                 num_query_heads=num_query_heads,
-                out_scale_inv=1 / output_scale if output_scale is not None else 1.0,
-                output_stride_0=out.stride(0),
-                output_stride_1=out.stride(1),
-                block_table_stride=0,
-                TILE_SIZE=tile_size,
-                HEAD_SIZE=head_size,
-                HEAD_SIZE_PADDED=head_size_padded,
-                query_start_len_ptr=attn_metadata.query_start_loc,
-                BLOCK_Q=block_q,
-                NUM_SEGMENTS_PER_SEQ=num_segments,
-                USE_FP8=output_scale is not None,
-                **launch_kwargs,
+                output_scale=output_scale,
+                tile_size=tile_size,
+                head_size=head_size,
+                head_size_padded=head_size_padded,
+                block_q=block_q,
+                num_segments=num_segments,
+                launch_kwargs=launch_kwargs,
             )
         return
 
+    packed_v = cache.warm_value.shape[-1] * 2 == head_size
     _tmh_mixed_attention_kernel[grid](
         output_ptr=out,
         segm_output_ptr=segm_output,
@@ -1886,28 +2047,22 @@ def tmh_physical_attention(
         **launch_kwargs,
     )
     if use_3d:
-        reduce_segments[(q.shape[0], num_query_heads)](
-            output_ptr=out,
-            segm_output_ptr=segm_output,
-            segm_max_ptr=segm_max,
-            segm_expsum_ptr=segm_expsum,
-            seq_lens_ptr=attn_metadata.seq_lens,
+        _tmh_reduce_segment_outputs(
+            out=out,
+            segm_output=segm_output,
+            segm_max=segm_max,
+            segm_expsum=segm_expsum,
+            attn_metadata=attn_metadata,
             num_seqs=num_seqs,
             num_query_heads=num_query_heads,
-            out_scale_inv=1 / output_scale if output_scale is not None else 1.0,
-            output_stride_0=out.stride(0),
-            output_stride_1=out.stride(1),
-            block_table_stride=0,
-            TILE_SIZE=tile_size,
-            HEAD_SIZE=head_size,
-            HEAD_SIZE_PADDED=head_size_padded,
-            query_start_len_ptr=attn_metadata.query_start_loc,
-            BLOCK_Q=block_q,
-            NUM_SEGMENTS_PER_SEQ=num_segments,
-            USE_FP8=output_scale is not None,
-            **launch_kwargs,
+            output_scale=output_scale,
+            tile_size=tile_size,
+            head_size=head_size,
+            head_size_padded=head_size_padded,
+            block_q=block_q,
+            num_segments=num_segments,
+            launch_kwargs=launch_kwargs,
         )
-
 
 def _get_tmh_query_block_shape(
     *,
@@ -1960,3 +2115,617 @@ def _get_tmh_raw_tile_size(
 ) -> int:
     del head_size, sliding_window, element_size, is_prefill
     return block_size
+
+
+
+def _tmh_reduce_segment_outputs(
+    *,
+    out: torch.Tensor,
+    segm_output,
+    segm_max,
+    segm_expsum,
+    attn_metadata,
+    num_seqs: int,
+    num_query_heads: int,
+    output_scale,
+    tile_size: int,
+    head_size: int,
+    head_size_padded: int,
+    block_q: int,
+    num_segments: int,
+    launch_kwargs: dict[str, Any],
+) -> None:
+    reduce_segments[(out.shape[0], num_query_heads)](
+        output_ptr=out,
+        segm_output_ptr=segm_output,
+        segm_max_ptr=segm_max,
+        segm_expsum_ptr=segm_expsum,
+        seq_lens_ptr=attn_metadata.seq_lens,
+        num_seqs=num_seqs,
+        num_query_heads=num_query_heads,
+        out_scale_inv=1 / output_scale if output_scale is not None else 1.0,
+        output_stride_0=out.stride(0),
+        output_stride_1=out.stride(1),
+        block_table_stride=0,
+        TILE_SIZE=tile_size,
+        HEAD_SIZE=head_size,
+        HEAD_SIZE_PADDED=head_size_padded,
+        query_start_len_ptr=attn_metadata.query_start_loc,
+        BLOCK_Q=block_q,
+        NUM_SEGMENTS_PER_SEQ=num_segments,
+        USE_FP8=output_scale is not None,
+        **launch_kwargs,
+    )
+
+
+
+def _tmh_launch_raw_attention(
+    *,
+    q: torch.Tensor,
+    cache,
+    out: torch.Tensor,
+    attn_metadata,
+    seq_rows: torch.Tensor,
+    softmax_scale: float,
+    softcap: float,
+    alibi_slopes,
+    use_alibi_sqrt: bool,
+    output_scale,
+    qq_bias,
+    sinks,
+    mm_prefix_range,
+    num_query_heads: int,
+    num_queries_per_kv: int,
+    num_seqs: int,
+    head_size: int,
+    head_size_padded: int,
+    block_size: int,
+    block_q: int,
+    block_m: int,
+    tile_size: int,
+    sliding_window: int,
+    use_mm_prefix: bool,
+    max_mm_ranges: int,
+    use_3d: bool,
+    num_segments: int,
+    segm_output,
+    segm_max,
+    segm_expsum,
+    chunk_lookback: int,
+    chunk_size: int,
+    launch_kwargs: dict[str, Any],
+) -> None:
+    grid: tuple[Any, ...]
+    if use_3d:
+        grid = (q.shape[0] // block_q + num_seqs, cache.raw_key.shape[1], num_segments)
+    else:
+        grid = (q.shape[0] // block_q + num_seqs, cache.raw_key.shape[1])
+    _tmh_raw_attention_kernel[grid](
+        output_ptr=out,
+        segm_output_ptr=segm_output,
+        segm_max_ptr=segm_max,
+        segm_expsum_ptr=segm_expsum,
+        query_ptr=q,
+        raw_key_ptr=cache.raw_key,
+        raw_value_ptr=cache.raw_value,
+        request_slot_ptr=cache.request_slot_by_row_page,
+        seq_to_request_row_ptr=seq_rows,
+        seq_lens_ptr=attn_metadata.seq_lens,
+        query_start_len_ptr=attn_metadata.query_start_loc,
+        sink_ptr=sinks,
+        alibi_slopes_ptr=alibi_slopes,
+        qq_bias_ptr=qq_bias,
+        mm_prefix_range_ptr=mm_prefix_range,
+        scale=softmax_scale,
+        out_scale=1 / output_scale if output_scale is not None else 1.0,
+        softcap=softcap,
+        num_query_heads=num_query_heads,
+        num_queries_per_kv=num_queries_per_kv,
+        request_stride=cache.request_slot_by_row_page.stride(0),
+        query_stride_0=q.stride(0),
+        query_stride_1=q.stride(1),
+        output_stride_0=out.stride(0),
+        output_stride_1=out.stride(1),
+        qq_bias_stride_0=qq_bias.stride(0) if qq_bias is not None else 0,
+        stride_raw_k_slot=cache.raw_key.stride(0),
+        stride_raw_k_head=cache.raw_key.stride(1),
+        stride_raw_k_dim_block=cache.raw_key.stride(2),
+        stride_raw_k_tok=cache.raw_key.stride(3),
+        stride_raw_k_x=cache.raw_key.stride(4),
+        stride_raw_v_slot=cache.raw_value.stride(0),
+        stride_raw_v_head=cache.raw_value.stride(1),
+        stride_raw_v_dim=cache.raw_value.stride(2),
+        stride_raw_v_tok=cache.raw_value.stride(3),
+        BLOCK_SIZE=block_size,
+        TILE_SIZE=tile_size,
+        HEAD_SIZE=head_size,
+        HEAD_SIZE_PADDED=head_size_padded,
+        BLOCK_Q=block_q,
+        BLOCK_M=block_m,
+        NUM_SEGMENTS_PER_SEQ=num_segments,
+        num_seqs=num_seqs,
+        USE_ALIBI_SLOPES=alibi_slopes is not None,
+        USE_ALIBI_SQRT=use_alibi_sqrt,
+        USE_QQ_BIAS=qq_bias is not None,
+        USE_SOFTCAP=softcap > 0,
+        USE_SINKS=sinks is not None,
+        SLIDING_WINDOW=sliding_window,
+        USE_MM_PREFIX=use_mm_prefix,
+        MAX_MM_RANGES=max_mm_ranges,
+        USE_FP8=output_scale is not None,
+        RAW_X=16 // q.element_size(),
+        IS_3D=use_3d,
+        CHUNK_LOOKBACK=chunk_lookback,
+        CHUNK_SIZE=chunk_size,
+        **launch_kwargs,
+    )
+    if use_3d:
+        _tmh_reduce_segment_outputs(
+            out=out,
+            segm_output=segm_output,
+            segm_max=segm_max,
+            segm_expsum=segm_expsum,
+            attn_metadata=attn_metadata,
+            num_seqs=num_seqs,
+            num_query_heads=num_query_heads,
+            output_scale=output_scale,
+            tile_size=tile_size,
+            head_size=head_size,
+            head_size_padded=head_size_padded,
+            block_q=block_q,
+            num_segments=num_segments,
+            launch_kwargs=launch_kwargs,
+        )
+
+
+
+def _tmh_launch_mixed_attention(
+    *,
+    q: torch.Tensor,
+    cache,
+    out: torch.Tensor,
+    attn_metadata,
+    seq_rows: torch.Tensor,
+    softmax_scale: float,
+    softcap: float,
+    alibi_slopes,
+    use_alibi_sqrt: bool,
+    output_scale,
+    qq_bias,
+    sinks,
+    mm_prefix_range,
+    num_query_heads: int,
+    num_queries_per_kv: int,
+    num_seqs: int,
+    head_size: int,
+    head_size_padded: int,
+    block_size: int,
+    block_q: int,
+    block_m: int,
+    tile_size: int,
+    sliding_window: int,
+    use_mm_prefix: bool,
+    max_mm_ranges: int,
+    use_3d: bool,
+    num_segments: int,
+    segm_output,
+    segm_max,
+    segm_expsum,
+    chunk_lookback: int,
+    chunk_size: int,
+    launch_kwargs: dict[str, Any],
+) -> None:
+    grid: tuple[Any, ...]
+    if use_3d:
+        grid = (q.shape[0] // block_q + num_seqs, cache.raw_key.shape[1], num_segments)
+    else:
+        grid = (q.shape[0] // block_q + num_seqs, cache.raw_key.shape[1])
+    packed_v = cache.warm_value.shape[-1] * 2 == head_size
+    _tmh_mixed_attention_kernel[grid](
+        output_ptr=out,
+        segm_output_ptr=segm_output,
+        segm_max_ptr=segm_max,
+        segm_expsum_ptr=segm_expsum,
+        query_ptr=q,
+        raw_key_ptr=cache.raw_key,
+        raw_value_ptr=cache.raw_value,
+        warm_key_ptr=cache.warm_key,
+        warm_value_ptr=cache.warm_value,
+        warm_k_scale_ptr=cache.warm_k_scale,
+        warm_v_scale_ptr=cache.warm_v_scale,
+        request_slot_ptr=cache.request_slot_by_row_page,
+        seq_to_request_row_ptr=seq_rows,
+        seq_lens_ptr=attn_metadata.seq_lens,
+        query_start_len_ptr=attn_metadata.query_start_loc,
+        sink_ptr=sinks,
+        alibi_slopes_ptr=alibi_slopes,
+        qq_bias_ptr=qq_bias,
+        mm_prefix_range_ptr=mm_prefix_range,
+        scale=softmax_scale,
+        out_scale=1 / output_scale if output_scale is not None else 1.0,
+        softcap=softcap,
+        num_query_heads=num_query_heads,
+        num_queries_per_kv=num_queries_per_kv,
+        request_stride=cache.request_slot_by_row_page.stride(0),
+        query_stride_0=q.stride(0),
+        query_stride_1=q.stride(1),
+        output_stride_0=out.stride(0),
+        output_stride_1=out.stride(1),
+        qq_bias_stride_0=qq_bias.stride(0) if qq_bias is not None else 0,
+        stride_raw_k_slot=cache.raw_key.stride(0),
+        stride_raw_k_head=cache.raw_key.stride(1),
+        stride_raw_k_dim_block=cache.raw_key.stride(2),
+        stride_raw_k_tok=cache.raw_key.stride(3),
+        stride_raw_k_x=cache.raw_key.stride(4),
+        stride_raw_v_slot=cache.raw_value.stride(0),
+        stride_raw_v_head=cache.raw_value.stride(1),
+        stride_raw_v_dim=cache.raw_value.stride(2),
+        stride_raw_v_tok=cache.raw_value.stride(3),
+        stride_warm_k_slot=cache.warm_key.stride(0),
+        stride_warm_k_tok=cache.warm_key.stride(1),
+        stride_warm_k_head=cache.warm_key.stride(2),
+        stride_warm_v_slot=cache.warm_value.stride(0),
+        stride_warm_v_tok=cache.warm_value.stride(1),
+        stride_warm_v_head=cache.warm_value.stride(2),
+        stride_warm_ks_slot=cache.warm_k_scale.stride(0),
+        stride_warm_ks_tok=cache.warm_k_scale.stride(1),
+        stride_warm_ks_head=cache.warm_k_scale.stride(2),
+        stride_warm_vs_slot=cache.warm_v_scale.stride(0),
+        stride_warm_vs_tok=cache.warm_v_scale.stride(1),
+        stride_warm_vs_head=cache.warm_v_scale.stride(2),
+        BLOCK_SIZE=block_size,
+        TILE_SIZE=tile_size,
+        HEAD_SIZE=head_size,
+        HEAD_SIZE_PADDED=head_size_padded,
+        BLOCK_Q=block_q,
+        BLOCK_M=block_m,
+        NUM_SEGMENTS_PER_SEQ=num_segments,
+        num_seqs=num_seqs,
+        USE_ALIBI_SLOPES=alibi_slopes is not None,
+        USE_ALIBI_SQRT=use_alibi_sqrt,
+        USE_QQ_BIAS=qq_bias is not None,
+        USE_SOFTCAP=softcap > 0,
+        USE_SINKS=sinks is not None,
+        SLIDING_WINDOW=sliding_window,
+        USE_MM_PREFIX=use_mm_prefix,
+        MAX_MM_RANGES=max_mm_ranges,
+        USE_FP8=output_scale is not None,
+        WARM_VALUE_PACKED=packed_v,
+        HOT_BUDGET_BPS=_tmh_hot_budget_bps(cache),
+        RAW_ONLY_PAGES=_tmh_raw_only_pages(cache),
+        RAW_X=16 // q.element_size(),
+        IS_3D=use_3d,
+        CHUNK_LOOKBACK=chunk_lookback,
+        CHUNK_SIZE=chunk_size,
+        **launch_kwargs,
+    )
+    if use_3d:
+        _tmh_reduce_segment_outputs(
+            out=out,
+            segm_output=segm_output,
+            segm_max=segm_max,
+            segm_expsum=segm_expsum,
+            attn_metadata=attn_metadata,
+            num_seqs=num_seqs,
+            num_query_heads=num_query_heads,
+            output_scale=output_scale,
+            tile_size=tile_size,
+            head_size=head_size,
+            head_size_padded=head_size_padded,
+            block_q=block_q,
+            num_segments=num_segments,
+            launch_kwargs=launch_kwargs,
+        )
+
+
+
+def _tmh_prefill_attention(
+    *,
+    q: torch.Tensor,
+    cache,
+    out: torch.Tensor,
+    attn_metadata,
+    seq_rows: torch.Tensor,
+    softmax_scale: float,
+    softcap: float,
+    alibi_slopes,
+    use_alibi_sqrt: bool,
+    output_scale,
+    qq_bias,
+    sinks,
+    mm_prefix_range,
+    num_query_heads: int,
+    num_queries_per_kv: int,
+    num_seqs: int,
+    head_size: int,
+    all_raw: bool,
+    sliding_window: int,
+    chunk_lookback: int,
+    chunk_size: int,
+    use_mm_prefix: bool,
+    max_mm_ranges: int,
+) -> None:
+    block_size = cache.spec.block_size
+    block_m, block_q = _get_tmh_query_block_shape(
+        num_queries_per_kv=num_queries_per_kv,
+        head_size=head_size,
+        num_query_tokens=q.shape[0],
+        num_seqs=num_seqs,
+    )
+    tile_size = (
+        _get_tmh_raw_tile_size(
+            head_size=head_size,
+            sliding_window=sliding_window,
+            element_size=q.element_size(),
+            block_size=block_size,
+            is_prefill=True,
+        )
+        if all_raw
+        else _get_tmh_mixed_tile_size(block_size=block_size)
+    )
+    head_size_padded = triton.next_power_of_2(head_size)
+    launch_kwargs = _get_tmh_attention_launch_kwargs(
+        block_m=block_m,
+        head_size=head_size,
+    )
+    if all_raw:
+        _tmh_launch_raw_attention(
+            q=q,
+            cache=cache,
+            out=out,
+            attn_metadata=attn_metadata,
+            seq_rows=seq_rows,
+            softmax_scale=softmax_scale,
+            softcap=softcap,
+            alibi_slopes=alibi_slopes,
+            use_alibi_sqrt=use_alibi_sqrt,
+            output_scale=output_scale,
+            qq_bias=qq_bias,
+            sinks=sinks,
+            mm_prefix_range=mm_prefix_range,
+            num_query_heads=num_query_heads,
+            num_queries_per_kv=num_queries_per_kv,
+            num_seqs=num_seqs,
+            head_size=head_size,
+            head_size_padded=head_size_padded,
+            block_size=block_size,
+            block_q=block_q,
+            block_m=block_m,
+            tile_size=tile_size,
+            sliding_window=sliding_window,
+            use_mm_prefix=use_mm_prefix,
+            max_mm_ranges=max_mm_ranges,
+            use_3d=False,
+            num_segments=1,
+            segm_output=out,
+            segm_max=out,
+            segm_expsum=out,
+            chunk_lookback=chunk_lookback,
+            chunk_size=chunk_size,
+            launch_kwargs=launch_kwargs,
+        )
+        return
+    _tmh_launch_mixed_attention(
+        q=q,
+        cache=cache,
+        out=out,
+        attn_metadata=attn_metadata,
+        seq_rows=seq_rows,
+        softmax_scale=softmax_scale,
+        softcap=softcap,
+        alibi_slopes=alibi_slopes,
+        use_alibi_sqrt=use_alibi_sqrt,
+        output_scale=output_scale,
+        qq_bias=qq_bias,
+        sinks=sinks,
+        mm_prefix_range=mm_prefix_range,
+        num_query_heads=num_query_heads,
+        num_queries_per_kv=num_queries_per_kv,
+        num_seqs=num_seqs,
+        head_size=head_size,
+        head_size_padded=head_size_padded,
+        block_size=block_size,
+        block_q=block_q,
+        block_m=block_m,
+        tile_size=tile_size,
+        sliding_window=sliding_window,
+        use_mm_prefix=use_mm_prefix,
+        max_mm_ranges=max_mm_ranges,
+        use_3d=False,
+        num_segments=1,
+        segm_output=out,
+        segm_max=out,
+        segm_expsum=out,
+        chunk_lookback=chunk_lookback,
+        chunk_size=chunk_size,
+        launch_kwargs=launch_kwargs,
+    )
+
+
+
+def _tmh_decode_attention(
+    *,
+    q: torch.Tensor,
+    key,
+    value,
+    cache,
+    out: torch.Tensor,
+    attn_metadata,
+    seq_to_request_row,
+    seq_rows: torch.Tensor,
+    softmax_scale: float,
+    causal: bool,
+    window_size: tuple[int, int],
+    softcap: float,
+    alibi_slopes,
+    use_alibi_sqrt: bool,
+    output_scale,
+    qq_bias,
+    sinks,
+    mm_prefix_range,
+    kv_cache_dtype: str | None,
+    k_scale,
+    v_scale,
+    num_query_heads: int,
+    num_kv_heads: int,
+    num_queries_per_kv: int,
+    num_seqs: int,
+    head_size: int,
+    max_query_len: int,
+    all_raw: bool,
+    sliding_window: int,
+    chunk_lookback: int,
+    chunk_size: int,
+    use_mm_prefix: bool,
+    max_mm_ranges: int,
+) -> None:
+    if _tmh_can_use_native_raw_attention(
+        cache=cache,
+        attn_metadata=attn_metadata,
+        all_raw=all_raw,
+        max_query_len=max_query_len,
+        causal=causal,
+        window_size=window_size,
+        softcap=softcap,
+        qq_bias=qq_bias,
+        mm_prefix_range=mm_prefix_range,
+        kv_cache_dtype=kv_cache_dtype,
+        k_scale=k_scale,
+        v_scale=v_scale,
+        key=key,
+        value=value,
+    ):
+        _tmh_native_raw_attention(
+            q=q,
+            key=key,
+            value=value,
+            cache=cache,
+            out=out,
+            attn_metadata=attn_metadata,
+            seq_to_request_row=seq_to_request_row,
+            softmax_scale=softmax_scale,
+            causal=causal,
+            window_size=window_size,
+            alibi_slopes=alibi_slopes,
+            output_scale=output_scale,
+            sinks=sinks,
+            kv_cache_dtype=kv_cache_dtype,
+            k_scale=k_scale,
+            v_scale=v_scale,
+        )
+        return
+    block_size = cache.spec.block_size
+    block_m, block_q = _get_tmh_query_block_shape(
+        num_queries_per_kv=num_queries_per_kv,
+        head_size=head_size,
+        num_query_tokens=q.shape[0],
+        num_seqs=num_seqs,
+    )
+    tile_size = (
+        _get_tmh_raw_tile_size(
+            head_size=head_size,
+            sliding_window=sliding_window,
+            element_size=q.element_size(),
+            block_size=block_size,
+            is_prefill=False,
+        )
+        if all_raw
+        else _get_tmh_mixed_tile_size(block_size=block_size)
+    )
+    head_size_padded = triton.next_power_of_2(head_size)
+    seq_threshold_3d = getattr(attn_metadata, "seq_threshold_3D", None)
+    num_segments = getattr(attn_metadata, "num_par_softmax_segments", None)
+    segm_output = getattr(attn_metadata, "softmax_segm_output", None)
+    segm_max = getattr(attn_metadata, "softmax_segm_max", None)
+    segm_expsum = getattr(attn_metadata, "softmax_segm_expsum", None)
+    max_seq_len = getattr(attn_metadata, "max_seq_len", 0)
+    use_3d = not (
+        seq_threshold_3d is None
+        or num_segments is None
+        or segm_output is None
+        or segm_max is None
+        or segm_expsum is None
+        or max_seq_len < TMH_SEGMENTED_DECODE_MIN_SEQ_LEN
+        or num_seqs > seq_threshold_3d
+    )
+    if not use_3d:
+        num_segments = 1
+        segm_output = out
+        segm_max = out
+        segm_expsum = out
+    launch_kwargs = _get_tmh_attention_launch_kwargs(
+        block_m=block_m,
+        head_size=head_size,
+    )
+    if all_raw:
+        _tmh_launch_raw_attention(
+            q=q,
+            cache=cache,
+            out=out,
+            attn_metadata=attn_metadata,
+            seq_rows=seq_rows,
+            softmax_scale=softmax_scale,
+            softcap=softcap,
+            alibi_slopes=alibi_slopes,
+            use_alibi_sqrt=use_alibi_sqrt,
+            output_scale=output_scale,
+            qq_bias=qq_bias,
+            sinks=sinks,
+            mm_prefix_range=mm_prefix_range,
+            num_query_heads=num_query_heads,
+            num_queries_per_kv=num_queries_per_kv,
+            num_seqs=num_seqs,
+            head_size=head_size,
+            head_size_padded=head_size_padded,
+            block_size=block_size,
+            block_q=block_q,
+            block_m=block_m,
+            tile_size=tile_size,
+            sliding_window=sliding_window,
+            use_mm_prefix=use_mm_prefix,
+            max_mm_ranges=max_mm_ranges,
+            use_3d=use_3d,
+            num_segments=num_segments,
+            segm_output=segm_output,
+            segm_max=segm_max,
+            segm_expsum=segm_expsum,
+            chunk_lookback=chunk_lookback,
+            chunk_size=chunk_size,
+            launch_kwargs=launch_kwargs,
+        )
+        return
+    _tmh_launch_mixed_attention(
+        q=q,
+        cache=cache,
+        out=out,
+        attn_metadata=attn_metadata,
+        seq_rows=seq_rows,
+        softmax_scale=softmax_scale,
+        softcap=softcap,
+        alibi_slopes=alibi_slopes,
+        use_alibi_sqrt=use_alibi_sqrt,
+        output_scale=output_scale,
+        qq_bias=qq_bias,
+        sinks=sinks,
+        mm_prefix_range=mm_prefix_range,
+        num_query_heads=num_query_heads,
+        num_queries_per_kv=num_queries_per_kv,
+        num_seqs=num_seqs,
+        head_size=head_size,
+        head_size_padded=head_size_padded,
+        block_size=block_size,
+        block_q=block_q,
+        block_m=block_m,
+        tile_size=tile_size,
+        sliding_window=sliding_window,
+        use_mm_prefix=use_mm_prefix,
+        max_mm_ranges=max_mm_ranges,
+        use_3d=use_3d,
+        num_segments=num_segments,
+        segm_output=segm_output,
+        segm_max=segm_max,
+        segm_expsum=segm_expsum,
+        chunk_lookback=chunk_lookback,
+        chunk_size=chunk_size,
+        launch_kwargs=launch_kwargs,
+    )
