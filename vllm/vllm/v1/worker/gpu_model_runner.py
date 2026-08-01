@@ -4456,6 +4456,9 @@ class GPUModelRunner(
                     "tmh_seq_to_request_row": self.tmh_seq_to_request_row[
                         : self.input_batch.num_reqs
                     ],
+                    "tmh_all_raw": self.tmh_physical_runtime.batch_is_all_raw(
+                        self.input_batch.req_ids
+                    ),
                 }
                 if self.tmh_physical_runtime is not None
                 else None,

@@ -80,7 +80,7 @@ from vllm.v1.worker.worker_base import CompilationTimes, WorkerBase
 from vllm.v1.worker.workspace import init_workspace_manager
 
 from ...model_executor.model_loader import TensorizerLoader
-from .gpu.warmup import warmup_kernels
+from .gpu.warmup import run_mixed_prefill_decode_warmup, warmup_kernels
 from .gpu.tmh_physical_warmup import warmup_tmh_physical_kernels
 from .utils import request_memory
 
@@ -869,11 +869,34 @@ class Worker(WorkerBase):
         if self.use_v2_model_runner:
             # V2: Run full execute_model + sample_tokens to JIT compile triton kernels.
             warmup_kernels(self.model_runner, self.execute_model, self.sample_tokens)
+            if runtime_kv_policy == "physical":
+                # Force one scheduler-owned mixed prefill+decode step through
+                # the normal V2 execution path so TMH physical writer/attention
+                # kernels compile under production metadata before JIT
+                # monitoring is enabled.
+                run_mixed_prefill_decode_warmup(
+                    self.model_runner,
+                    self.execute_model,
+                    self.sample_tokens,
+                    num_tokens=max(
+                        self.model_runner.kv_cache_config.kv_cache_groups[0]
+                        .kv_cache_spec.block_size
+                        * 3,
+                        self.model_runner.decode_query_len + 2,
+                    ),
+                )
+                # The direct physical warmup then broadens coverage across
+                # raw/mixed cache shapes and long-decode ROCm regimes.
+                warmup_tmh_physical_kernels(self.model_runner)
             warmup_stages.append(
                 {
                     "stage_kind": "runtime_kernel_materialization",
                     "status": "executed",
-                    "worker_execution_mode": "v2",
+                    "worker_execution_mode": (
+                        "v2_tmh_physical"
+                        if runtime_kv_policy == "physical"
+                        else "v2"
+                    ),
                 }
             )
         elif runtime_kv_policy == "physical":

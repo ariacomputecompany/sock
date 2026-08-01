@@ -2275,3 +2275,99 @@ text-only packaging more correct, but restore the live endpoint to the non-spec
 standard-KV speed profile for user-facing streaming. Future speculative work
 should use a target-specific MTP/EAGLE-style head or a much cheaper draft path;
 generic Qwen3-0.6B draft speculation is rejected for this latency target.
+
+## 2026-08-01 Qwen2.5-0.5B Adaptive Hot-Window Recovery Pass
+
+Goal: recover the long-context concurrency-4 frontier that was still dominating
+TMH’s negative gap after the strict startup/JIT correctness fixes landed.
+
+What changed:
+
+```text
+- Kept the strict startup/warmup fixes from pass 4.
+- Probed the worst production cell directly instead of tuning blind:
+  long_context_summary_256 @ c4.
+- A/B tested the physical policy with a larger raw hot window.
+- Promoted the win into code as an adaptive physical-policy rule instead of a
+  manual benchmark-only flag.
+```
+
+The key policy change is in physical TMH role assignment:
+
+```text
+For physical TMH requests with total_pages >= 32, the effective raw hot window
+now scales up to at least 50% of the request instead of remaining pinned to the
+base 25% tmh_hot_budget_pct.
+```
+
+Why this pass was justified:
+
+```text
+Targeted probe, old default-policy code path:
+long_context_summary_256 c4: 118.86 tok/s
+
+Manual hot-budget A/B (--tmh-hot-budget-pct 50):
+long_context_summary_256 c4: 169.06 tok/s
+(+42.2%)
+
+Code-path validation after implementing the adaptive policy:
+long_context_summary_256 c4: 172.80 tok/s
+(+45.4% vs the old targeted probe)
+```
+
+This proved the remaining tax was not just a local Triton inner-loop issue. The
+bigger lever was physical regime policy: long concurrent decode was spending too
+much time traversing compressed middle pages, so the raw window needed to grow
+with request length.
+
+Production validation:
+
+```text
+Focused TMH suite after the adaptive policy change:
+60 passed, 14 warnings
+```
+
+Full benchmark pass 5 artifacts:
+
+```text
+benchmarks/2026-08-01-gmk-qwen2.5-0.5b-opt-pass5/tmh-suite.json
+benchmarks/2026-08-01-gmk-qwen2.5-0.5b-opt-pass5/paired-comparison.json
+benchmarks/2026-08-01-gmk-qwen2.5-0.5b-opt-pass5/pass4-to-pass5.json
+```
+
+Result versus the standard baseline:
+
+```text
+Pass 4 median delta vs standard: -27.38%
+Pass 5 median delta vs standard: -26.22%
+Change:                         +1.15 percentage points
+```
+
+Most important recovered cell:
+
+```text
+long_context_summary_256 c4
+pass 4: 129.72 tok/s, -77.89% vs standard
+pass 5: 155.98 tok/s, -73.42% vs standard
+TMH throughput change: +20.24%
+paired-gap recovery:   +4.47 percentage points
+```
+
+Other important cells:
+
+```text
+extended_generation_768 c4: 226.69 -> 243.06 tok/s  (+7.22%)
+long_cosmology_512 c4:      276.46 -> 282.06 tok/s  (+2.03%)
+```
+
+Tradeoff observed:
+
+```text
+tiny_fact_64 c4: 382.13 -> 376.16 tok/s (-1.56%)
+```
+
+Interpretation: the adaptive raw-window policy is a real net-positive pass. It
+materially recovers the worst long-context concurrent frontier while only
+slightly taxing a small short-context cell. The remaining optimization problem
+is now narrower: preserve this long-request win while clawing back the small
+short-request regressions instead of continuing to treat TMH as one undifferentiated kernel problem.

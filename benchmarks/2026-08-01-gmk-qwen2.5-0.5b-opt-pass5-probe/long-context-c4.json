@@ -1,0 +1,252 @@
+{
+  "base_url": "http://127.0.0.1:8062",
+  "cases": [
+    {
+      "batches_by_concurrency": {
+        "4": [
+          {
+            "concurrency": 4,
+            "requests": [
+              {
+                "completion_tok_per_s": 43.2131,
+                "completion_tokens": 256,
+                "elapsed_s": 5.9241,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Ideally, a business or a financial calculator, a) A. Kotol, 13.03.2218.533.544.10.5008.2.5.16220.81418\n100.0 (145.5008526\n |\ndiff-00000111185\n |\nA 1920-01-0185\n |\nA 1920-01-011111111111111111851028318145185085061.224.1008185319. An AI1852.18008500000000000000850231497868078111111118511108338504620991000858580608",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1785609278,
+                  "id": "cmpl-b8616b9325de0502",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock.rocm724-4294d194",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 1,
+                "response_text": " Ideally, a business or a financial calculator, a) A. Kotol, 13.03.2218.533.544.10.5008.2.5.16220.81418\n100.0 (145.5008526\n |\ndiff-00000111185\n |\nA 1920-01-0185\n |\nA 1920-01-011111111111111111851028318145185085061.224.1008185319. An AI1852.18008500000000000000850231497868078111111118511108338504620991000858580608",
+                "run_index": 1,
+                "total_tok_per_s": 160.3611,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 43.2187,
+                "completion_tokens": 256,
+                "elapsed_s": 5.9234,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Ideally, the RSE (federal, 1. [0,14.49.50\n0. \n\nPlease also provide a [c]\uff0eWhat is the-198.866.\u4e00\u3001A. \u5341\u5927\u98ce\u9669\u3001\u8d23\u4efb\u4fdd\u9669\u516c\u53f8\u7684\u76f8\u5173\u7cfb\u7edf\u548c/\u6216/20/082:110.0 20284.28435-20280.03.15.108.08.0000-0800-8.0.07.15.1080993.00.0.01254.022545.14.10.111864.100.000258.9855.08.8345.678318.139.999.999. What is the.0000.0098. 095.0 29.0238.1.2019.01.0000.0",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1785609278,
+                  "id": "cmpl-951e925bd0e05760",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock.rocm724-4294d194",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 2,
+                "response_text": " Ideally, the RSE (federal, 1. [0,14.49.50\n0. \n\nPlease also provide a [c]\uff0eWhat is the-198.866.\u4e00\u3001A. \u5341\u5927\u98ce\u9669\u3001\u8d23\u4efb\u4fdd\u9669\u516c\u53f8\u7684\u76f8\u5173\u7cfb\u7edf\u548c/\u6216/20/082:110.0 20284.28435-20280.03.15.108.08.0000-0800-8.0.07.15.1080993.00.0.01254.022545.14.10.111864.100.000258.9855.08.8345.678318.139.999.999. What is the.0000.0098. 095.0 29.0238.1.2019.01.0000.0",
+                "run_index": 1,
+                "total_tok_per_s": 160.382,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 43.2264,
+                "completion_tokens": 256,
+                "elapsed_s": 5.9223,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. We are evaluating an AMD ROCm inference stack against vLLM on a WSL machine. Include concrete mechanisms, tradeoffs, and implementation details. We are evaluating an AMD ROCm inference, ROCm, ROCm, ROCm-ROCm, ROCm-the-benchmark-methodology. We are evaluating an AMD ROCm inference stack against which ROCm inference, AMD ROCm inference, ROCm inference, ROCm. \n\nThe objective is to evaluate the overall process of the evaluation of the ROCm inference, ROCm, ROCm, ROCm, ROCm, ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCode. We are evaluating an AMD ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm. Our ROCm inference, ROCm. Our ROCm inference is built in ROCm ROCm. ROCm ROCm ROCm ROCm ROCm. ROCm ROCm ROC",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1785609278,
+                  "id": "cmpl-a992b7dde9447fb6",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock.rocm724-4294d194",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 3,
+                "response_text": " We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. We are evaluating an AMD ROCm inference stack against vLLM on a WSL machine. Include concrete mechanisms, tradeoffs, and implementation details. We are evaluating an AMD ROCm inference, ROCm, ROCm, ROCm-ROCm, ROCm-the-benchmark-methodology. We are evaluating an AMD ROCm inference stack against which ROCm inference, AMD ROCm inference, ROCm inference, ROCm. \n\nThe objective is to evaluate the overall process of the evaluation of the ROCm inference, ROCm, ROCm, ROCm, ROCm, ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCode. We are evaluating an AMD ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm ROCm. Our ROCm inference, ROCm. Our ROCm inference is built in ROCm ROCm. ROCm ROCm ROCm ROCm ROCm. ROCm ROCm ROC",
+                "run_index": 1,
+                "total_tok_per_s": 160.4103,
+                "total_tokens": 950
+              },
+              {
+                "completion_tok_per_s": 43.2267,
+                "completion_tokens": 256,
+                "elapsed_s": 5.9223,
+                "finish_reason": "length",
+                "prompt_tokens": 694,
+                "raw_response": {
+                  "choices": [
+                    {
+                      "finish_reason": "length",
+                      "index": 0,
+                      "logprobs": null,
+                      "prompt_logprobs": null,
+                      "prompt_token_ids": null,
+                      "routed_experts": null,
+                      "stop_reason": null,
+                      "text": " Ideally, the RSE (federal, 1. [0.0873.1. [0.0-XR4332-02-04-03.5.145\\n1. [Xkcd19.00018.1.2018-01-th -0.0737844874310-359.2004-120.0000000233708765.0035.59.10.08.1100\\00005854.26700000002597.14555505614531538a100000002597.145554.9.05.00000202.000000000000000000000000000000000000000",
+                      "token_ids": null
+                    }
+                  ],
+                  "created": 1785609278,
+                  "id": "cmpl-90650408dd7df3e1",
+                  "kv_transfer_params": null,
+                  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+                  "object": "text_completion",
+                  "service_tier": null,
+                  "system_fingerprint": "vllm-0.0.0+sock.rocm724-4294d194",
+                  "usage": {
+                    "completion_tokens": 256,
+                    "prompt_tokens": 694,
+                    "prompt_tokens_details": null,
+                    "total_tokens": 950
+                  }
+                },
+                "request_index": 4,
+                "response_text": " Ideally, the RSE (federal, 1. [0.0873.1. [0.0-XR4332-02-04-03.5.145\\n1. [Xkcd19.00018.1.2018-01-th -0.0737844874310-359.2004-120.0000000233708765.0035.59.10.08.1100\\00005854.26700000002597.14555505614531538a100000002597.145554.9.05.00000202.000000000000000000000000000000000000000",
+                "run_index": 1,
+                "total_tok_per_s": 160.4114,
+                "total_tokens": 950
+              }
+            ],
+            "run_index": 1,
+            "summary": {
+              "aggregate_completion_tok_per_s": 172.7978,
+              "aggregate_total_tok_per_s": 641.242,
+              "completion_tokens": 1024,
+              "per_request_completion_tok_per_s": {
+                "max": 43.2267,
+                "mean": 43.2212,
+                "median": 43.2225,
+                "min": 43.2131,
+                "p90": 43.2267
+              },
+              "per_request_elapsed_s": {
+                "max": 5.9241,
+                "mean": 5.923,
+                "median": 5.9229,
+                "min": 5.9223,
+                "p90": 5.9241
+              },
+              "total_tokens": 3800,
+              "wall_s": 5.926
+            },
+            "wall_s": 5.926
+          }
+        ]
+      },
+      "max_tokens": 256,
+      "name": "long_context_summary_256",
+      "prompt": "We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. We are evaluating an AMD ROCm inference stack against upstream vLLM on a WSL machine. Include concrete mechanisms, edge cases, implementation details, tradeoffs, and a concise conclusion. Summarize the operational risks and benchmark methodology.",
+      "summary": {
+        "4": {
+          "aggregate_completion_tok_per_s": {
+            "max": 172.7978,
+            "mean": 172.7978,
+            "median": 172.7978,
+            "min": 172.7978,
+            "p90": 172.7978
+          },
+          "aggregate_total_tok_per_s": {
+            "max": 641.242,
+            "mean": 641.242,
+            "median": 641.242,
+            "min": 641.242,
+            "p90": 641.242
+          },
+          "completion_tokens": {
+            "max": 1024,
+            "mean": 1024.0,
+            "median": 1024,
+            "min": 1024,
+            "p90": 1024
+          },
+          "total_tokens": {
+            "max": 3800,
+            "mean": 3800.0,
+            "median": 3800,
+            "min": 3800,
+            "p90": 3800
+          },
+          "wall_s": {
+            "max": 5.926,
+            "mean": 5.926,
+            "median": 5.926,
+            "min": 5.926,
+            "p90": 5.926
+          }
+        }
+      },
+      "temperature": 0.2,
+      "warmups": []
+    }
+  ],
+  "concurrency_levels": [
+    4
+  ],
+  "elapsed_s": 5.9262,
+  "label": "tmh-opt-pass5-long-context-c4",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "ok": true,
+  "runs": 1,
+  "warmup_runs": 0
+}

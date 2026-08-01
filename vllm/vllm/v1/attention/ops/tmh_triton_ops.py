@@ -46,6 +46,17 @@ TMH_SEGMENTED_DECODE_MIN_SEQ_LEN = 1025
 logger = init_logger(__name__)
 _TMH_RAW_MIX_LOG_COUNT = 0
 _TMH_TIMING_LOG_COUNT = 0
+_TMH_DISPATCH_COUNTS = {
+    "writer_raw": 0,
+    "writer_mixed": 0,
+    "attention_native": 0,
+    "attention_raw": 0,
+    "attention_mixed": 0,
+}
+
+
+def tmh_dispatch_diagnostics() -> dict[str, int]:
+    return _TMH_DISPATCH_COUNTS.copy()
 
 
 def _tmh_timing_enabled() -> bool:
@@ -121,6 +132,8 @@ def _tmh_reshape_and_cache_kernel(
     warm_k_scale_ptr,
     warm_v_scale_ptr,
     request_slot_ptr,
+    request_role_ptr,
+    request_valid_tokens_ptr,
     seq_to_request_row_ptr,
     query_start_len_ptr,
     seq_lens_ptr,
@@ -153,8 +166,6 @@ def _tmh_reshape_and_cache_kernel(
     request_stride: tl.int64,
     num_seqs: tl.int32,
     block_size: tl.constexpr,
-    HOT_BUDGET_BPS: tl.constexpr,
-    RAW_ONLY_PAGES: tl.constexpr,
     RAW_X: tl.constexpr,
     head_size: tl.constexpr,
     head_size_v: tl.constexpr,
@@ -180,6 +191,7 @@ def _tmh_reshape_and_cache_kernel(
 
     desc_idx = req_row * request_stride + page_index
     physical_slot = tl.load(request_slot_ptr + desc_idx).to(tl.int64)
+    physical_role = tl.load(request_role_ptr + desc_idx).to(tl.int32)
     if physical_slot < 0:
         return
 
@@ -191,10 +203,7 @@ def _tmh_reshape_and_cache_kernel(
     key_vals = tl.load(key_base + offs, mask=k_mask, other=0.0).to(tl.float32)
     val_vals = tl.load(val_base + offs, mask=v_mask, other=0.0).to(tl.float32)
 
-    total_pages = cdiv_fn(seq_len, block_size)
-    is_raw = (total_pages <= RAW_ONLY_PAGES) | _tmh_page_is_raw(
-        page_index, seq_len, block_size, HOT_BUDGET_BPS
-    )
+    is_raw = (physical_role == 0) | (physical_role == 1)
     if is_raw:
         raw_k_offset = (
             physical_slot * stride_raw_k_slot
@@ -263,14 +272,23 @@ def _tmh_reshape_and_cache_kernel(
                 tl.float32
             )
             v_min = tl.minimum(
+                0.0,
                 tl.min(tl.where(even_mask, v_even, float("inf"))),
+            )
+            v_min = tl.minimum(
+                v_min,
                 tl.min(tl.where(odd_mask, v_odd, float("inf"))),
             )
             v_max = tl.maximum(
+                0.0,
                 tl.max(tl.where(even_mask, v_even, float("-inf"))),
+            )
+            v_max = tl.maximum(
+                v_max,
                 tl.max(tl.where(odd_mask, v_odd, float("-inf"))),
             )
-            v4_scale = tl.maximum((v_max - v_min) / 15.0, 1e-6)
+            v_span = v_max - v_min
+            v4_scale = tl.where(v_span > 0.0, v_span / 15.0, 1.0)
             v_zp = tl.clamp(
                 tl.where(
                     -v_min / v4_scale >= 0,
@@ -315,6 +333,8 @@ def _tmh_reshape_and_cache_kernel(
                 warm_v_scale_ptr + v_scale_offset,
                 _pack_scale_zp(v4_scale, v_zp),
             )
+    if (head == 0) & (tok == cur_stop - 1):
+        tl.store(request_valid_tokens_ptr + desc_idx, offset_in_page + 1)
 
 
 @triton.jit
@@ -324,6 +344,7 @@ def _tmh_raw_reshape_and_cache_kernel(
     raw_key_ptr,
     raw_value_ptr,
     request_slot_ptr,
+    request_valid_tokens_ptr,
     seq_to_request_row_ptr,
     query_start_len_ptr,
     seq_lens_ptr,
@@ -394,25 +415,8 @@ def _tmh_raw_reshape_and_cache_kernel(
     )
     tl.store(raw_key_ptr + raw_k_offset, key_vals, mask=k_mask)
     tl.store(raw_value_ptr + raw_v_offset, val_vals, mask=v_mask)
-
-
-@triton.jit
-def _tmh_page_is_raw(
-    page_index,
-    seq_len,
-    block_size: tl.constexpr,
-    hot_budget_bps: tl.constexpr,
-):
-    total_pages = cdiv_fn(seq_len, block_size)
-    hot_pages = cdiv_fn(total_pages * hot_budget_bps, 10000)
-    hot_pages = tl.minimum(total_pages, hot_pages)
-    recent_start_page = tl.where(hot_pages <= 0, total_pages, total_pages - hot_pages)
-    return (page_index == 0) | (page_index >= recent_start_page)
-
-
-def _tmh_hot_budget_bps(cache) -> int:
-    pct = max(0.0, min(100.0, float(cache.spec.tmh_hot_budget_pct)))
-    return int(round(pct * 100.0))
+    if (head == 0) & (tok == cur_stop - 1):
+        tl.store(request_valid_tokens_ptr + desc_idx, offset_in_page + 1)
 
 
 def _tmh_raw_only_pages(cache) -> int:
@@ -431,10 +435,22 @@ def _tmh_batch_is_all_raw(
     attn_metadata,
     seq_to_request_row=None,
     *,
-    allow_missing_current_prefill: bool = False,
     chunk_lookback: int = -1,
     chunk_size: int = -1,
+    planned_all_raw: bool | None = None,
 ) -> bool:
+    if planned_all_raw is not None:
+        # The physical runtime validates every descriptor, allocation, slot
+        # generation, materialization state, and valid-token range before it
+        # atomically publishes an event. Its host-side regime bit is therefore
+        # the authoritative steady-state dispatch decision. Rewalking the
+        # device tables here used to launch dozens of tiny validation kernels
+        # for every attention layer and every decode token.
+        #
+        # Calls without a planned bit (tests, diagnostics, and non-runtime
+        # integrations) still execute the exhaustive fail-closed validation
+        # below.
+        return planned_all_raw
     max_seq_len = int(getattr(attn_metadata, "max_seq_len", 0) or 0)
     seq_lens = getattr(attn_metadata, "seq_lens", None)
     if max_seq_len <= 0:
@@ -442,10 +458,10 @@ def _tmh_batch_is_all_raw(
             return False
         max_seq_len = int(seq_lens.max().item())
     block_size = int(cache.spec.block_size)
-    max_pages = (max_seq_len + block_size - 1) // block_size
-    if max_pages <= _tmh_raw_only_pages(cache):
-        return True
-
+    max_pages = min(
+        (max_seq_len + block_size - 1) // block_size,
+        int(cache.request_role_by_row_page.shape[1]),
+    )
     role_table = getattr(cache, "request_role_by_row_page", None)
     if role_table is None or seq_lens is None or max_pages <= 0:
         return False
@@ -453,12 +469,20 @@ def _tmh_batch_is_all_raw(
     num_seqs = int(seq_lens.shape[0])
     if num_seqs <= 0:
         return False
-    max_pages = min(max_pages, int(role_table.shape[1]))
     slot_table = getattr(cache, "request_slot_by_row_page", None)
     if seq_to_request_row is None:
         roles = role_table[:num_seqs, :max_pages]
         slots = (slot_table[:num_seqs, :max_pages]
                  if slot_table is not None else None)
+        materialized = cache.request_materialized_by_row_page[
+            :num_seqs, :max_pages
+        ]
+        valid_tokens = cache.request_valid_tokens_by_row_page[
+            :num_seqs, :max_pages
+        ]
+        slot_generations = cache.request_slot_generation_by_row_page[
+            :num_seqs, :max_pages
+        ]
     else:
         rows = cache.native_seq_to_request_row[:num_seqs]
         rows.copy_(seq_to_request_row[:num_seqs])
@@ -471,13 +495,36 @@ def _tmh_batch_is_all_raw(
             slots = gathered_slots[:, :max_pages]
         else:
             slots = None
+        materialized = torch.index_select(
+            cache.request_materialized_by_row_page, 0, rows
+        )[:, :max_pages]
+        valid_tokens = torch.index_select(
+            cache.request_valid_tokens_by_row_page, 0, rows
+        )[:, :max_pages]
+        slot_generations = torch.index_select(
+            cache.request_slot_generation_by_row_page, 0, rows
+        )[:, :max_pages]
     page_counts = torch.div(
         seq_lens[:num_seqs] + block_size - 1,
         block_size,
         rounding_mode="floor",
     )
+    page_count_ok = torch.all(page_counts <= role_table.shape[1])
+    page_count_message = (
+        "TMH sequence length exceeds the configured physical metadata width"
+    )
+    if page_count_ok.device.type == "cpu":
+        if not bool(page_count_ok.item()):
+            raise RuntimeError(page_count_message)
+    else:
+        torch._assert_async(page_count_ok, page_count_message)
     page_ids = cache.page_index_by_model_page[:max_pages][None, :]
     valid = page_ids < page_counts[:, None]
+    required_tokens = torch.clamp(
+        seq_lens[:num_seqs, None] - page_ids * block_size,
+        min=0,
+        max=block_size,
+    )
     query_start_loc = getattr(attn_metadata, "query_start_loc", None)
     query_lens = None
     context_lens = None
@@ -498,13 +545,55 @@ def _tmh_batch_is_all_raw(
             skipped_pages = first_allowed // block_size
             valid = valid & (page_ids >= skipped_pages[:, None])
     raw = (roles == TMH_ROLE_PINNED_RAW) | (roles == TMH_ROLE_HOT_RAW)
-    slot_present = (slots >= 0) if slots is not None else valid
-    materialized = valid & slot_present
-    missing = (roles < 0) & materialized
-    allowed_missing = torch.zeros_like(missing)
-    if allow_missing_current_prefill and context_pages is not None:
-        allowed_missing = missing & (page_ids >= context_pages[:, None])
-    all_raw = bool(torch.all(raw | ~materialized | allowed_missing).item())
+    warm = (roles == TMH_ROLE_WARM_INT8_INT4) | (
+        roles == TMH_ROLE_WARM_INT8_INT8
+    )
+    if slots is None:
+        raise RuntimeError("TMH cache is missing its physical slot table")
+    raw_slot_ok = (slots >= 0) & (slots < cache.raw_key.shape[0])
+    warm_slot_ok = (slots >= 0) & (slots < cache.warm_key.shape[0])
+    slot_ok = (raw & raw_slot_ok) | (warm & warm_slot_ok)
+    safe_raw_slots = slots.clamp(0, max(0, cache.raw_key.shape[0] - 1)).long()
+    safe_warm_slots = slots.clamp(0, max(0, cache.warm_key.shape[0] - 1)).long()
+    current_generations = torch.where(
+        raw,
+        cache.raw_slot_generation[safe_raw_slots],
+        cache.warm_slot_generation[safe_warm_slots],
+    )
+    generation_ok = current_generations == slot_generations
+    invariant_ok = (~valid) | (
+        materialized
+        & (raw | warm)
+        & slot_ok
+        & generation_ok
+        & (valid_tokens >= required_tokens)
+    )
+    message = (
+        "TMH page invariant failed: every referenced page must have a legal role, "
+        "in-range materialized slot, matching slot generation, and sufficient "
+        "valid-token coverage"
+    )
+    if invariant_ok.device.type == "cpu":
+        if not bool(torch.all(invariant_ok).item()):
+            raise RuntimeError(message)
+    else:
+        torch._assert_async(torch.all(invariant_ok), message)
+    all_raw_tensor = torch.all(raw | ~valid)
+    if planned_all_raw is not None:
+        if planned_all_raw:
+            planned_message = (
+                "TMH host regime marked the batch all-raw but device metadata "
+                "contains a required warm page"
+            )
+            if all_raw_tensor.device.type == "cpu":
+                if not bool(all_raw_tensor.item()):
+                    raise RuntimeError(planned_message)
+            else:
+                torch._assert_async(all_raw_tensor, planned_message)
+        all_raw = planned_all_raw
+    else:
+        all_raw = bool(all_raw_tensor.item())
+    allowed_missing = torch.zeros_like(valid)
     if not all_raw:
         _log_tmh_raw_mix_decision(
             cache=cache,
@@ -626,7 +715,9 @@ def _tmh_can_use_native_raw_attention(
     key,
     value,
 ) -> bool:
-    if not all_raw or not current_platform.is_rocm():
+    if not all_raw or not (
+        current_platform.is_cuda() or current_platform.is_rocm()
+    ):
         return False
     if not bool(causal):
         return False
@@ -734,6 +825,7 @@ def _tmh_mixed_attention_kernel(
     warm_k_scale_ptr,
     warm_v_scale_ptr,
     request_slot_ptr,
+    request_role_ptr,
     seq_to_request_row_ptr,
     seq_lens_ptr,
     query_start_len_ptr,
@@ -791,8 +883,6 @@ def _tmh_mixed_attention_kernel(
     MAX_MM_RANGES: tl.constexpr,
     USE_FP8: tl.constexpr,
     WARM_VALUE_PACKED: tl.constexpr,
-    HOT_BUDGET_BPS: tl.constexpr,
-    RAW_ONLY_PAGES: tl.constexpr,
     RAW_X: tl.constexpr,
     IS_3D: tl.constexpr,
     CHUNK_LOOKBACK: tl.constexpr,
@@ -892,11 +982,13 @@ def _tmh_mixed_attention_kernel(
             mask=(j * TILE_SIZE) < max_seq_prefix_len,
             other=-1,
         ).to(tl.int64)
+        physical_role = tl.load(
+            request_role_ptr + desc_idx,
+            mask=(j * TILE_SIZE) < max_seq_prefix_len,
+            other=-1,
+        ).to(tl.int32)
         slot_present = physical_slot >= 0
-        total_pages = cdiv_fn(seq_len, BLOCK_SIZE)
-        is_raw = (total_pages <= RAW_ONLY_PAGES) | _tmh_page_is_raw(
-            page_index, seq_len, BLOCK_SIZE, HOT_BUDGET_BPS
-        )
+        is_raw = (physical_role == 0) | (physical_role == 1)
 
         if is_raw:
             raw_k_offset = (
@@ -1010,7 +1102,10 @@ def _tmh_mixed_attention_kernel(
         if USE_SOFTCAP:
             S = apply_softcap(S, softcap)
         S = tl.where(
-            query_mask_1[:, None] & query_mask_0[:, None] & seq_mask,
+            query_mask_1[:, None]
+            & query_mask_0[:, None]
+            & seq_mask
+            & slot_present,
             S,
             float("-inf"),
         )
@@ -1271,7 +1366,10 @@ def _tmh_raw_attention_kernel(
         if USE_SOFTCAP:
             S = apply_softcap(S, softcap)
         S = tl.where(
-            query_mask_1[:, None] & query_mask_0[:, None] & seq_mask,
+            query_mask_1[:, None]
+            & query_mask_0[:, None]
+            & seq_mask
+            & slot_present,
             S,
             float("-inf"),
         )
@@ -1377,12 +1475,23 @@ def _tmh_resolve_chunking(
     return sliding_window, resolved_chunk_lookback, chunk_size
 
 
+def _tmh_planned_all_raw() -> bool | None:
+    try:
+        context = get_forward_context()
+    except Exception:
+        return None
+    additional = getattr(context, "additional_kwargs", None) or {}
+    value = additional.get("tmh_all_raw")
+    return value if isinstance(value, bool) else None
+
+
 def _tmh_cache_update_regime(
     *,
     cache,
     attn_metadata,
     seq_to_request_row: torch.Tensor | None,
     device: torch.device,
+    planned_all_raw: bool | None,
 ) -> tuple[torch.Tensor, int, bool]:
     num_seqs = len(attn_metadata.seq_lens)
     seq_rows = _seq_to_request_row(
@@ -1390,7 +1499,12 @@ def _tmh_cache_update_regime(
         num_seqs=num_seqs,
         device=device,
     )
-    all_raw = _tmh_batch_is_all_raw(cache, attn_metadata, seq_rows)
+    all_raw = _tmh_batch_is_all_raw(
+        cache,
+        attn_metadata,
+        seq_rows,
+        planned_all_raw=planned_all_raw,
+    )
     return seq_rows, num_seqs, all_raw
 
 
@@ -1404,6 +1518,7 @@ def _tmh_attention_regime(
     q_num_tokens: int,
     window_size: tuple[int, int],
     chunk_lookback: int,
+    planned_all_raw: bool | None,
 ) -> tuple[torch.Tensor, int, int, bool, int, int, int]:
     num_seqs = len(attn_metadata.seq_lens)
     max_query_len = _tmh_resolve_max_query_len(
@@ -1421,9 +1536,9 @@ def _tmh_attention_regime(
         cache,
         attn_metadata,
         seq_rows,
-        allow_missing_current_prefill=max_query_len > 1,
         chunk_lookback=resolved_chunk_lookback,
         chunk_size=chunk_size,
+        planned_all_raw=planned_all_raw,
     )
     return (
         seq_rows,
@@ -1465,6 +1580,7 @@ def _tmh_launch_raw_reshape_and_cache(
         raw_key_ptr=cache.raw_key,
         raw_value_ptr=cache.raw_value,
         request_slot_ptr=cache.request_slot_by_row_page,
+        request_valid_tokens_ptr=cache.request_valid_tokens_by_row_page,
         seq_to_request_row_ptr=seq_rows,
         query_start_len_ptr=attn_metadata.query_start_loc,
         seq_lens_ptr=attn_metadata.seq_lens,
@@ -1510,7 +1626,7 @@ def _tmh_launch_mixed_reshape_and_cache(
     num_warps: int,
     attn_metadata,
 ) -> None:
-    packed_v = cache.warm_value.shape[-1] * 2 == head_size_v
+    packed_v = not cache.spec.tmh_late_layer
     _tmh_reshape_and_cache_kernel[(num_tokens, num_kv_heads)](
         key_ptr=key,
         value_ptr=value,
@@ -1521,6 +1637,8 @@ def _tmh_launch_mixed_reshape_and_cache(
         warm_k_scale_ptr=cache.warm_k_scale,
         warm_v_scale_ptr=cache.warm_v_scale,
         request_slot_ptr=cache.request_slot_by_row_page,
+        request_role_ptr=cache.request_role_by_row_page,
+        request_valid_tokens_ptr=cache.request_valid_tokens_by_row_page,
         seq_to_request_row_ptr=seq_rows,
         query_start_len_ptr=attn_metadata.query_start_loc,
         seq_lens_ptr=attn_metadata.seq_lens,
@@ -1553,8 +1671,6 @@ def _tmh_launch_mixed_reshape_and_cache(
         request_stride=cache.request_slot_by_row_page.stride(0),
         num_seqs=num_seqs,
         block_size=block_size,
-        HOT_BUDGET_BPS=_tmh_hot_budget_bps(cache),
-        RAW_ONLY_PAGES=_tmh_raw_only_pages(cache),
         RAW_X=16 // key.element_size(),
         head_size=head_size,
         head_size_v=head_size_v,
@@ -1579,14 +1695,17 @@ def tmh_reshape_and_cache(
     head_size_padded = triton.next_power_of_2(max(head_size, head_size_v))
     block_size = cache.spec.block_size
     _ = layer_name or getattr(cache, "layer_name", "unknown")
+    planned_all_raw = _tmh_planned_all_raw()
     seq_rows, num_seqs, all_raw = _tmh_cache_update_regime(
         cache=cache,
         attn_metadata=attn_metadata,
         seq_to_request_row=seq_to_request_row,
         device=key.device,
+        planned_all_raw=planned_all_raw,
     )
     num_warps = _tmh_cache_update_num_warps(head_size_padded=head_size_padded)
     if all_raw:
+        _TMH_DISPATCH_COUNTS["writer_raw"] += 1
         _tmh_launch_raw_reshape_and_cache(
             key=key,
             value=value,
@@ -1605,6 +1724,7 @@ def tmh_reshape_and_cache(
         )
         return
 
+    _TMH_DISPATCH_COUNTS["writer_mixed"] += 1
     _tmh_launch_mixed_reshape_and_cache(
         key=key,
         value=value,
@@ -1801,6 +1921,7 @@ def tmh_physical_attention(
         q_num_tokens=q.shape[0],
         window_size=window_size,
         chunk_lookback=chunk_lookback,
+        planned_all_raw=_tmh_planned_all_raw(),
     )
     if _tmh_can_use_native_raw_attention(
         cache=cache,
@@ -1818,6 +1939,7 @@ def tmh_physical_attention(
         key=key,
         value=value,
     ):
+        _TMH_DISPATCH_COUNTS["attention_native"] += 1
         _tmh_native_raw_attention(
             q=q,
             key=key if max_query_len > 1 else None,
@@ -1864,15 +1986,15 @@ def tmh_physical_attention(
     segm_max = getattr(attn_metadata, "softmax_segm_max", None)
     segm_expsum = getattr(attn_metadata, "softmax_segm_expsum", None)
     max_seq_len = getattr(attn_metadata, "max_seq_len", 0)
-    use_3d = not (
-        seq_threshold_3d is None
-        or num_segments is None
-        or segm_output is None
-        or segm_max is None
-        or segm_expsum is None
-        or max_query_len > 1
-        or max_seq_len < TMH_SEGMENTED_DECODE_MIN_SEQ_LEN
-        or num_seqs > seq_threshold_3d
+    use_3d = _tmh_should_use_3d_decode(
+        seq_threshold_3d=seq_threshold_3d,
+        num_segments=num_segments,
+        segm_output=segm_output,
+        segm_max=segm_max,
+        segm_expsum=segm_expsum,
+        max_query_len=max_query_len,
+        max_seq_len=max_seq_len,
+        num_seqs=num_seqs,
     )
     grid: tuple[Any, ...]
     if use_3d:
@@ -1889,6 +2011,7 @@ def tmh_physical_attention(
     )
 
     if all_raw:
+        _TMH_DISPATCH_COUNTS["attention_raw"] += 1
         _tmh_raw_attention_kernel[grid](
             output_ptr=out,
             segm_output_ptr=segm_output,
@@ -1967,7 +2090,8 @@ def tmh_physical_attention(
             )
         return
 
-    packed_v = cache.warm_value.shape[-1] * 2 == head_size
+    _TMH_DISPATCH_COUNTS["attention_mixed"] += 1
+    packed_v = not cache.spec.tmh_late_layer
     _tmh_mixed_attention_kernel[grid](
         output_ptr=out,
         segm_output_ptr=segm_output,
@@ -1981,6 +2105,7 @@ def tmh_physical_attention(
         warm_k_scale_ptr=cache.warm_k_scale,
         warm_v_scale_ptr=cache.warm_v_scale,
         request_slot_ptr=cache.request_slot_by_row_page,
+        request_role_ptr=cache.request_role_by_row_page,
         seq_to_request_row_ptr=seq_rows,
         seq_lens_ptr=attn_metadata.seq_lens,
         query_start_len_ptr=attn_metadata.query_start_loc,
@@ -2038,8 +2163,6 @@ def tmh_physical_attention(
         MAX_MM_RANGES=max_mm_ranges,
         USE_FP8=output_scale is not None,
         WARM_VALUE_PACKED=packed_v,
-        HOT_BUDGET_BPS=_tmh_hot_budget_bps(cache),
-        RAW_ONLY_PAGES=_tmh_raw_only_pages(cache),
         RAW_X=16 // q.element_size(),
         IS_3D=use_3d,
         CHUNK_LOOKBACK=chunk_lookback,
@@ -2076,11 +2199,14 @@ def _get_tmh_query_block_shape(
         if num_queries_per_kv <= 16
         else triton.next_power_of_2(num_queries_per_kv)
     )
-    if (
-        current_platform.is_cuda()
-        and num_queries_per_kv <= 16
+    widen_small_head_regime = (
+        num_queries_per_kv <= 16
         and head_size <= 128
         and (num_query_tokens > num_seqs or num_seqs >= 4)
+    )
+    if (
+        widen_small_head_regime
+        and (current_platform.is_cuda() or current_platform.is_rocm())
     ):
         block_m = 32
     return block_m, block_m // num_queries_per_kv
@@ -2113,8 +2239,37 @@ def _get_tmh_raw_tile_size(
     block_size: int,
     is_prefill: bool,
 ) -> int:
+    # Raw pages are stored and consumed in the native paged-cache layout, so a
+    # page-sized tile keeps writer and reader address arithmetic identical.
     del head_size, sliding_window, element_size, is_prefill
     return block_size
+
+
+def _tmh_should_use_3d_decode(
+    *,
+    seq_threshold_3d: int | None,
+    num_segments: int | None,
+    segm_output,
+    segm_max,
+    segm_expsum,
+    max_query_len: int,
+    max_seq_len: int,
+    num_seqs: int,
+) -> bool:
+    if (
+        seq_threshold_3d is None
+        or num_segments is None
+        or segm_output is None
+        or segm_max is None
+        or segm_expsum is None
+        or max_query_len > 1
+        or num_seqs > seq_threshold_3d
+    ):
+        return False
+    min_seq_len = TMH_SEGMENTED_DECODE_MIN_SEQ_LEN
+    if current_platform.is_rocm() and num_seqs >= 2:
+        min_seq_len = 513
+    return max_seq_len >= min_seq_len
 
 
 
@@ -2155,577 +2310,4 @@ def _tmh_reduce_segment_outputs(
         NUM_SEGMENTS_PER_SEQ=num_segments,
         USE_FP8=output_scale is not None,
         **launch_kwargs,
-    )
-
-
-
-def _tmh_launch_raw_attention(
-    *,
-    q: torch.Tensor,
-    cache,
-    out: torch.Tensor,
-    attn_metadata,
-    seq_rows: torch.Tensor,
-    softmax_scale: float,
-    softcap: float,
-    alibi_slopes,
-    use_alibi_sqrt: bool,
-    output_scale,
-    qq_bias,
-    sinks,
-    mm_prefix_range,
-    num_query_heads: int,
-    num_queries_per_kv: int,
-    num_seqs: int,
-    head_size: int,
-    head_size_padded: int,
-    block_size: int,
-    block_q: int,
-    block_m: int,
-    tile_size: int,
-    sliding_window: int,
-    use_mm_prefix: bool,
-    max_mm_ranges: int,
-    use_3d: bool,
-    num_segments: int,
-    segm_output,
-    segm_max,
-    segm_expsum,
-    chunk_lookback: int,
-    chunk_size: int,
-    launch_kwargs: dict[str, Any],
-) -> None:
-    grid: tuple[Any, ...]
-    if use_3d:
-        grid = (q.shape[0] // block_q + num_seqs, cache.raw_key.shape[1], num_segments)
-    else:
-        grid = (q.shape[0] // block_q + num_seqs, cache.raw_key.shape[1])
-    _tmh_raw_attention_kernel[grid](
-        output_ptr=out,
-        segm_output_ptr=segm_output,
-        segm_max_ptr=segm_max,
-        segm_expsum_ptr=segm_expsum,
-        query_ptr=q,
-        raw_key_ptr=cache.raw_key,
-        raw_value_ptr=cache.raw_value,
-        request_slot_ptr=cache.request_slot_by_row_page,
-        seq_to_request_row_ptr=seq_rows,
-        seq_lens_ptr=attn_metadata.seq_lens,
-        query_start_len_ptr=attn_metadata.query_start_loc,
-        sink_ptr=sinks,
-        alibi_slopes_ptr=alibi_slopes,
-        qq_bias_ptr=qq_bias,
-        mm_prefix_range_ptr=mm_prefix_range,
-        scale=softmax_scale,
-        out_scale=1 / output_scale if output_scale is not None else 1.0,
-        softcap=softcap,
-        num_query_heads=num_query_heads,
-        num_queries_per_kv=num_queries_per_kv,
-        request_stride=cache.request_slot_by_row_page.stride(0),
-        query_stride_0=q.stride(0),
-        query_stride_1=q.stride(1),
-        output_stride_0=out.stride(0),
-        output_stride_1=out.stride(1),
-        qq_bias_stride_0=qq_bias.stride(0) if qq_bias is not None else 0,
-        stride_raw_k_slot=cache.raw_key.stride(0),
-        stride_raw_k_head=cache.raw_key.stride(1),
-        stride_raw_k_dim_block=cache.raw_key.stride(2),
-        stride_raw_k_tok=cache.raw_key.stride(3),
-        stride_raw_k_x=cache.raw_key.stride(4),
-        stride_raw_v_slot=cache.raw_value.stride(0),
-        stride_raw_v_head=cache.raw_value.stride(1),
-        stride_raw_v_dim=cache.raw_value.stride(2),
-        stride_raw_v_tok=cache.raw_value.stride(3),
-        BLOCK_SIZE=block_size,
-        TILE_SIZE=tile_size,
-        HEAD_SIZE=head_size,
-        HEAD_SIZE_PADDED=head_size_padded,
-        BLOCK_Q=block_q,
-        BLOCK_M=block_m,
-        NUM_SEGMENTS_PER_SEQ=num_segments,
-        num_seqs=num_seqs,
-        USE_ALIBI_SLOPES=alibi_slopes is not None,
-        USE_ALIBI_SQRT=use_alibi_sqrt,
-        USE_QQ_BIAS=qq_bias is not None,
-        USE_SOFTCAP=softcap > 0,
-        USE_SINKS=sinks is not None,
-        SLIDING_WINDOW=sliding_window,
-        USE_MM_PREFIX=use_mm_prefix,
-        MAX_MM_RANGES=max_mm_ranges,
-        USE_FP8=output_scale is not None,
-        RAW_X=16 // q.element_size(),
-        IS_3D=use_3d,
-        CHUNK_LOOKBACK=chunk_lookback,
-        CHUNK_SIZE=chunk_size,
-        **launch_kwargs,
-    )
-    if use_3d:
-        _tmh_reduce_segment_outputs(
-            out=out,
-            segm_output=segm_output,
-            segm_max=segm_max,
-            segm_expsum=segm_expsum,
-            attn_metadata=attn_metadata,
-            num_seqs=num_seqs,
-            num_query_heads=num_query_heads,
-            output_scale=output_scale,
-            tile_size=tile_size,
-            head_size=head_size,
-            head_size_padded=head_size_padded,
-            block_q=block_q,
-            num_segments=num_segments,
-            launch_kwargs=launch_kwargs,
-        )
-
-
-
-def _tmh_launch_mixed_attention(
-    *,
-    q: torch.Tensor,
-    cache,
-    out: torch.Tensor,
-    attn_metadata,
-    seq_rows: torch.Tensor,
-    softmax_scale: float,
-    softcap: float,
-    alibi_slopes,
-    use_alibi_sqrt: bool,
-    output_scale,
-    qq_bias,
-    sinks,
-    mm_prefix_range,
-    num_query_heads: int,
-    num_queries_per_kv: int,
-    num_seqs: int,
-    head_size: int,
-    head_size_padded: int,
-    block_size: int,
-    block_q: int,
-    block_m: int,
-    tile_size: int,
-    sliding_window: int,
-    use_mm_prefix: bool,
-    max_mm_ranges: int,
-    use_3d: bool,
-    num_segments: int,
-    segm_output,
-    segm_max,
-    segm_expsum,
-    chunk_lookback: int,
-    chunk_size: int,
-    launch_kwargs: dict[str, Any],
-) -> None:
-    grid: tuple[Any, ...]
-    if use_3d:
-        grid = (q.shape[0] // block_q + num_seqs, cache.raw_key.shape[1], num_segments)
-    else:
-        grid = (q.shape[0] // block_q + num_seqs, cache.raw_key.shape[1])
-    packed_v = cache.warm_value.shape[-1] * 2 == head_size
-    _tmh_mixed_attention_kernel[grid](
-        output_ptr=out,
-        segm_output_ptr=segm_output,
-        segm_max_ptr=segm_max,
-        segm_expsum_ptr=segm_expsum,
-        query_ptr=q,
-        raw_key_ptr=cache.raw_key,
-        raw_value_ptr=cache.raw_value,
-        warm_key_ptr=cache.warm_key,
-        warm_value_ptr=cache.warm_value,
-        warm_k_scale_ptr=cache.warm_k_scale,
-        warm_v_scale_ptr=cache.warm_v_scale,
-        request_slot_ptr=cache.request_slot_by_row_page,
-        seq_to_request_row_ptr=seq_rows,
-        seq_lens_ptr=attn_metadata.seq_lens,
-        query_start_len_ptr=attn_metadata.query_start_loc,
-        sink_ptr=sinks,
-        alibi_slopes_ptr=alibi_slopes,
-        qq_bias_ptr=qq_bias,
-        mm_prefix_range_ptr=mm_prefix_range,
-        scale=softmax_scale,
-        out_scale=1 / output_scale if output_scale is not None else 1.0,
-        softcap=softcap,
-        num_query_heads=num_query_heads,
-        num_queries_per_kv=num_queries_per_kv,
-        request_stride=cache.request_slot_by_row_page.stride(0),
-        query_stride_0=q.stride(0),
-        query_stride_1=q.stride(1),
-        output_stride_0=out.stride(0),
-        output_stride_1=out.stride(1),
-        qq_bias_stride_0=qq_bias.stride(0) if qq_bias is not None else 0,
-        stride_raw_k_slot=cache.raw_key.stride(0),
-        stride_raw_k_head=cache.raw_key.stride(1),
-        stride_raw_k_dim_block=cache.raw_key.stride(2),
-        stride_raw_k_tok=cache.raw_key.stride(3),
-        stride_raw_k_x=cache.raw_key.stride(4),
-        stride_raw_v_slot=cache.raw_value.stride(0),
-        stride_raw_v_head=cache.raw_value.stride(1),
-        stride_raw_v_dim=cache.raw_value.stride(2),
-        stride_raw_v_tok=cache.raw_value.stride(3),
-        stride_warm_k_slot=cache.warm_key.stride(0),
-        stride_warm_k_tok=cache.warm_key.stride(1),
-        stride_warm_k_head=cache.warm_key.stride(2),
-        stride_warm_v_slot=cache.warm_value.stride(0),
-        stride_warm_v_tok=cache.warm_value.stride(1),
-        stride_warm_v_head=cache.warm_value.stride(2),
-        stride_warm_ks_slot=cache.warm_k_scale.stride(0),
-        stride_warm_ks_tok=cache.warm_k_scale.stride(1),
-        stride_warm_ks_head=cache.warm_k_scale.stride(2),
-        stride_warm_vs_slot=cache.warm_v_scale.stride(0),
-        stride_warm_vs_tok=cache.warm_v_scale.stride(1),
-        stride_warm_vs_head=cache.warm_v_scale.stride(2),
-        BLOCK_SIZE=block_size,
-        TILE_SIZE=tile_size,
-        HEAD_SIZE=head_size,
-        HEAD_SIZE_PADDED=head_size_padded,
-        BLOCK_Q=block_q,
-        BLOCK_M=block_m,
-        NUM_SEGMENTS_PER_SEQ=num_segments,
-        num_seqs=num_seqs,
-        USE_ALIBI_SLOPES=alibi_slopes is not None,
-        USE_ALIBI_SQRT=use_alibi_sqrt,
-        USE_QQ_BIAS=qq_bias is not None,
-        USE_SOFTCAP=softcap > 0,
-        USE_SINKS=sinks is not None,
-        SLIDING_WINDOW=sliding_window,
-        USE_MM_PREFIX=use_mm_prefix,
-        MAX_MM_RANGES=max_mm_ranges,
-        USE_FP8=output_scale is not None,
-        WARM_VALUE_PACKED=packed_v,
-        HOT_BUDGET_BPS=_tmh_hot_budget_bps(cache),
-        RAW_ONLY_PAGES=_tmh_raw_only_pages(cache),
-        RAW_X=16 // q.element_size(),
-        IS_3D=use_3d,
-        CHUNK_LOOKBACK=chunk_lookback,
-        CHUNK_SIZE=chunk_size,
-        **launch_kwargs,
-    )
-    if use_3d:
-        _tmh_reduce_segment_outputs(
-            out=out,
-            segm_output=segm_output,
-            segm_max=segm_max,
-            segm_expsum=segm_expsum,
-            attn_metadata=attn_metadata,
-            num_seqs=num_seqs,
-            num_query_heads=num_query_heads,
-            output_scale=output_scale,
-            tile_size=tile_size,
-            head_size=head_size,
-            head_size_padded=head_size_padded,
-            block_q=block_q,
-            num_segments=num_segments,
-            launch_kwargs=launch_kwargs,
-        )
-
-
-
-def _tmh_prefill_attention(
-    *,
-    q: torch.Tensor,
-    cache,
-    out: torch.Tensor,
-    attn_metadata,
-    seq_rows: torch.Tensor,
-    softmax_scale: float,
-    softcap: float,
-    alibi_slopes,
-    use_alibi_sqrt: bool,
-    output_scale,
-    qq_bias,
-    sinks,
-    mm_prefix_range,
-    num_query_heads: int,
-    num_queries_per_kv: int,
-    num_seqs: int,
-    head_size: int,
-    all_raw: bool,
-    sliding_window: int,
-    chunk_lookback: int,
-    chunk_size: int,
-    use_mm_prefix: bool,
-    max_mm_ranges: int,
-) -> None:
-    block_size = cache.spec.block_size
-    block_m, block_q = _get_tmh_query_block_shape(
-        num_queries_per_kv=num_queries_per_kv,
-        head_size=head_size,
-        num_query_tokens=q.shape[0],
-        num_seqs=num_seqs,
-    )
-    tile_size = (
-        _get_tmh_raw_tile_size(
-            head_size=head_size,
-            sliding_window=sliding_window,
-            element_size=q.element_size(),
-            block_size=block_size,
-            is_prefill=True,
-        )
-        if all_raw
-        else _get_tmh_mixed_tile_size(block_size=block_size)
-    )
-    head_size_padded = triton.next_power_of_2(head_size)
-    launch_kwargs = _get_tmh_attention_launch_kwargs(
-        block_m=block_m,
-        head_size=head_size,
-    )
-    if all_raw:
-        _tmh_launch_raw_attention(
-            q=q,
-            cache=cache,
-            out=out,
-            attn_metadata=attn_metadata,
-            seq_rows=seq_rows,
-            softmax_scale=softmax_scale,
-            softcap=softcap,
-            alibi_slopes=alibi_slopes,
-            use_alibi_sqrt=use_alibi_sqrt,
-            output_scale=output_scale,
-            qq_bias=qq_bias,
-            sinks=sinks,
-            mm_prefix_range=mm_prefix_range,
-            num_query_heads=num_query_heads,
-            num_queries_per_kv=num_queries_per_kv,
-            num_seqs=num_seqs,
-            head_size=head_size,
-            head_size_padded=head_size_padded,
-            block_size=block_size,
-            block_q=block_q,
-            block_m=block_m,
-            tile_size=tile_size,
-            sliding_window=sliding_window,
-            use_mm_prefix=use_mm_prefix,
-            max_mm_ranges=max_mm_ranges,
-            use_3d=False,
-            num_segments=1,
-            segm_output=out,
-            segm_max=out,
-            segm_expsum=out,
-            chunk_lookback=chunk_lookback,
-            chunk_size=chunk_size,
-            launch_kwargs=launch_kwargs,
-        )
-        return
-    _tmh_launch_mixed_attention(
-        q=q,
-        cache=cache,
-        out=out,
-        attn_metadata=attn_metadata,
-        seq_rows=seq_rows,
-        softmax_scale=softmax_scale,
-        softcap=softcap,
-        alibi_slopes=alibi_slopes,
-        use_alibi_sqrt=use_alibi_sqrt,
-        output_scale=output_scale,
-        qq_bias=qq_bias,
-        sinks=sinks,
-        mm_prefix_range=mm_prefix_range,
-        num_query_heads=num_query_heads,
-        num_queries_per_kv=num_queries_per_kv,
-        num_seqs=num_seqs,
-        head_size=head_size,
-        head_size_padded=head_size_padded,
-        block_size=block_size,
-        block_q=block_q,
-        block_m=block_m,
-        tile_size=tile_size,
-        sliding_window=sliding_window,
-        use_mm_prefix=use_mm_prefix,
-        max_mm_ranges=max_mm_ranges,
-        use_3d=False,
-        num_segments=1,
-        segm_output=out,
-        segm_max=out,
-        segm_expsum=out,
-        chunk_lookback=chunk_lookback,
-        chunk_size=chunk_size,
-        launch_kwargs=launch_kwargs,
-    )
-
-
-
-def _tmh_decode_attention(
-    *,
-    q: torch.Tensor,
-    key,
-    value,
-    cache,
-    out: torch.Tensor,
-    attn_metadata,
-    seq_to_request_row,
-    seq_rows: torch.Tensor,
-    softmax_scale: float,
-    causal: bool,
-    window_size: tuple[int, int],
-    softcap: float,
-    alibi_slopes,
-    use_alibi_sqrt: bool,
-    output_scale,
-    qq_bias,
-    sinks,
-    mm_prefix_range,
-    kv_cache_dtype: str | None,
-    k_scale,
-    v_scale,
-    num_query_heads: int,
-    num_kv_heads: int,
-    num_queries_per_kv: int,
-    num_seqs: int,
-    head_size: int,
-    max_query_len: int,
-    all_raw: bool,
-    sliding_window: int,
-    chunk_lookback: int,
-    chunk_size: int,
-    use_mm_prefix: bool,
-    max_mm_ranges: int,
-) -> None:
-    if _tmh_can_use_native_raw_attention(
-        cache=cache,
-        attn_metadata=attn_metadata,
-        all_raw=all_raw,
-        max_query_len=max_query_len,
-        causal=causal,
-        window_size=window_size,
-        softcap=softcap,
-        qq_bias=qq_bias,
-        mm_prefix_range=mm_prefix_range,
-        kv_cache_dtype=kv_cache_dtype,
-        k_scale=k_scale,
-        v_scale=v_scale,
-        key=key,
-        value=value,
-    ):
-        _tmh_native_raw_attention(
-            q=q,
-            key=key,
-            value=value,
-            cache=cache,
-            out=out,
-            attn_metadata=attn_metadata,
-            seq_to_request_row=seq_to_request_row,
-            softmax_scale=softmax_scale,
-            causal=causal,
-            window_size=window_size,
-            alibi_slopes=alibi_slopes,
-            output_scale=output_scale,
-            sinks=sinks,
-            kv_cache_dtype=kv_cache_dtype,
-            k_scale=k_scale,
-            v_scale=v_scale,
-        )
-        return
-    block_size = cache.spec.block_size
-    block_m, block_q = _get_tmh_query_block_shape(
-        num_queries_per_kv=num_queries_per_kv,
-        head_size=head_size,
-        num_query_tokens=q.shape[0],
-        num_seqs=num_seqs,
-    )
-    tile_size = (
-        _get_tmh_raw_tile_size(
-            head_size=head_size,
-            sliding_window=sliding_window,
-            element_size=q.element_size(),
-            block_size=block_size,
-            is_prefill=False,
-        )
-        if all_raw
-        else _get_tmh_mixed_tile_size(block_size=block_size)
-    )
-    head_size_padded = triton.next_power_of_2(head_size)
-    seq_threshold_3d = getattr(attn_metadata, "seq_threshold_3D", None)
-    num_segments = getattr(attn_metadata, "num_par_softmax_segments", None)
-    segm_output = getattr(attn_metadata, "softmax_segm_output", None)
-    segm_max = getattr(attn_metadata, "softmax_segm_max", None)
-    segm_expsum = getattr(attn_metadata, "softmax_segm_expsum", None)
-    max_seq_len = getattr(attn_metadata, "max_seq_len", 0)
-    use_3d = not (
-        seq_threshold_3d is None
-        or num_segments is None
-        or segm_output is None
-        or segm_max is None
-        or segm_expsum is None
-        or max_seq_len < TMH_SEGMENTED_DECODE_MIN_SEQ_LEN
-        or num_seqs > seq_threshold_3d
-    )
-    if not use_3d:
-        num_segments = 1
-        segm_output = out
-        segm_max = out
-        segm_expsum = out
-    launch_kwargs = _get_tmh_attention_launch_kwargs(
-        block_m=block_m,
-        head_size=head_size,
-    )
-    if all_raw:
-        _tmh_launch_raw_attention(
-            q=q,
-            cache=cache,
-            out=out,
-            attn_metadata=attn_metadata,
-            seq_rows=seq_rows,
-            softmax_scale=softmax_scale,
-            softcap=softcap,
-            alibi_slopes=alibi_slopes,
-            use_alibi_sqrt=use_alibi_sqrt,
-            output_scale=output_scale,
-            qq_bias=qq_bias,
-            sinks=sinks,
-            mm_prefix_range=mm_prefix_range,
-            num_query_heads=num_query_heads,
-            num_queries_per_kv=num_queries_per_kv,
-            num_seqs=num_seqs,
-            head_size=head_size,
-            head_size_padded=head_size_padded,
-            block_size=block_size,
-            block_q=block_q,
-            block_m=block_m,
-            tile_size=tile_size,
-            sliding_window=sliding_window,
-            use_mm_prefix=use_mm_prefix,
-            max_mm_ranges=max_mm_ranges,
-            use_3d=use_3d,
-            num_segments=num_segments,
-            segm_output=segm_output,
-            segm_max=segm_max,
-            segm_expsum=segm_expsum,
-            chunk_lookback=chunk_lookback,
-            chunk_size=chunk_size,
-            launch_kwargs=launch_kwargs,
-        )
-        return
-    _tmh_launch_mixed_attention(
-        q=q,
-        cache=cache,
-        out=out,
-        attn_metadata=attn_metadata,
-        seq_rows=seq_rows,
-        softmax_scale=softmax_scale,
-        softcap=softcap,
-        alibi_slopes=alibi_slopes,
-        use_alibi_sqrt=use_alibi_sqrt,
-        output_scale=output_scale,
-        qq_bias=qq_bias,
-        sinks=sinks,
-        mm_prefix_range=mm_prefix_range,
-        num_query_heads=num_query_heads,
-        num_queries_per_kv=num_queries_per_kv,
-        num_seqs=num_seqs,
-        head_size=head_size,
-        head_size_padded=head_size_padded,
-        block_size=block_size,
-        block_q=block_q,
-        block_m=block_m,
-        tile_size=tile_size,
-        sliding_window=sliding_window,
-        use_mm_prefix=use_mm_prefix,
-        max_mm_ranges=max_mm_ranges,
-        use_3d=use_3d,
-        num_segments=num_segments,
-        segm_output=segm_output,
-        segm_max=segm_max,
-        segm_expsum=segm_expsum,
-        chunk_lookback=chunk_lookback,
-        chunk_size=chunk_size,
-        launch_kwargs=launch_kwargs,
     )

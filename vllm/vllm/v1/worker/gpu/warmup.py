@@ -52,10 +52,13 @@ def _attach_tmh_warmup_events(
         block_ids = block_ids_by_req.get(req_id)
         if not block_ids:
             continue
-        policy.record_physical_descriptors_from_block_ids(
+        policy.record_physical_descriptors_from_group_block_ids(
             request_id=req_id,
             total_tokens=total_tokens,
-            logical_block_ids=tuple(block_ids[0]),
+            logical_block_ids_by_group={
+                group_id: tuple(group_block_ids)
+                for group_id, group_block_ids in enumerate(block_ids)
+            },
         )
     events = policy.take_physical_events()
     scheduler_output.tmh_physical_events = events or None
