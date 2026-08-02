@@ -399,8 +399,12 @@ class TMHPhysicalRuntime:
         self._overlay_allocations: dict[
             tuple[str, str, int, int], _TMHAllocation
         ] = {}
+        self._request_binding_keys: dict[
+            str, set[tuple[str, str, int]]
+        ] = {}
         self._request_bindings: dict[tuple[str, str, int], _TMHBinding] = {}
         self._request_rows: dict[tuple[str, str], int] = {}
+        self._request_total_pages: dict[str, int] = {}
         self._request_versions: dict[str, tuple[int, int, int]] = {}
         self._last_request_generation: dict[str, int] = {}
         self._committed_ids: set[str] = set()
@@ -869,26 +873,14 @@ class TMHPhysicalRuntime:
                 descriptor.layer_name,
                 descriptor.page_index,
             )
-            previous_canonical_key = (
-                self._canonical_key(item.source.descriptor)
-                if item.source is not None
-                and item.source.descriptor.storage == TMHStorageKind.CANONICAL
-                else None
-            )
-            if previous_canonical_key is not None:
-                siblings = self._canonical_binding_keys.get(previous_canonical_key)
-                if siblings is not None:
-                    siblings.discard(binding_key)
-                    if not siblings:
-                        self._canonical_binding_keys.pop(previous_canonical_key, None)
+            previous_binding = self._request_bindings.get(binding_key)
+            if previous_binding is not None:
+                self._unregister_binding(binding_key, previous_binding)
             self._request_bindings[binding_key] = _TMHBinding(
                 descriptor=descriptor,
                 allocation=item.allocation,
             )
-            if descriptor.storage == TMHStorageKind.CANONICAL:
-                self._canonical_binding_keys.setdefault(
-                    self._canonical_key(descriptor), set()
-                ).add(binding_key)
+            self._register_binding(binding_key, descriptor)
             mapping_changed = (
                 item.source is None
                 or item.source.allocation != item.allocation
@@ -1094,17 +1086,25 @@ class TMHPhysicalRuntime:
         )
 
     def _truncate_request(self, request_id: str, total_pages: int) -> None:
-        for key, binding in list(self._request_bindings.items()):
-            if key[0] != request_id or key[2] < total_pages:
+        binding_keys = self._request_binding_keys.get(request_id)
+        if not binding_keys:
+            self._request_total_pages.pop(request_id, None)
+            return
+        previous_total_pages = self._request_total_pages.get(request_id)
+        if previous_total_pages is not None and total_pages >= previous_total_pages:
+            self._request_total_pages[request_id] = total_pages
+            return
+        if total_pages > 0:
+            self._request_total_pages[request_id] = total_pages
+        else:
+            self._request_total_pages.pop(request_id, None)
+        for key in tuple(binding_keys):
+            if key[2] < total_pages:
                 continue
-            self._request_bindings.pop(key, None)
-            if binding.descriptor.storage == TMHStorageKind.CANONICAL:
-                canonical_key = self._canonical_key(binding.descriptor)
-                siblings = self._canonical_binding_keys.get(canonical_key)
-                if siblings is not None:
-                    siblings.discard(key)
-                    if not siblings:
-                        self._canonical_binding_keys.pop(canonical_key, None)
+            binding = self._request_bindings.pop(key, None)
+            if binding is None:
+                continue
+            self._unregister_binding(key, binding)
             if binding.descriptor.storage == TMHStorageKind.REQUEST_OVERLAY:
                 overlay_candidates = [
                     overlay_key
@@ -1124,17 +1124,11 @@ class TMHPhysicalRuntime:
                 )
 
     def release_request(self, request_id: str) -> None:
-        for key, binding in list(self._request_bindings.items()):
-            if key[0] != request_id:
+        for key in tuple(self._request_binding_keys.get(request_id, ())):
+            binding = self._request_bindings.pop(key, None)
+            if binding is None:
                 continue
-            self._request_bindings.pop(key, None)
-            if binding.descriptor.storage == TMHStorageKind.CANONICAL:
-                canonical_key = self._canonical_key(binding.descriptor)
-                siblings = self._canonical_binding_keys.get(canonical_key)
-                if siblings is not None:
-                    siblings.discard(key)
-                    if not siblings:
-                        self._canonical_binding_keys.pop(canonical_key, None)
+            self._unregister_binding(key, binding)
             if binding.descriptor.storage == TMHStorageKind.REQUEST_OVERLAY:
                 overlay_candidates = [
                     overlay_key
@@ -1144,6 +1138,7 @@ class TMHPhysicalRuntime:
                 for overlay_key in overlay_candidates:
                     self._overlay_allocations.pop(overlay_key, None)
                 self._return_slot(binding.descriptor.layer_name, binding.allocation)
+        self._request_total_pages.pop(request_id, None)
         for (candidate_request, layer_name), row in list(self._request_rows.items()):
             if candidate_request != request_id:
                 continue
@@ -1159,11 +1154,7 @@ class TMHPhysicalRuntime:
         if allocation is None:
             self._pending_canonical_releases.pop(key, None)
             return
-        if any(
-            binding.descriptor.storage == TMHStorageKind.CANONICAL
-            and self._canonical_key(binding.descriptor) == key
-            for binding in self._request_bindings.values()
-        ):
+        if self._canonical_binding_keys.get(key):
             self._pending_canonical_releases[key] = descriptor
             return
         self._pending_canonical_releases.pop(key, None)
@@ -1219,6 +1210,38 @@ class TMHPhysicalRuntime:
         )
         generation_tensor[slot] = allocation.slot_generation
         return allocation
+
+    def _register_binding(
+        self,
+        binding_key: tuple[str, str, int],
+        descriptor: TMHPhysicalPageDescriptor,
+    ) -> None:
+        self._request_binding_keys.setdefault(descriptor.request_id, set()).add(
+            binding_key
+        )
+        if descriptor.storage == TMHStorageKind.CANONICAL:
+            self._canonical_binding_keys.setdefault(
+                self._canonical_key(descriptor), set()
+            ).add(binding_key)
+
+    def _unregister_binding(
+        self,
+        binding_key: tuple[str, str, int],
+        binding: _TMHBinding,
+    ) -> None:
+        request_keys = self._request_binding_keys.get(binding_key[0])
+        if request_keys is not None:
+            request_keys.discard(binding_key)
+            if not request_keys:
+                self._request_binding_keys.pop(binding_key[0], None)
+                self._request_total_pages.pop(binding_key[0], None)
+        if binding.descriptor.storage == TMHStorageKind.CANONICAL:
+            canonical_key = self._canonical_key(binding.descriptor)
+            siblings = self._canonical_binding_keys.get(canonical_key)
+            if siblings is not None:
+                siblings.discard(binding_key)
+                if not siblings:
+                    self._canonical_binding_keys.pop(canonical_key, None)
 
     def _warm_role(self, layer_name: str) -> TMHPageRole:
         return (
@@ -1430,11 +1453,15 @@ class TMHPhysicalRuntime:
             "canonical_binding_keys": {
                 key: value.copy() for key, value in self._canonical_binding_keys.items()
             },
+            "request_binding_keys": {
+                key: value.copy() for key, value in self._request_binding_keys.items()
+            },
             "resident": self._canonical_resident_key.copy(),
             "pending_canonical_releases": self._pending_canonical_releases.copy(),
             "overlay": self._overlay_allocations.copy(),
             "bindings": self._request_bindings.copy(),
             "rows": self._request_rows.copy(),
+            "request_total_pages": self._request_total_pages.copy(),
             "versions": self._request_versions.copy(),
             "last_generation": self._last_request_generation.copy(),
             "committed": self._committed_ids.copy(),
@@ -1451,11 +1478,13 @@ class TMHPhysicalRuntime:
         self._warm_slot_generations = snapshot["warm_gen"]  # type: ignore[assignment]
         self._canonical_allocations = snapshot["canonical"]  # type: ignore[assignment]
         self._canonical_binding_keys = snapshot["canonical_binding_keys"]  # type: ignore[assignment]
+        self._request_binding_keys = snapshot["request_binding_keys"]  # type: ignore[assignment]
         self._canonical_resident_key = snapshot["resident"]  # type: ignore[assignment]
         self._pending_canonical_releases = snapshot["pending_canonical_releases"]  # type: ignore[assignment]
         self._overlay_allocations = snapshot["overlay"]  # type: ignore[assignment]
         self._request_bindings = snapshot["bindings"]  # type: ignore[assignment]
         self._request_rows = snapshot["rows"]  # type: ignore[assignment]
+        self._request_total_pages = snapshot["request_total_pages"]  # type: ignore[assignment]
         self._request_versions = snapshot["versions"]  # type: ignore[assignment]
         self._last_request_generation = snapshot["last_generation"]  # type: ignore[assignment]
         self._committed_ids = snapshot["committed"]  # type: ignore[assignment]

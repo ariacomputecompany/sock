@@ -947,3 +947,56 @@ high-concurrency active serving — while the regressions are confined to a coup
 of tiny single-request cells. The next optimization frontier should stay in the
 same structural neighborhood: reduce active event-application work further
 without broadening metadata churn elsewhere.
+
+
+## AMD Physical TMH Request-Local Binding Index and Growth Gate: Qwen2.5-0.5B
+
+This Sunday, August 2, 2026 pass extended the same active-core strategy one step
+further. The TMH physical runtime now tracks live bindings by request and uses a
+monotonic total-page gate so `_truncate_request()` does not scan global binding
+state on every active publish event when a request only grows or stays flat.
+
+Trusted fair TMH baseline for this pass:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-canonical_binding_index_narrow_fair_full_suite
+
+Reference earlier trusted baseline:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-small_publish_fastpath_fair_full_suite
+
+New fair artifact:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-request_binding_index_growth_gate_lifetime_fix_fair_full_suite
+
+| Case | Concurrency | Prior TMH completion tok/s | New TMH completion tok/s | Delta vs prior TMH |
+| --- | ---: | ---: | ---: | ---: |
+| long_context_summary_256 | 1 | 106.8748 | 117.5141 | +9.95% |
+| long_context_summary_256 | 2 | 162.2139 | 207.7433 | +28.07% |
+| long_context_summary_256 | 4 | 206.4063 | 328.0830 | +58.95% |
+| extended_generation_768 | 1 | 132.9427 | 133.9912 | +0.79% |
+| extended_generation_768 | 2 | 234.8865 | 245.9894 | +4.73% |
+| extended_generation_768 | 4 | 350.7367 | 391.6003 | +11.65% |
+| long_cosmology_512 | 1 | 138.7996 | 140.2909 | +1.07% |
+| long_cosmology_512 | 2 | 247.3819 | 261.4666 | +5.69% |
+| long_cosmology_512 | 4 | 407.8987 | 461.8417 | +13.22% |
+| medium_architecture_256 | 1 | 143.5072 | 142.4809 | -0.72% |
+| medium_architecture_256 | 2 | 262.2107 | 266.9370 | +1.80% |
+| medium_architecture_256 | 4 | 447.1950 | 474.9903 | +6.22% |
+| short_codegen_128 | 1 | 143.3012 | 141.6246 | -1.17% |
+| short_codegen_128 | 2 | 265.0412 | 265.7195 | +0.26% |
+| short_codegen_128 | 4 | 457.0793 | 477.3565 | +4.44% |
+| tiny_fact_64 | 1 | 137.7654 | 136.5151 | -0.91% |
+| tiny_fact_64 | 2 | 259.3490 | 261.2143 | +0.72% |
+| tiny_fact_64 | 4 | 467.5835 | 469.3627 | +0.38% |
+
+Suite summary:
+
+- Mean delta vs canonical-binding baseline: +8.06%
+- Median delta vs canonical-binding baseline: +3.12%
+- Mean delta vs earlier trusted small-publish baseline: +17.30%
+- Median delta vs earlier trusted small-publish baseline: +7.95%
+
+Production readout: keep the request-local binding index and growth gate, but
+only with the lifetime fix. The first draft of this pass posted large heavy-cell
+wins and then exposed a cross-case collapse in `medium_architecture_256` because
+stale per-request page counts could survive after the last binding for a request
+was gone. The kept version clears that stale lifetime state and preserves the
+active-path structural win: request-truncation work now scales with the request's
+own live bindings instead of the whole global binding table.

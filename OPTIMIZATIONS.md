@@ -2449,3 +2449,104 @@ Interpretation:
 - the remaining losses are concentrated in tiny short cells, which means the
   next aggressive pass should preserve this sibling-index win and claw back the
   small-cell regressions rather than undoing the structural gain
+
+
+## 2026-08-02 Request-local binding index and growth gate for Qwen2.5-0.5B TMH physical runtime
+
+Once the canonical-sibling reverse index landed, the next remaining structural
+hotspot was `_truncate_request()`. That function still ran at the tail of every
+active publish event and scanned the entire global binding table even when the
+request only grew or stayed at the same logical page count.
+
+### First-principles finding
+
+The canonical sibling fix removed one O(total bindings) active-path scan, but a
+second one remained:
+
+- every active event still called `_truncate_request(request_id, total_pages)`
+- most events are monotonic growth or same-size updates, not real truncations
+- the old implementation still walked every binding globally to discover that
+  nothing needed to be cleared
+
+That is wasted work on the hottest path. Truncation bookkeeping should be keyed
+by request, and no-op growth updates should short-circuit without touching
+unrelated bindings.
+
+### Production change
+
+Implemented in:
+
+- vllm/vllm/v1/tmh_physical.py
+
+New behavior:
+
+- maintain `_request_binding_keys`, a reverse index from request id to the set
+  of live binding keys owned by that request
+- maintain `_request_total_pages` so monotonic growth or flat updates can skip
+  full truncation work
+- use the request-local index for `release_request()` instead of scanning the
+  entire binding table
+- use the existing `_canonical_binding_keys` map inside `release_descriptor()`
+  instead of scanning all live bindings to detect canonical liveness
+
+### Lifecycle bug found and fixed before keeping the pass
+
+The first version of this optimization was not safe enough to keep.
+
+Observed failure:
+
+- full-suite mean improved, but `medium_architecture_256` c1/c2 collapsed with
+  huge outliers in the mixed-case suite
+- a fresh-server medium-only probe was healthy again, which proved the issue was
+  lifecycle state leaking across requests rather than intrinsic per-case slowness
+
+Root cause:
+
+- stale `_request_total_pages` entries could survive after the last live binding
+  for a request disappeared
+- if a later request reused the same request id, the growth gate could
+  short-circuit against stale page-count state
+
+Kept fix:
+
+- drop `_request_total_pages` when the last binding for a request is unregistered
+- only apply the growth short-circuit when the request still has live bindings
+
+Focused validation stayed green after the fix:
+
+- python3 -m py_compile vllm/vllm/v1/tmh_physical.py
+- ./vllm/.venv/bin/pytest vllm/tests/v1/core/test_tmh_physical.py vllm/tests/v1/core/test_tmh_triton_ops.py -q
+- result: 46 passed, 14 warnings
+
+### Fair full-suite result
+
+Artifacts:
+
+- prior kept baseline: benchmarks/2026-08-02-gmk-qwen2.5-0.5b-canonical_binding_index_narrow_fair_full_suite
+- earlier trusted baseline: benchmarks/2026-08-02-gmk-qwen2.5-0.5b-small_publish_fastpath_fair_full_suite
+- kept pass: benchmarks/2026-08-02-gmk-qwen2.5-0.5b-request_binding_index_growth_gate_lifetime_fix_fair_full_suite
+
+Key deltas vs prior kept baseline:
+
+MEAN_PCT   +8.06%
+MEDIAN_PCT +3.12%
+
+Best cells:
+long_context_summary_256 c4   +58.95%
+long_context_summary_256 c2   +28.07%
+long_cosmology_512      c4    +13.22%
+
+Worst cells:
+short_codegen_128       c1    -1.17%
+tiny_fact_64            c1    -0.91%
+medium_architecture_256 c1    -0.72%
+
+Interpretation:
+
+- this keeps the structural heavy-cell gains while removing the unsafe
+  cross-case lifetime leak from the first draft
+- the active TMH physical path now avoids two separate global binding scans that
+  previously sat directly on the event-commit hot path
+- the next aggressive frontier should stay in active event application and
+  request-lifetime bookkeeping, because that is where the largest verified wins
+  are still coming from
