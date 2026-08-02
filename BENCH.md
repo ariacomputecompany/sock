@@ -1000,3 +1000,57 @@ stale per-request page counts could survive after the last binding for a request
 was gone. The kept version clears that stale lifetime state and preserves the
 active-path structural win: request-truncation work now scales with the request's
 own live bindings instead of the whole global binding table.
+
+
+## AMD Physical TMH Canonical Sibling Batch Publication: Qwen2.5-0.5B
+
+This Sunday, August 2, 2026 pass kept the same canonical sibling index and
+request-local lifetime bookkeeping, but changed the publication shape of shared
+canonical updates. Once a canonical mapping changes, aliased sibling request
+pages are now republished in compact row/page batches instead of issuing one
+scalar metadata write per sibling.
+
+Trusted fair TMH baseline for this pass:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-request_binding_index_growth_gate_lifetime_fix_fair_full_suite
+
+Reference earlier trusted baseline:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-small_publish_fastpath_fair_full_suite
+
+New fair artifact:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-canonical_sibling_batch_publish_fair_full_suite
+
+| Case | Concurrency | Prior TMH completion tok/s | New TMH completion tok/s | Delta vs prior TMH |
+| --- | ---: | ---: | ---: | ---: |
+| long_context_summary_256 | 1 | 117.5141 | 117.4173 | -0.08% |
+| long_context_summary_256 | 2 | 207.7433 | 208.1715 | +0.21% |
+| long_context_summary_256 | 4 | 328.0830 | 331.4180 | +1.02% |
+| extended_generation_768 | 1 | 133.9912 | 136.6898 | +2.01% |
+| extended_generation_768 | 2 | 245.9894 | 252.1979 | +2.52% |
+| extended_generation_768 | 4 | 391.6003 | 433.7989 | +10.78% |
+| long_cosmology_512 | 1 | 140.2909 | 142.5486 | +1.61% |
+| long_cosmology_512 | 2 | 261.4666 | 262.0271 | +0.21% |
+| long_cosmology_512 | 4 | 461.8417 | 462.5788 | +0.16% |
+| medium_architecture_256 | 1 | 142.4809 | 144.9372 | +1.72% |
+| medium_architecture_256 | 2 | 266.9370 | 274.0081 | +2.65% |
+| medium_architecture_256 | 4 | 474.9903 | 489.1462 | +2.98% |
+| short_codegen_128 | 1 | 141.6246 | 143.9555 | +1.65% |
+| short_codegen_128 | 2 | 265.7195 | 268.6010 | +1.08% |
+| short_codegen_128 | 4 | 477.3565 | 483.8155 | +1.35% |
+| tiny_fact_64 | 1 | 136.5151 | 141.9742 | +4.00% |
+| tiny_fact_64 | 2 | 261.2143 | 266.5030 | +2.02% |
+| tiny_fact_64 | 4 | 469.3627 | 477.8995 | +1.82% |
+
+Suite summary:
+
+- Mean delta vs request-local baseline: +2.10%
+- Median delta vs request-local baseline: +1.68%
+- Mean delta vs earlier trusted small-publish baseline: +19.71%
+- Median delta vs earlier trusted small-publish baseline: +10.04%
+
+Production readout: keep the canonical sibling batch publication path. This is
+not the giant structural jump that the last two passes delivered, but it is the
+correct next refinement: once sibling discovery and request-local lifetime
+bookkeeping are already cheap, the remaining publication cost is the per-sibling
+scalar metadata write shape itself. Batching those row/page updates lifts the
+whole suite further and especially helps the higher-concurrency decode cells
+without reopening the small-cell instability we saw in earlier drafts.

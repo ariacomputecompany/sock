@@ -861,6 +861,10 @@ class TMHPhysicalRuntime:
         request_publications: dict[
             str, list[tuple[TMHPhysicalPageDescriptor, _TMHAllocation]]
         ] = {}
+        sibling_publications: dict[
+            str,
+            list[tuple[int, TMHPhysicalPageDescriptor, _TMHAllocation]],
+        ] = {}
         valid_token_publications: dict[
             str, list[TMHPhysicalPageDescriptor]
         ] = {}
@@ -931,13 +935,20 @@ class TMHPhysicalRuntime:
                     self._request_bindings[other_key] = _TMHBinding(
                         other_descriptor, item.allocation
                     )
-                    other_row = self._request_rows[(other_key[0], other_key[1])]
-                    self._publish_request_page(
-                        cache, other_row, other_descriptor, item.allocation
+                    sibling_publications.setdefault(descriptor.layer_name, []).append(
+                        (
+                            self._request_rows[(other_key[0], other_key[1])],
+                            other_descriptor,
+                            item.allocation,
+                        )
                     )
         for layer_name, publications in request_publications.items():
             self._publish_request_pages(
                 self._caches[layer_name], req_index, publications
+            )
+        for layer_name, publications in sibling_publications.items():
+            self._publish_request_row_pages(
+                self._caches[layer_name], publications
             )
         for layer_name, publications in valid_token_publications.items():
             self._publish_valid_tokens(
@@ -1056,6 +1067,75 @@ class TMHPhysicalRuntime:
         cache.native_block_valid_by_seq[req_index].index_copy_(0, pages, raw)
         self.counters["metadata_descriptors_published"] += len(publications)
         self.counters["metadata_bytes_published"] += len(publications) * 22
+
+    @staticmethod
+    def _publish_request_row_pages(
+        cache: TMHPhysicalKVCache,
+        publications: list[
+            tuple[int, TMHPhysicalPageDescriptor, _TMHAllocation]
+        ],
+    ) -> None:
+        if not publications:
+            return
+        if len(publications) == 1:
+            row, descriptor, allocation = publications[0]
+            page = descriptor.page_index
+            cache.request_slot_by_row_page[row, page] = allocation.slot
+            cache.request_role_by_row_page[row, page] = int(descriptor.role)
+            cache.request_valid_tokens_by_row_page[row, page] = descriptor.valid_tokens
+            cache.request_slot_generation_by_row_page[
+                row, page
+            ] = allocation.slot_generation
+            cache.request_materialized_by_row_page[row, page] = True
+            cache.native_block_table_by_seq[row, page] = (
+                allocation.slot if allocation.raw else -1
+            )
+            cache.native_block_valid_by_seq[row, page] = allocation.raw
+            return
+        device = cache.device
+        rows = torch.tensor(
+            [row for row, _, _ in publications],
+            dtype=torch.int64,
+            device=device,
+        )
+        pages = torch.tensor(
+            [descriptor.page_index for _, descriptor, _ in publications],
+            dtype=torch.int64,
+            device=device,
+        )
+        slots = torch.tensor(
+            [allocation.slot for _, _, allocation in publications],
+            dtype=torch.int32,
+            device=device,
+        )
+        roles = torch.tensor(
+            [int(descriptor.role) for _, descriptor, _ in publications],
+            dtype=torch.int16,
+            device=device,
+        )
+        valid_tokens = torch.tensor(
+            [descriptor.valid_tokens for _, descriptor, _ in publications],
+            dtype=torch.int16,
+            device=device,
+        )
+        slot_generations = torch.tensor(
+            [allocation.slot_generation for _, _, allocation in publications],
+            dtype=torch.int64,
+            device=device,
+        )
+        raw = torch.tensor(
+            [allocation.raw for _, _, allocation in publications],
+            dtype=torch.bool,
+            device=device,
+        )
+        native_slots = torch.where(raw, slots, torch.full_like(slots, -1))
+        cache.request_slot_by_row_page[rows, pages] = slots
+        cache.request_role_by_row_page[rows, pages] = roles
+        cache.request_valid_tokens_by_row_page[rows, pages] = valid_tokens
+        cache.request_slot_generation_by_row_page[rows, pages] = slot_generations
+        cache.request_materialized_by_row_page[rows, pages] = True
+        cache.native_block_table_by_seq[rows, pages] = native_slots
+        cache.native_block_valid_by_seq[rows, pages] = raw
 
     @staticmethod
     def _publish_valid_tokens(

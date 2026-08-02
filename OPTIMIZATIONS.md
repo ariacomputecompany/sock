@@ -2550,3 +2550,82 @@ Interpretation:
 - the next aggressive frontier should stay in active event application and
   request-lifetime bookkeeping, because that is where the largest verified wins
   are still coming from
+
+
+## 2026-08-02 Canonical sibling batch publication for Qwen2.5-0.5B TMH physical runtime
+
+After the canonical sibling reverse index and the request-local lifetime index
+landed, the next remaining tax in the same active-core neighborhood was the
+shape of the sibling republish itself.
+
+### First-principles finding
+
+The runtime was now finding the right sibling subset efficiently, but it still
+published that subset one sibling at a time:
+
+- canonical publish propagation iterated only the sibling bindings that shared
+  the updated canonical page
+- but each sibling still paid its own scalar `_publish_request_page()` write
+- that left a residual hot-path cost that scaled with sibling fanout in the
+  least GPU-friendly way even though the touched subset was already known
+
+Once the right subset is identified, the next step is to give the device a
+better-shaped write batch, not to keep issuing tiny scalar metadata updates.
+
+### Production change
+
+Implemented in:
+
+- vllm/vllm/v1/tmh_physical.py
+
+New behavior:
+
+- collect canonical sibling row/page publications during `_publish_event()`
+  instead of immediately flushing each sibling one by one
+- add `_publish_request_row_pages()` to publish multi-row request metadata in a
+  compact batched write path
+- preserve the same binding replacement and canonical ownership semantics; this
+  is strictly a publication-shape change on top of the existing structural wins
+
+Validation stayed green before benchmarking:
+
+- python3 -m py_compile vllm/vllm/v1/tmh_physical.py vllm/tests/v1/core/test_tmh_physical.py
+- ./vllm/.venv/bin/pytest vllm/tests/v1/core/test_tmh_physical.py vllm/tests/v1/core/test_tmh_triton_ops.py -q
+- result: 47 passed, 14 warnings
+
+A focused regression test was added to prove that when one request updates a
+shared canonical page from raw to warm, the sibling request sees the same new
+slot and role through the batched publication path.
+
+### Fair full-suite result
+
+Artifacts:
+
+- prior kept baseline: benchmarks/2026-08-02-gmk-qwen2.5-0.5b-request_binding_index_growth_gate_lifetime_fix_fair_full_suite
+- earlier trusted baseline: benchmarks/2026-08-02-gmk-qwen2.5-0.5b-small_publish_fastpath_fair_full_suite
+- kept pass: benchmarks/2026-08-02-gmk-qwen2.5-0.5b-canonical_sibling_batch_publish_fair_full_suite
+
+Key deltas vs prior kept baseline:
+
+MEAN_PCT   +2.10%
+MEDIAN_PCT +1.68%
+
+Best cells:
+extended_generation_768  c4    +10.78%
+tiny_fact_64             c1    +4.00%
+medium_architecture_256  c4    +2.98%
+
+Worst cells:
+long_context_summary_256 c1    -0.08%
+long_cosmology_512      c4     +0.16%
+long_context_summary_256 c2    +0.21%
+
+Interpretation:
+
+- this is a smaller but cleanly positive refinement layered on top of the two
+  larger structural passes
+- the active TMH physical path now not only finds the right canonical sibling
+  subset quickly, it also republishes that subset in a GPU-friendlier shape
+- against the earlier trusted small-publish baseline, the production path is now
+  at +19.71% mean throughput and +10.04% median, which puts the next pass very
+  close to the threshold needed to beat the known +20% reference

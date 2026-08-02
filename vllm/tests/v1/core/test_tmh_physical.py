@@ -436,6 +436,84 @@ def test_tmh_physical_runtime_shares_prefix_cached_hot_raw_pages():
     assert cache.canonical_slot_by_logical_block[3].item() == shared_slot
 
 
+def test_tmh_physical_runtime_propagates_canonical_role_updates_to_shared_siblings():
+    cache = make_physical_cache()
+    runtime = TMHPhysicalRuntime()
+    runtime.register_cache("model.layers.0.self_attn", cache)
+
+    runtime.apply_events(
+        [
+            event(
+                request_id="req-1",
+                descriptors=(
+                    descriptor(
+                        request_id="req-1",
+                        page_index=3,
+                        logical_block_id=3,
+                        role=TMHPageRole.HOT_RAW,
+                        storage=TMHStorageKind.CANONICAL,
+                        prefix_cached=True,
+                    ),
+                ),
+                total_pages=4,
+                recent_start_page=3,
+                hot_pages=1,
+            ),
+            event(
+                request_id="req-2",
+                descriptors=(
+                    descriptor(
+                        request_id="req-2",
+                        page_index=3,
+                        logical_block_id=3,
+                        role=TMHPageRole.HOT_RAW,
+                        storage=TMHStorageKind.CANONICAL,
+                        prefix_cached=True,
+                    ),
+                ),
+                total_pages=4,
+                recent_start_page=3,
+                hot_pages=1,
+            ),
+        ],
+        {"req-1": 0, "req-2": 1},
+    )
+
+    runtime.apply_events(
+        [
+            event(
+                request_id="req-1",
+                descriptors=(
+                    descriptor(
+                        request_id="req-1",
+                        page_index=3,
+                        logical_block_id=3,
+                        role=TMHPageRole.WARM_INT8_INT4,
+                        storage=TMHStorageKind.CANONICAL,
+                        prefix_cached=True,
+                    ),
+                ),
+                total_pages=4,
+                recent_start_page=3,
+                hot_pages=0,
+                sequence=2,
+            ),
+        ],
+        {"req-1": 0, "req-2": 1},
+    )
+
+    req1_slot = cache.request_slot_by_row_page[0, 3].item()
+    req2_slot = cache.request_slot_by_row_page[1, 3].item()
+    assert req1_slot >= 0
+    assert req2_slot == req1_slot
+    assert cache.request_role_by_row_page[0, 3].item() == int(TMHPageRole.WARM_INT8_INT4)
+    assert cache.request_role_by_row_page[1, 3].item() == int(TMHPageRole.WARM_INT8_INT4)
+    assert cache.native_block_valid_by_seq[0, 3].item() is False
+    assert cache.native_block_valid_by_seq[1, 3].item() is False
+    assert cache.canonical_role_by_logical_block[3].item() == int(TMHPageRole.WARM_INT8_INT4)
+    assert cache.canonical_slot_by_logical_block[3].item() == req1_slot
+
+
 def test_tmh_policy_retains_canonical_pages_after_last_active_owner():
     policy = TMHKVRuntimePolicy(
         policy="physical",
