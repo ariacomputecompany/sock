@@ -891,3 +891,59 @@ page across many layers. The remaining gap is no longer about inactive queue
 bookkeeping or tiny single-publication metadata churn. The next active target is
 larger event materialization and publish cost when multiple layers/pages are
 updated in one step.
+
+
+## AMD Physical TMH Canonical Binding Reverse Index: Qwen2.5-0.5B
+
+This Sunday, August 2, 2026 pass stayed inside the active TMH physical-event
+core and removed a global sibling scan from canonical publish propagation.
+Instead of walking every request binding whenever a canonical mapping changes,
+the runtime now maintains a narrow reverse index from canonical page identity to
+just the request-page bindings that currently alias that canonical page.
+
+Trusted fair TMH baseline for this pass:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-small_publish_fastpath_fair_full_suite
+
+Reference clean-closure artifact:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-clean_promotion_closure_fair_full_suite
+
+New fair artifact:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-canonical_binding_index_narrow_fair_full_suite
+
+| Case | Concurrency | Baseline completion tok/s | New TMH completion tok/s | Delta vs baseline |
+| --- | ---: | ---: | ---: | ---: |
+| long_context_summary_256 | 1 | 104.7953 | 106.8748 | +1.98% |
+| long_context_summary_256 | 2 | 150.4414 | 162.2139 | +7.83% |
+| long_context_summary_256 | 4 | 140.2328 | 206.4063 | +47.19% |
+| extended_generation_768 | 1 | 132.9494 | 132.9427 | -0.01% |
+| extended_generation_768 | 2 | 227.3197 | 234.8865 | +3.33% |
+| extended_generation_768 | 4 | 301.7213 | 350.7367 | +16.25% |
+| long_cosmology_512 | 1 | 130.9325 | 138.7996 | +6.01% |
+| long_cosmology_512 | 2 | 223.6944 | 247.3819 | +10.59% |
+| long_cosmology_512 | 4 | 343.9695 | 407.8987 | +18.59% |
+| medium_architecture_256 | 1 | 145.7114 | 143.5072 | -1.51% |
+| medium_architecture_256 | 2 | 260.3187 | 262.2107 | +0.73% |
+| medium_architecture_256 | 4 | 419.0422 | 447.1950 | +6.72% |
+| short_codegen_128 | 1 | 125.7355 | 143.3012 | +13.97% |
+| short_codegen_128 | 2 | 262.7288 | 265.0412 | +0.88% |
+| short_codegen_128 | 4 | 443.3032 | 457.0793 | +3.11% |
+| tiny_fact_64 | 1 | 145.0475 | 137.7654 | -5.02% |
+| tiny_fact_64 | 2 | 264.4337 | 259.3490 | -1.92% |
+| tiny_fact_64 | 4 | 459.5288 | 467.5835 | +1.75% |
+
+Suite summary:
+
+- Mean delta vs trusted baseline: +7.25%
+- Median delta vs trusted baseline: +3.22%
+- Mean delta vs clean closure: +8.16%
+- Median delta vs clean closure: +3.18%
+
+Production readout: keep the narrow canonical-binding reverse index. This is
+finally the structural active-path win we were looking for: the hottest
+canonical publication path no longer pays an O(total bindings) scan when only a
+small sibling set actually shares the updated canonical page. The strongest win
+lands exactly where the earlier failed passes kept bleeding — long-context and
+high-concurrency active serving — while the regressions are confined to a couple
+of tiny single-request cells. The next optimization frontier should stay in the
+same structural neighborhood: reduce active event-application work further
+without broadening metadata churn elsewhere.

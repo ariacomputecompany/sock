@@ -2371,3 +2371,81 @@ materially recovers the worst long-context concurrent frontier while only
 slightly taxing a small short-context cell. The remaining optimization problem
 is now narrower: preserve this long-request win while clawing back the small
 short-request regressions instead of continuing to treat TMH as one undifferentiated kernel problem.
+
+
+## 2026-08-02 Narrow canonical-binding sibling index for Qwen2.5-0.5B TMH physical runtime
+
+After a series of losing passes, the repeated pattern was clear: the remaining
+negative frontier was not inactive-request coalescing, tiny publish-shape
+specialization, or a standalone scheduler policy threshold. The persistent tax
+was in active canonical event application under load, especially when the same
+canonical page had to be republished across many aliased request bindings.
+
+### First-principles finding
+
+The old active publish path had an avoidable structural cost:
+
+- when a canonical page mapping changed, _publish_event() updated the primary
+  binding and then scanned every entry in _request_bindings
+- most bindings were unrelated to that canonical page
+- the work therefore scaled with total live bindings, not with the true sibling
+  fanout of the updated canonical page
+
+That is the wrong complexity class for the hot path. The runtime already knows
+canonical identity; it should carry the inverse mapping needed to jump directly
+to the affected siblings.
+
+### Production change
+
+Implemented in:
+
+- vllm/vllm/v1/tmh_physical.py
+
+New behavior:
+
+- maintain _canonical_binding_keys, a reverse index from canonical page key to
+  the set of request binding keys that currently alias that canonical page
+- update the reverse index on canonical binding replacement, request truncation,
+  request release, and snapshot restore
+- on canonical publish propagation, iterate only the indexed sibling set instead
+  of scanning the entire binding table
+- preserve the same correctness boundary for allocation ownership and release;
+  this is a lookup-shape optimization, not a refcount semantic change
+
+Validation stayed green before benchmarking:
+
+- python3 -m py_compile vllm/vllm/v1/tmh_physical.py
+- ./vllm/.venv/bin/pytest vllm/tests/v1/core/test_tmh_physical.py vllm/tests/v1/core/test_tmh_triton_ops.py -q
+- result: 46 passed, 14 warnings
+
+### Fair full-suite result
+
+Artifacts:
+
+- trusted baseline: benchmarks/2026-08-02-gmk-qwen2.5-0.5b-small_publish_fastpath_fair_full_suite
+- clean closure reference: benchmarks/2026-08-02-gmk-qwen2.5-0.5b-clean_promotion_closure_fair_full_suite
+- new pass: benchmarks/2026-08-02-gmk-qwen2.5-0.5b-canonical_binding_index_narrow_fair_full_suite
+
+Key deltas vs trusted baseline:
+
+MEAN_PCT   +7.25%
+MEDIAN_PCT +3.22%
+
+Best heavy cells:
+long_context_summary_256 c4   +47.19%
+long_cosmology_512      c4    +18.59%
+extended_generation_768 c4    +16.25%
+
+Worst cells:
+tiny_fact_64            c1    -5.02%
+tiny_fact_64            c2    -1.92%
+medium_architecture_256 c1    -1.51%
+
+Interpretation:
+
+- this is the first recent pass that clearly wins at the structural active core
+  instead of just moving noise around
+- it directly fixes the repeated long-context/high-concurrency loss pattern
+- the remaining losses are concentrated in tiny short cells, which means the
+  next aggressive pass should preserve this sibling-index win and claw back the
+  small-cell regressions rather than undoing the structural gain
