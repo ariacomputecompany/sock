@@ -860,3 +860,34 @@ contract because active requests still emit ordered DELTAs one-by-one. The win
 is strongest in long-context summary cells and nearly flat in extended decode,
 which means the next profitable frontier is still event-application cost under
 active serving, not broader inactive-request bookkeeping.
+
+
+## AMD Physical TMH Small Publication Fast Path: Qwen2.5-0.5B
+
+This Sunday, August 2, 2026 pass kept the TMH physical-event contract intact
+but split the metadata publish path by publication cardinality. Single-page
+per-layer updates now publish directly with indexed writes instead of building
+new tiny device tensors for every touched layer. Larger multi-page updates keep
+using the existing vectorized publish path.
+
+Trusted fair TMH baseline for this pass:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-inactive_delta_coalesce_fair_full_suite
+
+New fair artifact:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-small_publish_fastpath_fair_full_suite
+
+| Case | Concurrency | Prior TMH completion tok/s | New TMH completion tok/s | Delta vs prior TMH |
+| --- | ---: | ---: | ---: | ---: |
+| long_context_summary_256 | 1 | 104.7241 | 104.7953 | +0.07% |
+| long_context_summary_256 | 2 | 149.5155 | 150.4414 | +0.62% |
+| long_context_summary_256 | 4 | 138.8030 | 140.2328 | +1.03% |
+| extended_generation_768 | 1 | 133.4717 | 132.9494 | -0.39% |
+| extended_generation_768 | 2 | 227.7658 | 227.3197 | -0.20% |
+| extended_generation_768 | 4 | 298.9628 | 301.7213 | +0.92% |
+
+Production readout: keep the small-publication fast path. The win is modest but
+real, and it matches the observed active-path hot shape: one event touching one
+page across many layers. The remaining gap is no longer about inactive queue
+bookkeeping or tiny single-publication metadata churn. The next active target is
+larger event materialization and publish cost when multiple layers/pages are
+updated in one step.
