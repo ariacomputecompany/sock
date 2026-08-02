@@ -828,3 +828,35 @@ Raw artifacts:
 - `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-native-rerun/standard-suite.json`
 - `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-native-rerun/tmh-suite.json`
 - `benchmarks/2026-07-23-gmk-qwen3-30b-tmh-adaptive-custom/tmh-suite.json`
+
+
+## AMD Physical TMH Inactive Delta Coalescing: Qwen2.5-0.5B
+
+This Sunday, August 2, 2026 pass narrowed TMH physical-event coalescing to
+inactive requests only. The scheduler now collapses queued same-request DELTA
+snapshots before activation, while active requests preserve strict per-step
+version ordering. The change was kept only after the TMH policy/triton slice
+(30 passed) and TMH physical slice (33 passed) both stayed green.
+
+Trusted fair TMH baseline artifact:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-split_descfuse_fair_full_suite
+
+New fair artifact:
+benchmarks/2026-08-02-gmk-qwen2.5-0.5b-inactive_delta_coalesce_fair_full_suite
+
+| Case | Concurrency | Prior TMH completion tok/s | New TMH completion tok/s | Delta vs prior TMH |
+| --- | ---: | ---: | ---: | ---: |
+| long_context_summary_256 | 1 | 103.2633 | 104.7241 | +1.41% |
+| long_context_summary_256 | 2 | 143.3451 | 149.5155 | +4.30% |
+| long_context_summary_256 | 4 | 126.7029 | 138.8030 | +9.55% |
+| extended_generation_768 | 1 | 133.9589 | 133.4717 | -0.36% |
+| extended_generation_768 | 2 | 224.4006 | 227.7658 | +1.50% |
+| extended_generation_768 | 4 | 298.7687 | 298.9628 | +0.06% |
+
+Production readout: keep the inactive-request coalescing gate. It is a real
+scheduler-side reduction in redundant worker event application for queued
+requests, and it is production-safe under the current strict event-version
+contract because active requests still emit ordered DELTAs one-by-one. The win
+is strongest in long-context summary cells and nearly flat in extended decode,
+which means the next profitable frontier is still event-application cost under
+active serving, not broader inactive-request bookkeeping.

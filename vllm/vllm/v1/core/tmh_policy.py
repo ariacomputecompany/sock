@@ -198,6 +198,8 @@ class TMHKVRuntimePolicy:
     _request_physical_fingerprint: dict[
         str, tuple[tuple[int, tuple[tuple[int, int, bool], ...]], ...]
     ] = field(default_factory=dict)
+    _active_physical_request_ids: set[str] = field(default_factory=set)
+    _pending_long_rebalance_request_ids: set[str] = field(default_factory=set)
     _pending_physical_events: list[TMHPhysicalEvent] = field(default_factory=list)
     _early_layers: list[TMHLayerShape] = field(init=False, repr=False)
     _late_layers: list[TMHLayerShape] = field(init=False, repr=False)
@@ -242,14 +244,103 @@ class TMHKVRuntimePolicy:
             ],
         )
 
-    def _effective_hot_budget_pct(self, *, total_pages: int) -> float:
+    def set_active_physical_request_ids(self, request_ids: set[str] | list[str] | tuple[str, ...]) -> None:
+        next_active_request_ids = set(request_ids)
+        if next_active_request_ids == self._active_physical_request_ids:
+            return
+        previous_long_count = len(self._active_long_physical_request_ids())
+        self._active_physical_request_ids = next_active_request_ids
+        current_long_count = len(self._active_long_physical_request_ids())
+        if self.physical and (previous_long_count >= 4) != (current_long_count >= 4):
+            self._rebalance_active_long_physical_requests()
+
+    def _active_long_physical_request_ids(self) -> list[str]:
+        return [
+            request_id
+            for request_id, pressure in self.latest_by_request.items()
+            if (
+                pressure.physical
+                and pressure.total_pages >= 48
+                and request_id in self._active_physical_request_ids
+            )
+        ]
+
+    def _projected_active_long_physical_requests(
+        self,
+        *,
+        request_id: str,
+        total_pages: int,
+    ) -> int:
+        if not self.physical or total_pages < 48:
+            return 0
+        active = len(self._active_long_physical_request_ids())
+        current = self.latest_by_request.get(request_id)
+        if current is None or current.total_pages < 48 or not current.physical:
+            active += 1
+        return active
+
+    def _effective_hot_budget_pct(
+        self,
+        *,
+        request_id: str,
+        total_pages: int,
+    ) -> float:
         pct = self.hot_budget_pct
-        if self.physical and total_pages >= 32:
-            pct = max(pct, 50.0)
+        if not self.physical:
+            return pct
+        if total_pages >= 48 and self._projected_active_long_physical_requests(
+            request_id=request_id,
+            total_pages=total_pages,
+        ) >= 4:
+            return 100.0
+        if total_pages >= 32:
+            return max(pct, 50.0)
         return pct
 
-    def _effective_hot_pages(self, *, total_pages: int) -> int:
-        hot_budget_pct = self._effective_hot_budget_pct(total_pages=total_pages)
+    def _logical_pages_by_group_for_request(
+        self,
+        request_id: str,
+    ) -> dict[int, list[tuple[int, int, bool]]] | None:
+        fingerprint = self._request_physical_fingerprint.get(request_id)
+        if fingerprint is None:
+            return None
+        return {
+            group_id: list(pages)
+            for group_id, pages in fingerprint
+        }
+
+    def _rebalance_active_long_physical_requests(self) -> None:
+        if not self.physical:
+            return
+        self._pending_long_rebalance_request_ids.update(
+            self._active_long_physical_request_ids()
+        )
+        for active_request_id in tuple(self._active_long_physical_request_ids()):
+            total_tokens = self._request_physical_tokens.get(active_request_id)
+            total_pages = self._request_total_pages.get(active_request_id)
+            logical_pages_by_group = self._logical_pages_by_group_for_request(active_request_id)
+            if total_tokens is None or total_pages is None or logical_pages_by_group is None:
+                continue
+            hot_pages = self._effective_hot_pages(
+                request_id=active_request_id,
+                total_pages=total_pages,
+            )
+            recent_start_page = total_pages if hot_pages <= 0 else max(0, total_pages - hot_pages)
+            self._record_physical_descriptors_for_pages(
+                request_id=active_request_id,
+                total_tokens=total_tokens,
+                total_pages=total_pages,
+                recent_start_page=recent_start_page,
+                hot_pages=hot_pages,
+                logical_pages_by_group=logical_pages_by_group,
+            )
+            self._pending_long_rebalance_request_ids.discard(active_request_id)
+
+    def _effective_hot_pages(self, *, request_id: str, total_pages: int) -> int:
+        hot_budget_pct = self._effective_hot_budget_pct(
+            request_id=request_id,
+            total_pages=total_pages,
+        )
         if hot_budget_pct <= 0:
             return 0
         return min(total_pages, math.ceil(total_pages * hot_budget_pct / 100.0))
@@ -267,7 +358,10 @@ class TMHKVRuntimePolicy:
         prompt_tokens = max(0, min(prompt_tokens, total_tokens))
         total_pages = max(1, math.ceil(total_tokens / self.page_tokens))
         prompt_pages = max(1, math.ceil(max(1, prompt_tokens) / self.page_tokens))
-        hot_pages = self._effective_hot_pages(total_pages=total_pages)
+        hot_pages = self._effective_hot_pages(
+            request_id=request_id,
+            total_pages=total_pages,
+        )
         recent_start_page = total_pages if hot_pages <= 0 else max(0, total_pages - hot_pages)
         regular_live_bytes = self._regular_live_bytes(request_id, blocks_by_group)
 
@@ -426,6 +520,7 @@ class TMHKVRuntimePolicy:
                 hot_pages=hot_pages,
                 blocks_by_group=blocks_by_group,
             )
+            self._pending_long_rebalance_request_ids.discard(request_id)
         return pressure
 
     def _regular_live_bytes(
@@ -449,7 +544,9 @@ class TMHKVRuntimePolicy:
         return total
 
     def forget_request(self, request_id: str) -> None:
+        previous_long_count = len(self._active_long_physical_request_ids())
         self.latest_by_request.pop(request_id, None)
+        self._pending_long_rebalance_request_ids.discard(request_id)
         self._regular_live_bytes_cache.pop(request_id, None)
         removed_descriptors: list[TMHPhysicalPageDescriptor] = []
         for key, descriptor in list(self._physical_descriptors.items()):
@@ -473,11 +570,130 @@ class TMHKVRuntimePolicy:
         self._request_total_pages.pop(request_id, None)
         self._request_physical_tokens.pop(request_id, None)
         self._request_physical_fingerprint.pop(request_id, None)
+        if self.physical:
+            current_long_count = len(self._active_long_physical_request_ids())
+            if (previous_long_count >= 4) != (current_long_count >= 4):
+                self._rebalance_active_long_physical_requests()
 
-    def take_physical_events(self) -> list[TMHPhysicalEvent]:
-        events = self._pending_physical_events
-        self._pending_physical_events = []
-        return events
+    def take_physical_events(
+        self,
+        active_request_ids: set[str] | list[str] | tuple[str, ...] | None = None,
+    ) -> list[TMHPhysicalEvent]:
+        if not self._pending_physical_events:
+            return []
+        if active_request_ids is None:
+            events = self._pending_physical_events
+            self._pending_physical_events = []
+            return events
+        active_request_ids = set(active_request_ids)
+        ready: list[TMHPhysicalEvent] = []
+        pending: list[TMHPhysicalEvent] = []
+        blocked_request_ids: set[str] = set()
+        for event in self._pending_physical_events:
+            if event.request_id in blocked_request_ids:
+                pending.append(event)
+                continue
+            eligible = (
+                event.event_kind == TMHPhysicalEventKind.RELEASE
+                or event.request_id in active_request_ids
+            )
+            if eligible:
+                ready.append(event)
+            else:
+                blocked_request_ids.add(event.request_id)
+                pending.append(event)
+        self._pending_physical_events = pending
+        return ready
+
+    def _enqueue_delta_physical_event(
+        self,
+        *,
+        request_id: str,
+        descriptors: tuple[TMHPhysicalPageDescriptor, ...],
+        total_pages: int,
+        recent_start_page: int,
+        hot_pages: int,
+        released_descriptors: tuple[TMHPhysicalPageDescriptor, ...] = (),
+    ) -> None:
+        if request_id in self._active_physical_request_ids:
+            self._pending_physical_events.append(
+                self._next_physical_event(
+                    request_id=request_id,
+                    event_kind=TMHPhysicalEventKind.DELTA,
+                    descriptors=descriptors,
+                    total_pages=total_pages,
+                    recent_start_page=recent_start_page,
+                    hot_pages=hot_pages,
+                    released_descriptors=released_descriptors,
+                )
+            )
+            return
+        for index in range(len(self._pending_physical_events) - 1, -1, -1):
+            pending = self._pending_physical_events[index]
+            if pending.request_id != request_id:
+                continue
+            if pending.event_kind != TMHPhysicalEventKind.DELTA:
+                break
+            merged_descriptors: dict[
+                tuple[str, int], TMHPhysicalPageDescriptor
+            ] = {
+                (descriptor.layer_name, descriptor.page_index): descriptor
+                for descriptor in pending.descriptors
+            }
+            for descriptor in descriptors:
+                merged_descriptors[(descriptor.layer_name, descriptor.page_index)] = descriptor
+            merged_released: dict[
+                tuple[
+                    str,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    int,
+                    str,
+                    str,
+                    bool,
+                ],
+                TMHPhysicalPageDescriptor,
+            ] = {}
+            for descriptor in (*pending.released_descriptors, *released_descriptors):
+                merged_released[
+                    (
+                        descriptor.layer_name,
+                        descriptor.cache_group_id,
+                        descriptor.logical_block_id,
+                        descriptor.page_index,
+                        int(descriptor.role),
+                        int(descriptor.storage),
+                        descriptor.allocation_generation,
+                        descriptor.valid_tokens,
+                        descriptor.k_quant_mode,
+                        descriptor.v_quant_mode,
+                        descriptor.prefix_cached,
+                    )
+                ] = descriptor
+            self._pending_physical_events[index] = dataclass_replace(
+                pending,
+                descriptors=tuple(merged_descriptors.values()),
+                total_pages=total_pages,
+                recent_start_page=recent_start_page,
+                hot_pages=hot_pages,
+                released_descriptors=tuple(merged_released.values()),
+            )
+            return
+        self._pending_physical_events.append(
+            self._next_physical_event(
+                request_id=request_id,
+                event_kind=TMHPhysicalEventKind.DELTA,
+                descriptors=descriptors,
+                total_pages=total_pages,
+                recent_start_page=recent_start_page,
+                hot_pages=hot_pages,
+                released_descriptors=released_descriptors,
+            )
+        )
 
     def _record_physical_descriptors(
         self,
@@ -543,7 +759,10 @@ class TMHKVRuntimePolicy:
         )
         total_tokens = max(1, total_tokens)
         total_pages = max(1, math.ceil(total_tokens / self.page_tokens))
-        hot_pages = self._effective_hot_pages(total_pages=total_pages)
+        hot_pages = self._effective_hot_pages(
+            request_id=request_id,
+            total_pages=total_pages,
+        )
         recent_start_page = total_pages if hot_pages <= 0 else max(0, total_pages - hot_pages)
         logical_pages_by_group = {
             group_id: [
@@ -590,13 +809,13 @@ class TMHKVRuntimePolicy:
         if (
             previous_total_tokens is not None
             and total_tokens > previous_total_tokens
-            and total_tokens % self.page_tokens != 0
             and total_pages == previous_total_pages
             and physical_fingerprint == previous_fingerprint
         ):
             # The fused writer advances the current page's device-side valid
             # range. With identical block identities/generations and prefix
-            # state, monotonic in-page progress cannot change placement.
+            # state, monotonic growth within the current terminal page cannot
+            # change placement; the next structural change is page-count growth.
             return
         descriptors: list[TMHPhysicalPageDescriptor] = []
         released_descriptors: list[TMHPhysicalPageDescriptor] = []
@@ -675,16 +894,13 @@ class TMHKVRuntimePolicy:
         total_pages_changed = previous_total_pages != total_pages
         self._request_total_pages[request_id] = total_pages
         if descriptors or released_descriptors or total_pages_changed:
-            self._pending_physical_events.append(
-                self._next_physical_event(
-                    request_id=request_id,
-                    event_kind=TMHPhysicalEventKind.DELTA,
-                    descriptors=tuple(descriptors),
-                    total_pages=total_pages,
-                    recent_start_page=recent_start_page,
-                    hot_pages=hot_pages,
-                    released_descriptors=tuple(released_descriptors),
-                )
+            self._enqueue_delta_physical_event(
+                request_id=request_id,
+                descriptors=tuple(descriptors),
+                total_pages=total_pages,
+                recent_start_page=recent_start_page,
+                hot_pages=hot_pages,
+                released_descriptors=tuple(released_descriptors),
             )
 
     def _track_canonical_descriptor(

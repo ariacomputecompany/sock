@@ -150,61 +150,209 @@ def test_tmh_physical_descriptors_can_be_recorded_from_warmup_block_ids() -> Non
     assert descriptors[(layer, 3)].storage == TMHStorageKind.REQUEST_OVERLAY
 
 
-def test_tmh_physical_long_requests_expand_the_hot_raw_window() -> None:
+def test_tmh_physical_long_requests_expand_the_hot_raw_window_only_under_four_way_contention() -> None:
     policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config("physical"), 16)
 
-    pressure = policy.record_allocation(
-        request_id="req-long",
+    policy.set_active_physical_request_ids({"req-medium"})
+
+    medium = policy.record_allocation(
+        request_id="req-medium",
+        total_tokens=640,
+        prompt_tokens=640,
+        blocks_by_group=([KVCacheBlock(i) for i in range(40)],),
+    )
+
+    assert medium is not None
+    assert medium.total_pages == 40
+    assert medium.hot_pages == 20
+    assert medium.recent_start_page == 20
+
+    medium_events = policy.take_physical_events()
+    assert len(medium_events) == 1
+    medium_descriptors = {
+        (descriptor.layer_name, descriptor.page_index): descriptor
+        for descriptor in medium_events[0].descriptors
+    }
+    layer = "model.layers.0.self_attn"
+    assert medium_descriptors[(layer, 19)].role.name == "WARM_INT8_INT4"
+    assert medium_descriptors[(layer, 20)].role.name == "HOT_RAW"
+
+    policy.set_active_physical_request_ids({"req-long-1", "req-long-2", "req-long-3"})
+
+    long1 = policy.record_allocation(
+        request_id="req-long-1",
+        total_tokens=1024,
+        prompt_tokens=1024,
+        blocks_by_group=([KVCacheBlock(i) for i in range(64)],),
+    )
+    long2 = policy.record_allocation(
+        request_id="req-long-2",
+        total_tokens=1024,
+        prompt_tokens=1024,
+        blocks_by_group=([KVCacheBlock(i) for i in range(64, 128)],),
+    )
+    long3 = policy.record_allocation(
+        request_id="req-long-3",
+        total_tokens=1024,
+        prompt_tokens=1024,
+        blocks_by_group=([KVCacheBlock(i) for i in range(128, 192)],),
+    )
+
+    assert long1 is not None and long2 is not None and long3 is not None
+    assert long1.hot_pages == 32
+    assert long2.hot_pages == 32
+    assert long3.hot_pages == 32
+
+    policy.set_active_physical_request_ids({"req-long-1", "req-long-2", "req-long-3", "req-long-4"})
+
+    long4 = policy.record_allocation(
+        request_id="req-long-4",
+        total_tokens=1024,
+        prompt_tokens=1024,
+        blocks_by_group=([KVCacheBlock(i) for i in range(192, 256)],),
+    )
+
+    assert long4 is not None
+    assert long4.hot_pages == 64
+    assert long4.recent_start_page == 0
+    assert policy._pending_long_rebalance_request_ids == set()
+
+    policy.set_active_physical_request_ids({"req-long-1", "req-long-2", "req-long-3", "req-long-4"})
+
+    long1_updated = policy.record_allocation(
+        request_id="req-long-1",
         total_tokens=1024,
         prompt_tokens=1024,
         blocks_by_group=([KVCacheBlock(i) for i in range(64)],),
     )
 
-    assert pressure is not None
-    assert pressure.total_pages == 64
-    assert pressure.hot_pages == 32
-    assert pressure.recent_start_page == 32
+    assert long1_updated is not None
+    assert long1_updated.hot_pages == 64
+    assert long1_updated.recent_start_page == 0
+    assert policy._pending_long_rebalance_request_ids == set()
 
-    events = policy.take_physical_events()
-    assert len(events) == 1
-    descriptors = {
+    long_events = policy.take_physical_events()
+    assert len(long_events) == 5
+    long1_event = next(event for event in reversed(long_events) if event.request_id == "req-long-1")
+    long1_descriptors = {
         (descriptor.layer_name, descriptor.page_index): descriptor
-        for descriptor in events[0].descriptors
+        for descriptor in long1_event.descriptors
     }
-    layer = "model.layers.0.self_attn"
-    assert descriptors[(layer, 31)].role.name == "WARM_INT8_INT4"
-    assert descriptors[(layer, 32)].role.name == "HOT_RAW"
+    long4_event = next(event for event in reversed(long_events) if event.request_id == "req-long-4")
+    long4_descriptors = {
+        (descriptor.layer_name, descriptor.page_index): descriptor
+        for descriptor in long4_event.descriptors
+    }
+    assert long1_descriptors[(layer, 15)].role.name == "HOT_RAW"
+    assert long1_descriptors[(layer, 16)].role.name == "HOT_RAW"
+    assert long1_descriptors[(layer, 31)].role.name == "HOT_RAW"
+    assert long4_descriptors[(layer, 16)].role.name == "HOT_RAW"
 
 
-def test_tmh_intermediate_page_growth_is_fused_until_page_completion() -> None:
-    policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config("physical"), 16)
+def test_tmh_monotonic_same_page_growth_is_fused_until_new_page() -> None:
+    policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config('physical'), 16)
 
     policy.record_physical_descriptors_from_block_ids(
-        request_id="req-progress",
+        request_id='req-progress',
         total_tokens=1,
         logical_block_ids=(1,),
     )
     assert len(policy.take_physical_events()) == 1
 
     policy.record_physical_descriptors_from_block_ids(
-        request_id="req-progress",
+        request_id='req-progress',
         total_tokens=2,
         logical_block_ids=(1,),
     )
     assert policy.take_physical_events() == []
 
     policy.record_physical_descriptors_from_block_ids(
-        request_id="req-progress",
+        request_id='req-progress',
         total_tokens=16,
         logical_block_ids=(1,),
     )
-    completion_events = policy.take_physical_events()
-    assert len(completion_events) == 1
+    assert policy.take_physical_events() == []
+
+    policy.record_physical_descriptors_from_block_ids(
+        request_id='req-progress',
+        total_tokens=17,
+        logical_block_ids=(1, 2),
+    )
+    next_page_events = policy.take_physical_events()
+    assert len(next_page_events) == 1
+    descriptors = {
+        (descriptor.layer_name, descriptor.page_index): descriptor
+        for descriptor in next_page_events[0].descriptors
+    }
     assert all(
         descriptor.valid_tokens == 16
-        for descriptor in completion_events[0].descriptors
+        for descriptor in descriptors.values()
+        if descriptor.page_index == 0
+    )
+    assert all(
+        descriptor.valid_tokens == 1
+        for descriptor in descriptors.values()
+        if descriptor.page_index == 1
     )
 
+
+def test_tmh_pending_same_request_delta_events_are_coalesced() -> None:
+    policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config('physical'), 16)
+
+    policy.record_physical_descriptors_from_block_ids(
+        request_id='req-coalesce',
+        total_tokens=1,
+        logical_block_ids=(1,),
+    )
+    policy.record_physical_descriptors_from_block_ids(
+        request_id='req-coalesce',
+        total_tokens=17,
+        logical_block_ids=(1, 2),
+    )
+
+    events = policy.take_physical_events()
+    assert len(events) == 1
+    event = events[0]
+    assert event.request_id == 'req-coalesce'
+    assert event.sequence == 1
+    assert event.expected_base_version == 0
+    assert event.target_version == 1
+    descriptors = {
+        (descriptor.layer_name, descriptor.page_index): descriptor
+        for descriptor in event.descriptors
+    }
+    assert all(
+        descriptor.valid_tokens == 16
+        for descriptor in descriptors.values()
+        if descriptor.page_index == 0
+    )
+    assert all(
+        descriptor.valid_tokens == 1
+        for descriptor in descriptors.values()
+        if descriptor.page_index == 1
+    )
+
+
+def test_tmh_active_requests_keep_same_request_delta_ordering() -> None:
+    policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config("physical"), 16)
+    policy.set_active_physical_request_ids({"req-active"})
+
+    policy.record_physical_descriptors_from_block_ids(
+        request_id="req-active",
+        total_tokens=1,
+        logical_block_ids=(1,),
+    )
+    policy.record_physical_descriptors_from_block_ids(
+        request_id="req-active",
+        total_tokens=17,
+        logical_block_ids=(1, 2),
+    )
+
+    events = policy.take_physical_events()
+    assert len(events) == 2
+    assert [event.sequence for event in events] == [1, 2]
+    assert [event.expected_base_version for event in events] == [0, 1]
+    assert [event.target_version for event in events] == [1, 2]
 
 def test_tmh_physical_forget_request_releases_request_overlays() -> None:
     policy = TMHKVRuntimePolicy.from_kv_cache_config(make_config("physical"), 16)
