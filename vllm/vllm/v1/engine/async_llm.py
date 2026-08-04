@@ -902,6 +902,23 @@ class AsyncLLM(EngineClient):
         if self.errored:
             raise self.dead_error
 
+        try:
+            timeout_s = max(
+                0.1, float(os.getenv("VLLM_ENGINE_HEALTH_TIMEOUT_S", "5")))
+        except ValueError:
+            timeout_s = 5.0
+        try:
+            await asyncio.wait_for(
+                self.engine_core.get_supported_tasks_async(), timeout=timeout_s)
+        except EngineDeadError:
+            raise
+        except Exception as exc:
+            logger.warning("EngineCore health probe failed.", exc_info=True)
+            raise EngineDeadError(suppress_context=True) from exc
+
+        if self.errored:
+            raise self.dead_error
+
     async def start_profile(self, profile_prefix: str | None = None) -> None:
         coros = [self.engine_core.profile_async(True, profile_prefix)]
         if self.profiler is not None:

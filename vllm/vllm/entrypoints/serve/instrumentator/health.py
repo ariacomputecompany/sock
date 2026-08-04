@@ -31,3 +31,6 @@ async def health(raw_request: Request) -> Response:
         return Response(status_code=200)
     except EngineDeadError:
         return Response(status_code=503)
+    except Exception:
+        logger.exception("Health check failed.")
+        return Response(status_code=503)
